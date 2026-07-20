@@ -1,0 +1,309 @@
+/* =============================================================================
+   Tempo Insight Engine — Design Tokens
+   -----------------------------------------------------------------------------
+   Single source of truth for color, typography, spacing, radius, shadow, motion.
+   Dark-first: :root ships the DARK theme. [data-theme="light"] overrides.
+   Import once at the app root (e.g. in app/globals.css) BEFORE Tailwind's base.
+
+   Consumption in Tailwind (tailwind.config.js):
+     colors: { bg: 'var(--color-bg-base)', surface: 'var(--color-surface)', ... }
+   Or reference var(--…) directly in CSS / style props / Recharts.
+   ============================================================================= */
+
+:root,
+:root[data-theme="dark"],
+.dark {
+  color-scheme: dark;
+
+  /* ---- Surfaces / backgrounds -------------------------------------------- */
+  --color-bg-base:        #0A0B0D;   /* app canvas, behind everything          */
+  --color-bg-subtle:      #0E1013;   /* sunken wells, table zebra base         */
+  --color-surface:        #131518;   /* cards, panels, topbar                  */
+  --color-surface-hover:  #1A1D22;   /* row/card hover                         */
+  --color-surface-active: #1F232A;   /* pressed / selected row                 */
+  --color-elevated:       #191C21;   /* popovers, dropdowns, modals, tooltips  */
+  --color-overlay:        rgba(3, 4, 6, 0.66); /* modal scrim                  */
+
+  /* ---- Borders ----------------------------------------------------------- */
+  --color-border-subtle:  #1E2127;   /* hairline dividers inside cards         */
+  --color-border:         #262A31;   /* default component border               */
+  --color-border-strong:  #363B43;   /* hover borders, inputs on focus-within  */
+
+  /* ---- Text -------------------------------------------------------------- */
+  --color-text-primary:   #F4F5F7;   /* headings, KPI values                   */
+  --color-text-secondary: #A7ADB6;   /* body, labels                           */
+  --color-text-muted:     #6B7280;   /* captions, axis ticks, placeholders     */
+  --color-text-disabled:  #474C55;
+  --color-text-on-accent: #04211E;   /* ink on teal accent fills               */
+  --color-text-on-solid:  #FFFFFF;   /* ink on colored status/solid fills      */
+
+  /* ---- Brand accent (teal — TikTok-teal energy, restrained) -------------- */
+  --color-accent:         #1FD8C7;
+  --color-accent-hover:   #38E2D3;
+  --color-accent-active:  #14BEAF;
+  --color-accent-subtle:  rgba(31, 216, 199, 0.12);  /* tinted chips / bg      */
+  --color-accent-border:  rgba(31, 216, 199, 0.38);
+  --color-accent-ring:    rgba(31, 216, 199, 0.55);  /* focus ring             */
+
+  /* ---- Secondary accent (coral — TikTok-red energy; use sparingly) ------- */
+  --color-accent2:        #FF3B5C;
+  --color-accent2-subtle: rgba(255, 59, 92, 0.13);
+
+  /* ---- Status ------------------------------------------------------------ */
+  --color-success:        #35CE8A;
+  --color-success-subtle: rgba(53, 206, 138, 0.13);
+  --color-warning:        #F5B429;
+  --color-warning-subtle: rgba(245, 180, 41, 0.13);
+  --color-danger:         #FF5A65;
+  --color-danger-subtle:  rgba(255, 90, 101, 0.13);
+  --color-info:           #4DA0FF;
+  --color-info-subtle:    rgba(77, 160, 255, 0.13);
+
+  /* ---- Metric delta cues (direction is set per-metric in code, not here) - */
+  --color-delta-positive: #35CE8A;   /* "good" direction                       */
+  --color-delta-negative: #FF5A65;   /* "bad" direction                        */
+  --color-delta-neutral:  #6B7280;
+
+  /* ---- Data-viz: categorical palette (validated, colorblind-safe) -------- */
+  /* Dark steps — stepped for dark surfaces, worst adjacent CVD ΔE 8.4.       */
+  --viz-cat-1: #3987E5;  /* blue     — default / PAID series                  */
+  --viz-cat-2: #008300;  /* green                                            */
+  --viz-cat-3: #D55181;  /* magenta                                          */
+  --viz-cat-4: #C98500;  /* yellow                                           */
+  --viz-cat-5: #199E70;  /* aqua     — default ORGANIC series                */
+  --viz-cat-6: #D95926;  /* orange                                           */
+  --viz-cat-7: #9085E9;  /* violet                                           */
+  --viz-cat-8: #E66767;  /* red                                             */
+
+  /* Semantic series aliases (keep color bound to the entity, never rank) */
+  --viz-series-paid:    var(--viz-cat-1);
+  --viz-series-organic: var(--viz-cat-5);
+
+  /* ---- Data-viz: sequential blue ramp (heatmaps, magnitude) -------------- */
+  --viz-seq-100: #CDE2FB;
+  --viz-seq-200: #9EC5F4;
+  --viz-seq-300: #6DA7EC;
+  --viz-seq-400: #3987E5;
+  --viz-seq-500: #256ABF;
+  --viz-seq-600: #184F95;
+  --viz-seq-700: #0D366B;
+
+  /* ---- Data-viz: diverging blue <-> red (neutral gray midpoint) ---------- */
+  --viz-div-neg-2: #184F95;
+  --viz-div-neg-1: #6DA7EC;
+  --viz-div-mid:   #383835;   /* dark-mode neutral midpoint                    */
+  --viz-div-pos-1: #E88A8A;
+  --viz-div-pos-2: #C0392F;
+
+  /* ---- Data-viz: chart chrome ------------------------------------------- */
+  --viz-surface:   var(--color-surface);
+  --viz-grid:      #23262C;   /* hairline gridlines                            */
+  --viz-axis:      #363B43;   /* baseline / axis line                          */
+  --viz-tick:      var(--color-text-muted);
+  --viz-tooltip-bg: var(--color-elevated);
+
+  /* ---- Elevation / shadow (dark relies on borders + soft depth) ---------- */
+  --shadow-xs:  0 1px 2px rgba(0, 0, 0, 0.40);
+  --shadow-sm:  0 1px 2px rgba(0, 0, 0, 0.50), 0 1px 1px rgba(0, 0, 0, 0.30);
+  --shadow-md:  0 6px 16px rgba(0, 0, 0, 0.50);
+  --shadow-lg:  0 16px 40px rgba(0, 0, 0, 0.58);
+  --shadow-popover: 0 8px 28px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --shadow-focus-ring: 0 0 0 2px var(--color-bg-base), 0 0 0 4px var(--color-accent-ring);
+}
+
+/* ===========================================================================
+   LIGHT THEME OVERRIDES
+   =========================================================================== */
+:root[data-theme="light"],
+.light {
+  color-scheme: light;
+
+  --color-bg-base:        #FFFFFF;
+  --color-bg-subtle:      #F7F8FA;
+  --color-surface:        #FFFFFF;
+  --color-surface-hover:  #F3F5F8;
+  --color-surface-active: #EBEEF3;
+  --color-elevated:       #FFFFFF;
+  --color-overlay:        rgba(16, 20, 26, 0.44);
+
+  --color-border-subtle:  #EDEFF3;
+  --color-border:         #E1E5EB;
+  --color-border-strong:  #CBD1DA;
+
+  --color-text-primary:   #0D0F12;
+  --color-text-secondary: #4A515B;
+  --color-text-muted:     #838B96;
+  --color-text-disabled:  #B4BAC3;
+  --color-text-on-accent: #FFFFFF;
+  --color-text-on-solid:  #FFFFFF;
+
+  --color-accent:         #0FA79A;
+  --color-accent-hover:   #0C8F84;
+  --color-accent-active:  #0A7A71;
+  --color-accent-subtle:  rgba(15, 167, 154, 0.10);
+  --color-accent-border:  rgba(15, 167, 154, 0.34);
+  --color-accent-ring:    rgba(15, 167, 154, 0.45);
+
+  --color-accent2:        #E11D48;
+  --color-accent2-subtle: rgba(225, 29, 72, 0.10);
+
+  --color-success:        #128A4E;
+  --color-success-subtle: rgba(18, 138, 78, 0.11);
+  --color-warning:        #B4700A;
+  --color-warning-subtle: rgba(180, 112, 10, 0.11);
+  --color-danger:         #DC2626;
+  --color-danger-subtle:  rgba(220, 38, 38, 0.10);
+  --color-info:           #2563EB;
+  --color-info-subtle:    rgba(37, 99, 235, 0.10);
+
+  --color-delta-positive: #128A4E;
+  --color-delta-negative: #DC2626;
+  --color-delta-neutral:  #838B96;
+
+  /* Categorical — light steps (validated, worst adjacent CVD ΔE 9.1) */
+  --viz-cat-1: #2A78D6;  /* blue    — PAID    */
+  --viz-cat-2: #008300;  /* green            */
+  --viz-cat-3: #E87BA4;  /* magenta          */
+  --viz-cat-4: #EDA100;  /* yellow           */
+  --viz-cat-5: #1BAF7A;  /* aqua    — ORGANIC */
+  --viz-cat-6: #EB6834;  /* orange           */
+  --viz-cat-7: #4A3AA7;  /* violet           */
+  --viz-cat-8: #E34948;  /* red              */
+
+  --viz-seq-100: #CDE2FB;
+  --viz-seq-200: #9EC5F4;
+  --viz-seq-300: #6DA7EC;
+  --viz-seq-400: #3987E5;
+  --viz-seq-500: #256ABF;
+  --viz-seq-600: #184F95;
+  --viz-seq-700: #0D366B;
+
+  --viz-div-neg-2: #184F95;
+  --viz-div-neg-1: #6DA7EC;
+  --viz-div-mid:   #F0EFEC;   /* light-mode neutral midpoint */
+  --viz-div-pos-1: #E88A8A;
+  --viz-div-pos-2: #C0392F;
+
+  --viz-surface:   #FFFFFF;
+  --viz-grid:      #EAECEF;
+  --viz-axis:      #CBD1DA;
+  --viz-tick:      var(--color-text-muted);
+  --viz-tooltip-bg: var(--color-elevated);
+
+  --shadow-xs:  0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-sm:  0 1px 3px rgba(16, 24, 40, 0.10), 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md:  0 4px 12px rgba(16, 24, 40, 0.10), 0 2px 4px rgba(16, 24, 40, 0.06);
+  --shadow-lg:  0 16px 36px rgba(16, 24, 40, 0.14), 0 4px 8px rgba(16, 24, 40, 0.06);
+  --shadow-popover: 0 8px 28px rgba(16, 24, 40, 0.16), 0 0 0 1px rgba(16, 24, 40, 0.05);
+  --shadow-focus-ring: 0 0 0 2px var(--color-bg-base), 0 0 0 4px var(--color-accent-ring);
+}
+
+/* ===========================================================================
+   THEME-INDEPENDENT TOKENS (typography, spacing, radius, motion, z, layout)
+   =========================================================================== */
+:root {
+  /* ---- Font families ---------------------------------------------------- */
+  --font-sans: "Inter", "Geist", system-ui, -apple-system, "Segoe UI", Roboto,
+               "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Geist Mono", "JetBrains Mono", ui-monospace, "SF Mono",
+               "Menlo", "Consolas", monospace;
+  --font-feature-numeric: "tnum" 1, "cv01" 1, "ss01" 1;  /* tabular data */
+
+  /* ---- Type scale — size / line-height / weight / tracking -------------- */
+  --fs-display: 40px;  --lh-display: 48px;  --ls-display: -0.021em;
+  --fs-h1:      30px;  --lh-h1:      38px;  --ls-h1:      -0.02em;
+  --fs-h2:      24px;  --lh-h2:      32px;  --ls-h2:      -0.017em;
+  --fs-h3:      20px;  --lh-h3:      28px;  --ls-h3:      -0.012em;
+  --fs-kpi:     32px;  --lh-kpi:     36px;  --ls-kpi:     -0.02em;   /* KPI value */
+  --fs-body-lg: 16px;  --lh-body-lg: 24px;  --ls-body-lg: -0.006em;
+  --fs-body:    14px;  --lh-body:    22px;  --ls-body:    -0.003em;  /* base */
+  --fs-small:   13px;  --lh-small:   20px;  --ls-small:    0em;
+  --fs-caption: 12px;  --lh-caption: 16px;  --ls-caption:  0.005em;
+  --fs-micro:   11px;  --lh-micro:   14px;  --ls-micro:    0.04em;   /* overline */
+  --fs-mono:    13px;  --lh-mono:    20px;  --ls-mono:     0em;
+
+  --fw-regular: 400;
+  --fw-medium:  500;
+  --fw-semibold: 600;
+  --fw-bold:    700;
+
+  /* ---- Spacing scale (4px base grid) ------------------------------------ */
+  --space-0:   0px;
+  --space-px:  1px;
+  --space-0-5: 2px;
+  --space-1:   4px;
+  --space-1-5: 6px;
+  --space-2:   8px;
+  --space-3:   12px;
+  --space-4:   16px;
+  --space-5:   20px;
+  --space-6:   24px;
+  --space-7:   28px;
+  --space-8:   32px;
+  --space-10:  40px;
+  --space-12:  48px;
+  --space-16:  64px;
+  --space-20:  80px;
+  --space-24:  96px;
+
+  /* ---- Border radius ---------------------------------------------------- */
+  --radius-xs:   4px;   /* chips, small badges       */
+  --radius-sm:   6px;   /* inputs, buttons (sm)      */
+  --radius-md:   8px;   /* buttons, selects          */
+  --radius-lg:   12px;  /* cards, panels             */
+  --radius-xl:   16px;  /* large surfaces, modals    */
+  --radius-2xl:  20px;
+  --radius-full: 9999px;
+
+  /* ---- Layout ----------------------------------------------------------- */
+  --layout-sidebar-w:          248px;
+  --layout-sidebar-collapsed-w: 64px;
+  --layout-topbar-h:           56px;
+  --layout-content-max:        1440px;
+  --layout-content-pad-x:      32px;   /* >=1280px */
+  --layout-content-pad-x-md:   24px;   /* 768–1279 */
+  --layout-content-pad-x-sm:   16px;   /* <768     */
+  --layout-gutter:             24px;   /* grid gap between cards */
+  --layout-gutter-sm:          16px;
+
+  /* ---- Motion ----------------------------------------------------------- */
+  --dur-instant:  80ms;
+  --dur-fast:     120ms;
+  --dur-base:     160ms;
+  --dur-moderate: 240ms;
+  --dur-slow:     320ms;
+  --dur-slower:   480ms;
+
+  --ease-standard:   cubic-bezier(0.2, 0, 0, 1);      /* most transitions      */
+  --ease-decelerate: cubic-bezier(0, 0, 0, 1);        /* enter                 */
+  --ease-accelerate: cubic-bezier(0.3, 0, 1, 1);      /* exit                  */
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1.2);    /* subtle overshoot      */
+  --ease-spring:     cubic-bezier(0.34, 1.4, 0.64, 1);/* playful (rare)        */
+
+  /* ---- Z-index scale ---------------------------------------------------- */
+  --z-base:      0;
+  --z-sticky:    100;   /* sticky table header, filter bar */
+  --z-sidebar:   200;
+  --z-topbar:    300;
+  --z-dropdown:  1000;
+  --z-overlay:   1100;
+  --z-modal:     1200;
+  --z-toast:     1300;
+  --z-tooltip:   1400;
+}
+
+/* ===========================================================================
+   REDUCED MOTION — collapse all durations to near-zero
+   =========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-instant: 0.01ms; --dur-fast: 0.01ms; --dur-base: 0.01ms;
+    --dur-moderate: 0.01ms; --dur-slow: 0.01ms; --dur-slower: 0.01ms;
+  }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

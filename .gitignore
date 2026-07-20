@@ -8,6 +8,7 @@ dist/
 out/
 build/
 *.tsbuildinfo
+next-env.d.ts
 
 # Turbo
 .turbo/

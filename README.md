@@ -9,6 +9,8 @@ performance data into per-client dashboards.
 
 </div>
 
+![Tempo Insight Engine — client dashboard](docs/screenshots/dashboard-dark.png)
+
 ---
 
 ## Highlights

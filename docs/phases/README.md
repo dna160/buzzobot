@@ -8,7 +8,7 @@ without re-reading the entire codebase and without re-deriving decisions.
 | Phase | Title                        | Status      | Handover                              |
 | ----- | ---------------------------- | ----------- | ------------------------------------- |
 | 0     | Foundation & domain kernel   | ✅ Complete | [PHASE_0_FOUNDATION.md](./PHASE_0_FOUNDATION.md) |
-| 1     | Vertical slice — client dashboard | 🚧 In progress | [PHASE_1_VERTICAL_SLICE.md](./PHASE_1_VERTICAL_SLICE.md) |
+| 1     | Vertical slice — client dashboard | ✅ Complete | [PHASE_1_VERTICAL_SLICE.md](./PHASE_1_VERTICAL_SLICE.md) |
 | 2     | Multi-tenant SaaS & live sync | ⏭ Planned  | (TBD)                                 |
 
 ## How to read a handover
