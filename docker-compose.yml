@@ -1,0 +1,34 @@
+# Optional local infrastructure for a production-like setup.
+# Not required for local dev — the app runs against embedded PGlite by default.
+# Bring up with: docker compose up -d, then set DATABASE_URL / REDIS_URL in .env.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tempo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tempo
+      POSTGRES_PASSWORD: tempo
+      POSTGRES_DB: tempo
+    ports:
+      - '5432:5432'
+    volumes:
+      - tempo_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U tempo']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: tempo-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - tempo_redisdata:/data
+
+volumes:
+  tempo_pgdata:
+  tempo_redisdata:

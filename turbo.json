@@ -1,0 +1,40 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
+  "globalDependencies": [".env", "tsconfig.json"],
+  "globalEnv": [
+    "NODE_ENV",
+    "DATABASE_URL",
+    "TIKTOK_APP_ID",
+    "TIKTOK_APP_SECRET",
+    "TIKTOK_BUSINESS_ACCESS_TOKEN",
+    "TIKTOK_DISPLAY_CLIENT_KEY",
+    "TIKTOK_DISPLAY_CLIENT_SECRET",
+    "TIKTOK_DATA_PROVIDER",
+    "REDIS_URL",
+    "PGLITE_DATA_DIR"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "lint": {
+      "dependsOn": ["^build"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"]
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"]
+    },
+    "clean": {
+      "cache": false
+    }
+  }
+}
