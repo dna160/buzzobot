@@ -4,7 +4,7 @@ const nextConfig = {
   // Workspace packages are shipped as TS source; transpile them here.
   transpilePackages: ['@tempo/ui', '@tempo/core', '@tempo/db', '@tempo/tiktok'],
   // Native/server-only deps must not be bundled for the client or server graph.
-  serverExternalPackages: ['@electric-sql/pglite', 'postgres'],
+  serverExternalPackages: ['@electric-sql/pglite', 'postgres', 'playwright-core'],
   webpack: (config, { isServer }) => {
     // Workspace packages use ESM `.js` import specifiers that point at `.ts`
     // source. Teach webpack to resolve them (matches tsc's bundler resolution).

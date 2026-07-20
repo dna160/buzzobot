@@ -7,6 +7,7 @@ import { trpc } from '@/trpc/client';
 import type { DashboardResult } from '@/trpc/types';
 import { RANGE_PRESETS, SURFACE_FILTERS, type RangePresetValue, type SurfaceFilter } from '@/lib/constants';
 import { KpiGrid } from './KpiGrid';
+import { ExportReportButton } from './ExportReportButton';
 import { PerformanceChart } from './charts/PerformanceChart';
 import { EngagementChart } from './charts/EngagementChart';
 import { CampaignTable } from './CampaignTable';
@@ -73,6 +74,8 @@ export function DashboardView({ slug }: { slug: string }) {
             onChange={setPreset}
             size="sm"
           />
+          <div className="mx-1 h-5 w-px bg-border" aria-hidden />
+          <ExportReportButton slug={slug} preset={preset} />
         </div>
       </div>
 

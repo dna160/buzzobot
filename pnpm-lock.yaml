@@ -69,6 +69,9 @@ importers:
       '@tempo/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@tempo/reports':
+        specifier: workspace:*
+        version: link:../../packages/reports
       '@tempo/tiktok':
         specifier: workspace:*
         version: link:../../packages/tiktok
@@ -90,6 +93,9 @@ importers:
       next:
         specifier: ^15.1.4
         version: 15.5.20(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      playwright-core:
+        specifier: ^1.49.1
+        version: 1.61.1
       react:
         specifier: ^19.0.0
         version: 19.2.7
@@ -216,6 +222,34 @@ importers:
       typescript-eslint:
         specifier: ^8.20.0
         version: 8.64.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.9.3)
+
+  packages/reports:
+    dependencies:
+      '@tempo/core':
+        specifier: workspace:*
+        version: link:../core
+      '@tempo/db':
+        specifier: workspace:*
+        version: link:../db
+    devDependencies:
+      '@tempo/eslint-config':
+        specifier: workspace:*
+        version: link:../eslint-config
+      '@tempo/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      '@types/node':
+        specifier: ^22.10.5
+        version: 22.20.1
+      eslint:
+        specifier: ^9.18.0
+        version: 9.39.5(jiti@1.21.7)
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.1)
 
   packages/tiktok:
     dependencies:
@@ -2243,6 +2277,11 @@ packages:
     resolution: {integrity: sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==}
     engines: {node: '>= 6'}
 
+  playwright-core@1.61.1:
+    resolution: {integrity: sha512-h7Qlt6m4REp25qvIdvbDtVmD4LqVXfpRxhORv9L0jzETM05p4fuPJ3dKyuSXQxDSbXnmS79HAgi9589lGSpLkg==}
+    engines: {node: '>=18'}
+    hasBin: true
+
   postcss-import@15.1.0:
     resolution: {integrity: sha512-hpr+J05B2FVYUAXHeK1YyI267J/dDDhMU6B6civm8hSY1jYJnBXxzKDKDswzJmtLHryrjhnDjqqp/49t8FALew==}
     engines: {node: '>=14.0.0'}
@@ -4204,6 +4243,8 @@ snapshots:
   pify@2.3.0: {}
 
   pirates@4.0.7: {}
+
+  playwright-core@1.61.1: {}
 
   postcss-import@15.1.0(postcss@8.5.20):
     dependencies:

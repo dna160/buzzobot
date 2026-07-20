@@ -9,6 +9,7 @@ without re-reading the entire codebase and without re-deriving decisions.
 | ----- | ---------------------------- | ----------- | ------------------------------------- |
 | 0     | Foundation & domain kernel   | ✅ Complete | [PHASE_0_FOUNDATION.md](./PHASE_0_FOUNDATION.md) |
 | 1     | Vertical slice — client dashboard | ✅ Complete | [PHASE_1_VERTICAL_SLICE.md](./PHASE_1_VERTICAL_SLICE.md) |
+| 1.5   | Client PDF reports           | ✅ Complete | [PHASE_1_5_PDF_REPORTS.md](./PHASE_1_5_PDF_REPORTS.md) |
 | 2     | Multi-tenant SaaS & live sync | ⏭ Planned  | (TBD)                                 |
 
 ## How to read a handover

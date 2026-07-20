@@ -70,6 +70,7 @@ packages/
   core/       Domain kernel — entities, metric catalog, derivation, formatting
   tiktok/     TikTok provider layer — live (Business + Display) + fixtures
   db/         Drizzle schema, dual-driver client, ingestion pipeline, read-models
+  reports/    Client PDF report generation — model, insights, inline-SVG charts, HTML
   ui/         Design-system component library
 apps/
   web/        Next.js dashboard (tRPC API + App Router UI)
