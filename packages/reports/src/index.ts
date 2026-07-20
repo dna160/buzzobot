@@ -11,3 +11,4 @@ export { buildReport, type ReportModel } from './model.js';
 export { renderReportHtml } from './render.js';
 export { buildInsights, type ReportInsights, type Recommendation, type Priority } from './insights.js';
 export { comboChart, type ComboPoint, type ComboOptions } from './charts.js';
+export { getCopy, isLocale, DEFAULT_LOCALE, type Locale, type ReportCopy } from './i18n.js';

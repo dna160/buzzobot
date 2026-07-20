@@ -1,13 +1,14 @@
 import { getClientBySlug, getDb } from '@tempo/db';
-import { buildReport, renderReportHtml } from '@tempo/reports';
+import { buildReport, renderReportHtml, isLocale, DEFAULT_LOCALE } from '@tempo/reports';
 import { rangePreset } from '@tempo/core';
 import { DASHBOARD_ANCHOR_DATE } from '@/lib/constants';
 import { htmlToPdf } from '@/lib/report-pdf';
 
 /**
- * GET /api/reports/:slug?preset=30d&format=pdf|html
- * Generates the client's performance report. `format=html` returns the raw
- * document (handy for previewing/iterating); the default streams a PDF.
+ * GET /api/reports/:slug?preset=30d&lang=id|en&format=pdf|html
+ * Generates the client's performance report. Defaults to Bahasa Indonesia.
+ * `format=html` returns the raw document (handy for previewing); the default
+ * streams a PDF.
  */
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -30,8 +31,11 @@ export async function GET(
     return new Response(`Client "${slug}" not found`, { status: 404 });
   }
 
+  const langParam = url.searchParams.get('lang');
+  const locale = isLocale(langParam) ? langParam : DEFAULT_LOCALE;
+
   const range = rangePreset(preset, DASHBOARD_ANCHOR_DATE);
-  const model = await buildReport(db, client, range, { generatedAt: new Date() });
+  const model = await buildReport(db, client, range, { generatedAt: new Date(), locale });
   const html = renderReportHtml(model);
 
   if (format === 'html') {

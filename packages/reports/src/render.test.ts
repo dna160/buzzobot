@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { DashboardData, KpiCard } from '@tempo/db';
 import { buildInsights } from './insights.js';
 import { renderReportHtml } from './render.js';
+import { getCopy } from './i18n.js';
 import type { ReportModel } from './model.js';
+
+const idCopy = getCopy('id');
+const enCopy = getCopy('en');
 
 const kpi = (over: Partial<KpiCard> & Pick<KpiCard, 'key'>): KpiCard => ({
   key: over.key,
@@ -51,9 +55,9 @@ const dashboard: DashboardData = {
   hasOrganic: true,
 };
 
-describe('buildInsights', () => {
+describe('buildInsights (English)', () => {
   it('produces a headline, summary and prioritized recommendations', () => {
-    const insights = buildInsights(dashboard);
+    const insights = buildInsights(dashboard, enCopy);
     expect(insights.headline).toContain('Aurora Skincare');
     expect(insights.executiveSummary.length).toBeGreaterThan(0);
     // Scales the 4.33x winner and flags the 1.91x laggard.
@@ -65,26 +69,45 @@ describe('buildInsights', () => {
   });
 });
 
-describe('renderReportHtml', () => {
-  const model: ReportModel = {
-    client: dashboard.client,
-    range: dashboard.range,
-    previousRange: { start: '2026-05-21', end: '2026-06-19' },
-    periodLabel: 'Jun 20 – Jul 19, 2026 (30 days)',
-    generatedLabel: 'Generated Jul 20, 2026 · 10:00 UTC',
-    dashboard,
-    insights: buildInsights(dashboard),
-  };
+describe('buildInsights (Bahasa Indonesia, default)', () => {
+  it('produces Indonesian narrative and recommendations', () => {
+    const insights = buildInsights(dashboard, idCopy);
+    expect(insights.headline).toContain('Aurora Skincare');
+    expect(insights.headline).toContain('ROAS gabungan');
+    const titles = insights.recommendations.map((r) => r.title);
+    expect(titles.some((t) => t.startsWith('Tingkatkan'))).toBe(true);
+    expect(titles.some((t) => t.startsWith('Alihkan anggaran'))).toBe(true);
+  });
+});
 
-  it('renders a self-contained HTML document with the key sections', () => {
-    const html = renderReportHtml(model);
+const modelWith = (copy: typeof idCopy): ReportModel => ({
+  locale: copy.locale,
+  copy,
+  client: dashboard.client,
+  range: dashboard.range,
+  previousRange: { start: '2026-05-21', end: '2026-06-19' },
+  periodLabel: '20 Jun – 19 Jul 2026 (30 hari)',
+  generatedLabel: 'Dibuat 20 Jul 2026 · 10:00 UTC',
+  dashboard,
+  insights: buildInsights(dashboard, copy),
+});
+
+describe('renderReportHtml', () => {
+  it('renders a self-contained Indonesian document with the key sections', () => {
+    const html = renderReportHtml(modelWith(idCopy));
     expect(html.startsWith('<!doctype html>')).toBe(true);
-    expect(html).toContain('Executive Summary');
-    expect(html).toContain('Risks &amp; Prioritized Action Plan');
-    expect(html).toContain('Aurora Skincare');
-    // No unresolved template holes or external asset references.
+    expect(html).toContain('<html lang="id">');
+    expect(html).toContain('Ringkasan Eksekutif');
+    expect(html).toContain('Risiko &amp; Rencana Aksi Terprioritaskan');
+    expect(html).toContain('Laporan Kinerja TikTok');
     expect(html).not.toContain('undefined');
     expect(html).not.toContain('http://');
-    expect(html).toContain('<svg'); // inline charts present
+    expect(html).toContain('<svg');
+  });
+
+  it('renders an English document when that locale is used', () => {
+    const html = renderReportHtml(modelWith(enCopy));
+    expect(html).toContain('<html lang="en">');
+    expect(html).toContain('Executive Summary');
   });
 });
