@@ -1,10 +1,12 @@
 import { router } from './trpc.js';
 import { clientsRouter } from './routers/clients.js';
 import { dashboardRouter } from './routers/dashboard.js';
+import { settingsRouter } from './routers/settings.js';
 
 export const appRouter = router({
   clients: clientsRouter,
   dashboard: dashboardRouter,
+  settings: settingsRouter,
 });
 
 /** The API's type surface — imported by the client for end-to-end type safety. */

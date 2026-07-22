@@ -8,8 +8,26 @@ import { z } from 'zod';
  */
 
 export const TikTokConfigSchema = z.object({
-  /** 'live' talks to TikTok; 'fixture' serves deterministic synthetic data. */
-  provider: z.enum(['live', 'fixture']).default('fixture'),
+  /**
+   * 'live' talks to TikTok; 'fixture' serves deterministic synthetic data;
+   * 'csv' serves a real brand's "daily in hourly" export from disk.
+   */
+  provider: z.enum(['live', 'fixture', 'csv']).default('fixture'),
+  csv: z
+    .object({
+      filePath: z.string(),
+      advertiserId: z.string(),
+      tenant: z.object({
+        clientName: z.string(),
+        clientSlug: z.string(),
+        agencyName: z.string(),
+        agencySlug: z.string(),
+        currency: z.string(),
+        timezone: z.string(),
+        brandColor: z.string().nullable(),
+      }),
+    })
+    .nullable(),
   business: z
     .object({
       appId: z.string(),
@@ -51,9 +69,26 @@ export const loadTikTokConfig = (env: NodeJS.ProcessEnv = process.env): TikTokCo
         }
       : null;
 
-  // Explicit override wins; otherwise go live only if we actually have creds.
-  const explicit = env.TIKTOK_DATA_PROVIDER as 'live' | 'fixture' | undefined;
-  const provider = explicit ?? (business || display ? 'live' : 'fixture');
+  const csv = env.TIKTOK_CSV_PATH
+    ? {
+        filePath: env.TIKTOK_CSV_PATH,
+        advertiserId: env.TIKTOK_CSV_ADVERTISER_ID ?? 'csv-advertiser',
+        tenant: {
+          clientName: env.TIKTOK_CSV_CLIENT_NAME ?? 'Imported Client',
+          clientSlug: env.TIKTOK_CSV_CLIENT_SLUG ?? 'imported-client',
+          agencyName: env.TIKTOK_CSV_AGENCY_NAME ?? 'Buzzo Media',
+          agencySlug: env.TIKTOK_CSV_AGENCY_SLUG ?? 'buzzo-media',
+          currency: env.TIKTOK_CSV_CURRENCY ?? 'USD',
+          timezone: env.TIKTOK_CSV_TIMEZONE ?? 'UTC',
+          brandColor: env.TIKTOK_CSV_BRAND_COLOR ?? null,
+        },
+      }
+    : null;
 
-  return TikTokConfigSchema.parse({ provider, business, display });
+  // Explicit override wins; otherwise prefer a configured CSV export, then go
+  // live only if we actually have creds.
+  const explicit = env.TIKTOK_DATA_PROVIDER as 'live' | 'fixture' | 'csv' | undefined;
+  const provider = explicit ?? (csv ? 'csv' : business || display ? 'live' : 'fixture');
+
+  return TikTokConfigSchema.parse({ provider, business, display, csv });
 };

@@ -132,6 +132,185 @@ export function comboChart(points: ComboPoint[], opts: ComboOptions): string {
   return parts.join('');
 }
 
+export interface LinePoint {
+  label: string;
+  /** Null renders a gap — an unsynced hour is not a zero. */
+  value: number | null;
+}
+
+export interface MultiLineOptions {
+  width?: number;
+  height?: number;
+  gridColor?: string;
+  axisColor?: string;
+  tickColor?: string;
+  format: (v: number) => string;
+  /** Fixed axis bound, e.g. 1 for a 0–100% share chart. */
+  max?: number;
+  maxXLabels?: number;
+}
+
+/**
+ * One or more lines on a shared axis — used for the pacing chart (delivered
+ * share vs. an even-pace reference). Dashed series render as the reference.
+ */
+export function multiLineChart(
+  series: Array<{ points: LinePoint[]; color: string; dashed?: boolean }>,
+  opts: MultiLineOptions,
+): string {
+  const {
+    width = 720,
+    height = 220,
+    gridColor = '#E5E8EC',
+    axisColor = '#C9CED6',
+    tickColor = '#6B7280',
+    format,
+    max,
+    maxXLabels = 8,
+  } = opts;
+
+  const first = series[0]?.points ?? [];
+  if (first.length === 0) {
+    return `<svg width="${width}" height="${height}" role="img" aria-label="No data"></svg>`;
+  }
+
+  const padL = 60;
+  const padR = 16;
+  const padT = 14;
+  const padB = 30;
+  const plotW = width - padL - padR;
+  const plotH = height - padT - padB;
+
+  const observed = series.flatMap((s) => s.points.map((p) => p.value)).filter((v): v is number => v !== null);
+  const bound = max ?? niceMax(Math.max(...observed, 0));
+
+  const n = first.length;
+  const x = (i: number) => padL + (n === 1 ? plotW / 2 : (plotW / (n - 1)) * i);
+  const y = (v: number) => padT + plotH - (bound > 0 ? (v / bound) * plotH : 0);
+
+  const parts: string[] = [];
+  parts.push(
+    `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="Inter, system-ui, sans-serif">`,
+  );
+
+  const steps = 4;
+  for (let s = 0; s <= steps; s += 1) {
+    const gy = padT + (plotH / steps) * s;
+    parts.push(
+      `<line x1="${padL}" y1="${gy.toFixed(1)}" x2="${padL + plotW}" y2="${gy.toFixed(1)}" stroke="${gridColor}" stroke-width="1"/>`,
+    );
+    parts.push(
+      `<text x="${padL - 8}" y="${(gy + 3).toFixed(1)}" text-anchor="end" font-size="10" fill="${tickColor}">${esc(
+        format(bound * (1 - s / steps)),
+      )}</text>`,
+    );
+  }
+
+  for (const s of series) {
+    // Break the path at nulls so gaps stay gaps.
+    let d = '';
+    let pen = false;
+    s.points.forEach((p, i) => {
+      if (p.value === null) {
+        pen = false;
+        return;
+      }
+      d += `${pen ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.value).toFixed(1)} `;
+      pen = true;
+    });
+    parts.push(
+      `<path d="${d.trim()}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round"${
+        s.dashed ? ' stroke-dasharray="5 4" stroke-width="1.5"' : ''
+      }/>`,
+    );
+  }
+
+  parts.push(
+    `<line x1="${padL}" y1="${padT + plotH}" x2="${padL + plotW}" y2="${padT + plotH}" stroke="${axisColor}" stroke-width="1"/>`,
+  );
+  const every = Math.max(1, Math.ceil(n / maxXLabels));
+  for (let i = 0; i < n; i += 1) {
+    if (i % every !== 0 && i !== n - 1) continue;
+    parts.push(
+      `<text x="${x(i).toFixed(1)}" y="${height - 10}" text-anchor="middle" font-size="10" fill="${tickColor}">${esc(
+        first[i]!.label,
+      )}</text>`,
+    );
+  }
+
+  parts.push('</svg>');
+  return parts.join('');
+}
+
+export interface RankRow {
+  label: string;
+  value: number;
+  /** Right-hand annotation, e.g. "59% · CPM IDR 4,184". */
+  note?: string;
+}
+
+/**
+ * Horizontal ranking bars — who contributes what. Reads far better in print
+ * than a treemap: the labels stay legible and the ordering is unambiguous.
+ */
+export function rankChart(
+  rows: RankRow[],
+  opts: {
+    width?: number;
+    barColor?: string;
+    labelColor?: string;
+    noteColor?: string;
+    trackColor?: string;
+    format: (v: number) => string;
+  },
+): string {
+  const {
+    width = 720,
+    barColor = '#2A78D6',
+    labelColor = '#0D0F12',
+    noteColor = '#6B7280',
+    trackColor = '#EEF0F3',
+    format,
+  } = opts;
+  if (rows.length === 0) return '';
+
+  const rowH = 40;
+  const barH = 9;
+  const height = rows.length * rowH;
+  const max = Math.max(...rows.map((r) => r.value), 0) || 1;
+
+  const parts: string[] = [
+    `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="Inter, system-ui, sans-serif">`,
+  ];
+
+  rows.forEach((r, i) => {
+    const top = i * rowH;
+    const w = Math.max(2, (r.value / max) * width);
+    parts.push(
+      `<text x="0" y="${top + 12}" font-size="11" font-weight="600" fill="${labelColor}">${esc(
+        truncate(r.label, 62),
+      )}</text>`,
+      `<text x="${width}" y="${top + 12}" text-anchor="end" font-size="11" font-weight="700" fill="${labelColor}">${esc(
+        format(r.value),
+      )}</text>`,
+      `<rect x="0" y="${top + 20}" width="${width}" height="${barH}" rx="4.5" fill="${trackColor}"/>`,
+      `<rect x="0" y="${top + 20}" width="${w.toFixed(1)}" height="${barH}" rx="4.5" fill="${barColor}"/>`,
+    );
+    if (r.note) {
+      parts.push(
+        `<text x="${width}" y="${top + 37}" text-anchor="end" font-size="9.5" fill="${noteColor}">${esc(
+          r.note,
+        )}</text>`,
+      );
+    }
+  });
+
+  parts.push('</svg>');
+  return parts.join('');
+}
+
+const truncate = (s: string, n: number): string => (s.length <= n ? s : `${s.slice(0, n - 1)}…`);
+
 /** Round a max value up to a clean axis bound. */
 function niceMax(v: number): number {
   if (v <= 0) return 1;

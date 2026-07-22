@@ -28,20 +28,41 @@ export async function ensureDemoTenant(
   db: Database,
   provider: TikTokDataProvider,
 ): Promise<DemoTenant> {
+  // A provider backed by a real brand's export declares its own tenant; the
+  // fixture provider has none, so the demo defaults stand in.
+  const declared = provider.describeTenant?.();
+  const agencyValues = declared
+    ? { name: declared.agencyName, slug: declared.agencySlug }
+    : DEMO_AGENCY;
+  const clientValues = declared
+    ? {
+        name: declared.clientName,
+        slug: declared.clientSlug,
+        brandColor: declared.brandColor,
+        currency: declared.currency,
+        timezone: declared.timezone,
+      }
+    : DEMO_CLIENT;
+
   const [agency] = await db
     .insert(agencies)
-    .values(DEMO_AGENCY)
-    .onConflictDoUpdate({ target: agencies.slug, set: { name: DEMO_AGENCY.name } })
+    .values(agencyValues)
+    .onConflictDoUpdate({ target: agencies.slug, set: { name: agencyValues.name } })
     .returning({ id: agencies.id });
 
   const agencyId = agency!.id;
 
   const [client] = await db
     .insert(clients)
-    .values({ agencyId, ...DEMO_CLIENT })
+    .values({ agencyId, ...clientValues })
     .onConflictDoUpdate({
       target: [clients.agencyId, clients.slug],
-      set: { name: DEMO_CLIENT.name, brandColor: DEMO_CLIENT.brandColor },
+      set: {
+        name: clientValues.name,
+        brandColor: clientValues.brandColor,
+        currency: clientValues.currency,
+        timezone: clientValues.timezone,
+      },
     })
     .returning({ id: clients.id });
 
@@ -68,7 +89,7 @@ export async function ensureDemoTenant(
       });
   }
 
-  return { agencyId, clientId, clientSlug: DEMO_CLIENT.slug };
+  return { agencyId, clientId, clientSlug: clientValues.slug };
 }
 
 /** Fetch the (surface, externalId) pairs currently connected for a client. */

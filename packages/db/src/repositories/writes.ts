@@ -1,10 +1,19 @@
-import { and, eq } from 'drizzle-orm';
-import type { CampaignDTO, OrganicMetricDTO, PaidMetricDTO, VideoDTO } from '@tempo/tiktok';
+import { and, eq, isNull, sql } from 'drizzle-orm';
+import type {
+  AdgroupDTO,
+  CampaignDTO,
+  OrganicMetricDTO,
+  PaidHourlyMetricDTO,
+  PaidMetricDTO,
+  VideoDTO,
+} from '@tempo/tiktok';
 import type { Database } from '../client.js';
 import {
+  adgroups,
   campaigns,
   organicDailyMetrics,
   paidDailyMetrics,
+  paidHourlyMetrics,
   tiktokAccounts,
   videos,
 } from '../schema.js';
@@ -41,6 +50,93 @@ export async function upsertCampaigns(
     if (row) map.set(c.externalId, row.id);
   }
   return map;
+}
+
+/** Upsert adgroups; returns externalId → internal id. */
+export async function upsertAdgroups(
+  db: Database,
+  campaignIdByExternal: Map<string, string>,
+  rows: readonly AdgroupDTO[],
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  for (const a of rows) {
+    const campaignId = campaignIdByExternal.get(a.campaignExternalId);
+    if (!campaignId) continue;
+    const [row] = await db
+      .insert(adgroups)
+      .values({ campaignId, externalId: a.externalId, name: a.name, status: a.status })
+      .onConflictDoUpdate({
+        target: [adgroups.campaignId, adgroups.externalId],
+        set: { name: a.name, status: a.status },
+      })
+      .returning({ id: adgroups.id });
+    if (row) map.set(a.externalId, row.id);
+  }
+  return map;
+}
+
+/**
+ * Upsert intraday facts. Campaign-rollup rows (adgroupId NULL) and adgroup rows
+ * are keyed by separate partial unique indexes, so each needs its own conflict
+ * target — Postgres can't infer one from a NULL-bearing column set.
+ */
+export async function upsertPaidHourlyMetrics(
+  db: Database,
+  campaignIdByExternal: Map<string, string>,
+  adgroupIdByExternal: Map<string, string>,
+  rows: readonly PaidHourlyMetricDTO[],
+): Promise<number> {
+  let written = 0;
+  for (const m of rows) {
+    const campaignId = campaignIdByExternal.get(m.campaignExternalId);
+    if (!campaignId) continue;
+    const adgroupId = m.adgroupExternalId
+      ? (adgroupIdByExternal.get(m.adgroupExternalId) ?? null)
+      : null;
+    // An adgroup row whose parent we couldn't resolve would silently collapse
+    // into the campaign rollup and double-count it — skip it instead.
+    if (m.adgroupExternalId && !adgroupId) continue;
+
+    const values = {
+      date: m.date,
+      hour: m.hour,
+      campaignId,
+      adgroupId,
+      spend: m.spend,
+      impressions: m.impressions,
+      clicks: m.clicks,
+      reach: m.reach,
+      videoViews: m.videoViews,
+      engagements: m.engagements,
+      likes: m.likes,
+      comments: m.comments,
+      shares: m.shares,
+      follows: m.follows,
+      profileVisits: m.profileVisits,
+      spanHours: m.spanHours,
+    };
+    const { date: _d, hour: _h, campaignId: _c, adgroupId: _a, ...updatable } = values;
+
+    await db
+      .insert(paidHourlyMetrics)
+      .values(values)
+      .onConflictDoUpdate({
+        target: adgroupId
+          ? [
+              paidHourlyMetrics.date,
+              paidHourlyMetrics.hour,
+              paidHourlyMetrics.campaignId,
+              paidHourlyMetrics.adgroupId,
+            ]
+          : [paidHourlyMetrics.date, paidHourlyMetrics.hour, paidHourlyMetrics.campaignId],
+        targetWhere: adgroupId
+          ? sql`${paidHourlyMetrics.adgroupId} IS NOT NULL`
+          : isNull(paidHourlyMetrics.adgroupId),
+        set: updatable,
+      });
+    written += 1;
+  }
+  return written;
 }
 
 /** Upsert videos for an account; returns externalId → internal id. */

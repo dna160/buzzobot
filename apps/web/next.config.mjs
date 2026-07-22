@@ -1,3 +1,46 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+
+/**
+ * Next only reads `.env*` next to the app, but this is a monorepo where the
+ * data-source configuration (which provider to use, where the export lives)
+ * is workspace-wide and shared with the db package's CLI scripts. Load the
+ * workspace-root `.env` here so the web server and the scripts agree.
+ *
+ * Values already in the environment win, so `apps/web/.env.local` and real
+ * shell exports still override.
+ */
+function loadWorkspaceEnv() {
+  let dir = process.cwd();
+  for (let i = 0; i < 8; i += 1) {
+    if (existsSync(resolve(dir, 'pnpm-workspace.yaml'))) break;
+    const parent = dirname(dir);
+    if (parent === dir) return;
+    dir = parent;
+  }
+  const file = resolve(dir, '.env');
+  if (!existsSync(file)) return;
+
+  for (const line of readFileSync(file, 'utf8').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eq = trimmed.indexOf('=');
+    if (eq === -1) continue;
+    const key = trimmed.slice(0, eq).trim();
+    if (key in process.env) continue;
+    let value = trimmed.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  }
+}
+
+loadWorkspaceEnv();
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,

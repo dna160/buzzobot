@@ -7,3 +7,6 @@ export type RouterOutputs = inferRouterOutputs<AppRouter>;
 
 /** The dashboard read-model as returned to the client. */
 export type DashboardResult = RouterOutputs['dashboard']['get'];
+
+/** The intraday read-model as returned to the client. */
+export type HourlyResult = RouterOutputs['dashboard']['hourly'];

@@ -13,14 +13,17 @@ export interface TooltipSeries {
 /**
  * A themed tooltip factory. Pass the series metadata; returns a Recharts-shaped
  * content component that renders each active series with its own formatter.
+ *
+ * `labelFormat` defaults to a date formatter for the daily charts; hourly
+ * charts pass an hour formatter since their axis is an hour-of-day number.
  */
 export const makeTooltip =
-  (series: TooltipSeries[]) =>
+  (series: TooltipSeries[], labelFormat: (label: string) => string = shortDate) =>
   ({ active, payload, label }: TooltipProps<number, string>) => {
     if (!active || !payload?.length) return null;
     return (
       <div className="min-w-[160px] rounded-md border border-border bg-elevated p-2.5 shadow-popover">
-        <div className="mb-1.5 text-[11px] font-medium text-muted">{shortDate(String(label))}</div>
+        <div className="mb-1.5 text-[11px] font-medium text-muted">{labelFormat(String(label))}</div>
         <div className="space-y-1">
           {series.map((s) => {
             const point = payload.find((p) => p.dataKey === s.dataKey);

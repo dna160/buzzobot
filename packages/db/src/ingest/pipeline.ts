@@ -5,8 +5,10 @@ import type { Database } from '../client.js';
 import { syncRuns } from '../schema.js';
 import {
   findAccountId,
+  upsertAdgroups,
   upsertCampaigns,
   upsertOrganicMetrics,
+  upsertPaidHourlyMetrics,
   upsertPaidMetrics,
   upsertVideos,
 } from '../repositories/writes.js';
@@ -63,6 +65,14 @@ export async function ingestAccount(
       const idMap = await upsertCampaigns(db, accountId, campaigns);
       const metrics = await provider.getPaidDailyMetrics(account.externalId, range);
       rowsIngested = await upsertPaidMetrics(db, idMap, metrics);
+
+      // Intraday facts, when the provider is backed by an hourly source.
+      // Feature-detected so daily-only providers (live, fixture) are untouched.
+      if (provider.listAdgroups && provider.getPaidHourlyMetrics) {
+        const adgroupMap = await upsertAdgroups(db, idMap, await provider.listAdgroups(account.externalId));
+        const hourly = await provider.getPaidHourlyMetrics(account.externalId, range);
+        rowsIngested += await upsertPaidHourlyMetrics(db, idMap, adgroupMap, hourly);
+      }
     } else {
       const videos = await provider.listVideos(account.externalId);
       const idMap = await upsertVideos(db, accountId, videos);

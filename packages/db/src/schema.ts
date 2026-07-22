@@ -125,6 +125,72 @@ export const paidDailyMetrics = pgTable(
   ],
 );
 
+export const adgroups = pgTable(
+  'adgroups',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    campaignId: uuid('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    externalId: text('external_id').notNull(),
+    name: text('name').notNull(),
+    status: text('status').notNull().default('active'),
+  },
+  (t) => [uniqueIndex('adgroups_campaign_external_uq').on(t.campaignId, t.externalId)],
+);
+
+/**
+ * Intraday facts at (date, hour, campaign, adgroup) grain.
+ *
+ * `adgroup_id` NULL means the campaign-level rollup as reported by TikTok —
+ * kept as its own row rather than derived, because campaign `reach` dedupes
+ * across adgroups and the two levels can be synced at different cutoffs, so
+ * summing adgroups does NOT reproduce the campaign figure.
+ *
+ * NULL doesn't participate in a Postgres composite PK, so identity is enforced
+ * by two partial unique indexes instead.
+ */
+export const paidHourlyMetrics = pgTable(
+  'paid_hourly_metrics',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    date: date('date').notNull(),
+    /** 0..23, in the advertiser account's own timezone. */
+    hour: integer('hour').notNull(),
+    campaignId: uuid('campaign_id')
+      .notNull()
+      .references(() => campaigns.id, { onDelete: 'cascade' }),
+    adgroupId: uuid('adgroup_id').references(() => adgroups.id, { onDelete: 'cascade' }),
+    spend: doublePrecision('spend').notNull().default(0),
+    impressions: integer('impressions').notNull().default(0),
+    clicks: integer('clicks').notNull().default(0),
+    reach: integer('reach').notNull().default(0),
+    videoViews: integer('video_views').notNull().default(0),
+    engagements: integer('engagements').notNull().default(0),
+    likes: integer('likes').notNull().default(0),
+    comments: integer('comments').notNull().default(0),
+    shares: integer('shares').notNull().default(0),
+    follows: integer('follows').notNull().default(0),
+    profileVisits: integer('profile_visits').notNull().default(0),
+    /**
+     * Hours of activity this row represents. 1 for a true hour; >1 when the
+     * bucket is the first synced hour of the day and therefore absorbs every
+     * earlier hour. Rows with span_hours > 1 must be excluded from hourly
+     * comparisons — they are not hours.
+     */
+    spanHours: integer('span_hours').notNull().default(1),
+  },
+  (t) => [
+    uniqueIndex('paid_hourly_campaign_uq')
+      .on(t.date, t.hour, t.campaignId)
+      .where(sql`${t.adgroupId} IS NULL`),
+    uniqueIndex('paid_hourly_adgroup_uq')
+      .on(t.date, t.hour, t.campaignId, t.adgroupId)
+      .where(sql`${t.adgroupId} IS NOT NULL`),
+    index('paid_hourly_campaign_idx').on(t.campaignId, t.date),
+  ],
+);
+
 export const organicDailyMetrics = pgTable(
   'organic_daily_metrics',
   {
@@ -145,6 +211,20 @@ export const organicDailyMetrics = pgTable(
     index('organic_metrics_video_idx').on(t.videoId),
   ],
 );
+
+/**
+ * Operator-configurable application settings, as a small key→JSON store.
+ *
+ * A key-value table rather than typed columns because these are low-volume,
+ * read-once-per-request app preferences (e.g. the report AI connection) whose
+ * shape is owned and validated by the code that reads them — not query
+ * predicates. `value` holds a JSON document; `updated_at` is bumped on write.
+ */
+export const appSettings = pgTable('app_settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const syncRuns = pgTable(
   'sync_runs',
@@ -171,10 +251,13 @@ export const schema = {
   clients,
   tiktokAccounts,
   campaigns,
+  adgroups,
   videos,
   paidDailyMetrics,
+  paidHourlyMetrics,
   organicDailyMetrics,
   syncRuns,
+  appSettings,
 };
 
 export type Schema = typeof schema;

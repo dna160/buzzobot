@@ -37,6 +37,39 @@ export interface PaidMetricDTO {
   videoViews: number;
 }
 
+export interface AdgroupDTO {
+  externalId: string;
+  campaignExternalId: string;
+  name: string;
+  status: EntityStatus;
+}
+
+/**
+ * An intraday fact. `adgroupExternalId === null` is the campaign-level rollup
+ * as reported by TikTok, which is authoritative for campaign totals and is not
+ * the sum of its adgroups (reach dedupes; sync cutoffs differ).
+ */
+export interface PaidHourlyMetricDTO {
+  date: string;
+  /** 0..23 in the advertiser's own timezone. */
+  hour: number;
+  campaignExternalId: string;
+  adgroupExternalId: string | null;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  reach: number;
+  videoViews: number;
+  engagements: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  follows: number;
+  profileVisits: number;
+  /** >1 when this bucket absorbs earlier unsynced hours; not a true hour. */
+  spanHours: number;
+}
+
 export interface VideoDTO {
   externalId: string;
   caption: string;
@@ -62,6 +95,17 @@ export interface OrganicMetricDTO {
  * The single interface the rest of the system programs against. Swapping live
  * TikTok data for fixtures is a one-line factory change — nothing else moves.
  */
+/** Tenant identity a provider can declare, overriding the bootstrap default. */
+export interface TenantDTO {
+  clientName: string;
+  clientSlug: string;
+  agencyName: string;
+  agencySlug: string;
+  currency: string;
+  timezone: string;
+  brandColor: string | null;
+}
+
 export interface TikTokDataProvider {
   /** Human name for logs / observability (e.g. "live", "fixture"). */
   readonly name: string;
@@ -77,4 +121,15 @@ export interface TikTokDataProvider {
   // --- Organic surface (TikTok Display / Content API) ---
   listVideos(openId: string): Promise<VideoDTO[]>;
   getOrganicDailyMetrics(openId: string, range: DateRange): Promise<OrganicMetricDTO[]>;
+
+  // --- Intraday (optional) -------------------------------------------------
+  // Only providers backed by an hourly source implement these. The pipeline
+  // feature-detects them, so daily-only providers are unaffected.
+
+  /** The tenant this provider's data belongs to, if it knows. */
+  describeTenant?(): TenantDTO;
+  /** The date span this provider actually holds data for, if it is bounded. */
+  describeRange?(): DateRange | null;
+  listAdgroups?(advertiserId: string): Promise<AdgroupDTO[]>;
+  getPaidHourlyMetrics?(advertiserId: string, range: DateRange): Promise<PaidHourlyMetricDTO[]>;
 }

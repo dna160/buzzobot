@@ -21,7 +21,10 @@ async function main() {
 
   const tenant = await ensureDemoTenant(db, provider);
   const accounts = await provider.listAccounts();
-  const range = rangePreset('90d', DEMO_TODAY);
+  // A bounded source (a CSV export) knows its own window; otherwise fall back
+  // to the fixed demo window so fixture seeds stay deterministic.
+  const range = provider.describeRange?.() ?? rangePreset('90d', DEMO_TODAY);
+  console.log(`  window ${range.start} → ${range.end}`);
 
   let total = 0;
   for (const account of accounts) {

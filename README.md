@@ -42,8 +42,7 @@ performance data into per-client dashboards.
 ```bash
 pnpm install
 
-# One-time: create + apply the schema and seed a demo tenant (fixtures)
-pnpm db:generate
+# One-time: create + apply the schema and seed a tenant
 pnpm db:migrate
 pnpm db:seed
 
@@ -51,17 +50,104 @@ pnpm db:seed
 pnpm dev
 ```
 
-Open http://localhost:3000 — you land on the **Aurora Skincare** demo client
-dashboard.
+Open http://localhost:3000 — you land on the client's **hour-by-hour** view.
 
-### Going live with real TikTok data
+### Data sources
 
-1. Copy `.env.example` → `.env`.
-2. Fill in the TikTok Business and/or Display credentials.
-3. Set `TIKTOK_DATA_PROVIDER=live` (or leave unset — it auto-detects credentials).
-4. Re-run `pnpm db:seed` (or the ingestion CLI) to pull real data.
+The provider is selected by `TIKTOK_DATA_PROVIDER` in `.env` (copy from
+`.env.example`). No application code changes when switching.
 
-No application code changes are required to switch providers or databases.
+| Provider  | Source                                   | Surfaces        | Intraday |
+| --------- | ---------------------------------------- | --------------- | -------- |
+| `fixture` | Deterministic synthetic data (default)   | paid + organic  | no       |
+| `csv`     | A TikTok Ads "daily in hourly" export    | paid only       | **yes**  |
+| `live`    | TikTok Business + Display APIs           | paid + organic  | no       |
+
+To load a CSV export, point `TIKTOK_CSV_PATH` at it and describe the tenant:
+
+```bash
+TIKTOK_DATA_PROVIDER=csv
+TIKTOK_CSV_PATH=./data/your-export.csv
+TIKTOK_CSV_CLIENT_NAME=Acme
+TIKTOK_CSV_CLIENT_SLUG=acme
+TIKTOK_CSV_CURRENCY=IDR
+TIKTOK_CSV_TIMEZONE=Asia/Jakarta
+```
+
+Then `pnpm db:seed`. The seed reads the export's own date span, so re-running it
+with a wider export just backfills more days. `pnpm db:inspect` prints the
+parsed intraday model for a quick sanity check.
+
+### Report narrative (LLM)
+
+The report's analysis prose is written by a language model, but the model never
+does arithmetic. The deterministic engine computes every figure first and hands
+the model a **fact sheet** containing only those figures, pre-formatted. After
+generation, three gates must pass before the narrative is accepted:
+
+1. It validates against the narrative schema.
+2. Every number it cites appears in the fact sheet (`allowedNumbers`).
+3. It presents no value for a metric the export cannot support (ROAS, CPA,
+   conversions, organic).
+
+Any failure — unreachable model, malformed JSON, an invented figure — falls back
+to the deterministic writer, and the report says so in its footer. The report
+always renders.
+
+| `REPORT_NARRATIVE_PROVIDER` | Backend                                       |
+| --------------------------- | --------------------------------------------- |
+| `anthropic`                 | Claude API (needs `ANTHROPIC_API_KEY`)        |
+| `lmstudio`                  | Local LM Studio server                        |
+| `openai-compatible`         | Any OpenAI-shaped endpoint (Ollama, vLLM, …)  |
+| `off`                       | Deterministic prose only                      |
+
+Unset defaults to `anthropic` when `ANTHROPIC_API_KEY` is present, else `off`.
+For LM Studio: enable its server (Developer → Start Server), then set
+`REPORT_NARRATIVE_BASE_URL=http://localhost:1234/v1` and
+`REPORT_NARRATIVE_MODEL` to the loaded model's name.
+
+`pnpm --filter @tempo/reports check:local-llm` is the local-setup preflight: it
+checks the server is reachable, the model is loaded, and a JSON round-trip works
+— no database needed. Once it passes, `pnpm --filter @tempo/reports
+try:narrative` prints the generated narrative and which path produced it.
+
+### Report API (external callers)
+
+`GET /api/reports/:slug` serves the report to other systems — one call, one
+report.
+
+```
+GET /api/reports/cimory                     → PDF (default)
+GET /api/reports/cimory?format=json         → model + narrative as JSON
+GET /api/reports/cimory?format=html&lang=en → raw HTML
+```
+
+Requests from this app's own UI pass through. Every external caller must send a
+key as `X-API-Key` or `Authorization: Bearer <key>`:
+
+```bash
+curl -H "X-API-Key: $KEY" https://your-host/api/reports/cimory -o report.pdf
+```
+
+Set `REPORT_API_KEYS` (comma-separated, so keys can be revoked individually) and
+`REPORT_ALLOWED_ORIGINS` for browser callers. Keys are compared in constant time;
+a browser caller must satisfy **both** the key and the origin allowlist, so a
+leaked key cannot be used from another site. An unset `REPORT_API_KEYS` fails
+closed — external access is refused rather than opened.
+
+### How the hourly grain works
+
+The export's `h00..h24` columns are cumulative-since-midnight; `d00..d23` are
+the hour deltas. Two facts drive the whole pipeline:
+
+- **Campaign rows and adgroup rows are parallel decompositions, not a sum.**
+  Campaign `reach` dedupes across adgroups and the levels can be synced at
+  different cutoffs, so they are stored separately (`adgroup_id IS NULL` is the
+  campaign rollup) and never added together.
+- **The first synced bucket of a day is not an hour.** It carries everything
+  accumulated since midnight, so it is stored with `span_hours > 1`, counted in
+  day totals, and excluded from every hour-by-hour series and comparison.
+  Day-over-day deltas compare only the hours both days actually share.
 
 ## Repository layout
 
@@ -94,5 +180,6 @@ the full picture and [`docs/phases/`](docs/phases/) for the delivery plan.
 | `pnpm lint`         | Lint all packages                               |
 | `pnpm test`         | Run all unit tests                              |
 | `pnpm db:migrate`   | Apply migrations                                |
-| `pnpm db:seed`      | Seed a demo tenant via the real pipeline        |
+| `pnpm db:seed`      | Seed a tenant via the real ingestion pipeline   |
+| `pnpm db:inspect`   | Print the parsed intraday model to the terminal |
 | `pnpm db:studio`    | Open Drizzle Studio                             |

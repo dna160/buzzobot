@@ -8,6 +8,20 @@
       "when": 1784530818028,
       "tag": "0000_loud_slyde",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784605260264,
+      "tag": "0001_cold_kang",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784689134687,
+      "tag": "0002_far_shinko_yamashiro",
+      "breakpoints": true
     }
   ]
 }

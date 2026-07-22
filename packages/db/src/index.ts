@@ -29,4 +29,18 @@ export type {
   CampaignRow,
   VideoRow,
 } from './repositories/dashboard.js';
+export { getHourlyDashboard, listHourlyDates } from './repositories/hourly.js';
+export type {
+  HourlyDashboardData,
+  HourPoint,
+  PacingPoint,
+  CampaignBreakdown,
+  AdgroupBreakdown,
+  DayOverDaySeries,
+  Coverage,
+  Comparison,
+  Totals,
+} from './repositories/hourly.js';
+
 export { recentSyncRuns } from './repositories/sync.js';
+export { getSetting, setSetting, SETTINGS_KEYS } from './repositories/settings.js';
