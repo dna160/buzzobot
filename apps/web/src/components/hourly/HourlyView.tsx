@@ -164,13 +164,15 @@ function Content({ data }: { data: HourlyResult }) {
         const spark = <K extends keyof (typeof data.hours)[number]>(key: K) =>
           data.hours.map((h) => h[key]).filter((v): v is number => typeof v === 'number');
 
+        // FMCG brand: view efficiency (VTR) leads; spend is context, cost
+        // ratios (CTR/CPC/CPM) drop off the headline.
         const tiles = [
-          { label: 'Spend', value: money(totals.spend), delta: d?.spend, dir: 'neutral', key: 'spend' },
           { label: 'Impressions', value: formatNumberCompact(totals.impressions), delta: d?.impressions, dir: 'up', key: 'impressions' },
-          { label: 'Clicks', value: formatNumberCompact(totals.clicks), delta: d?.clicks, dir: 'up', key: 'clicks' },
-          { label: 'CTR', value: orNa(totals.ctr, (v) => formatPercent(v)), delta: d?.ctr, dir: 'up', key: 'ctr' },
-          { label: 'CPC', value: orNa(totals.cpc, money), delta: d?.cpc, dir: 'down', key: 'cpc' },
-          { label: 'CPM', value: orNa(totals.cpm, money), delta: d?.cpm, dir: 'down', key: 'cpm' },
+          { label: 'Reach', value: formatNumberCompact(totals.reach), delta: d?.reach, dir: 'up', key: 'reach' },
+          { label: 'VTR 6s', value: orNa(totals.vtr6s, (v) => formatPercent(v)), delta: d?.vtr6s, dir: 'up', key: 'vtr6s' },
+          { label: 'VTR 15s', value: orNa(totals.vtr15s, (v) => formatPercent(v)), delta: d?.vtr15s, dir: 'up', key: 'vtr15s' },
+          { label: 'Frequency', value: orNa(totals.frequency, (v) => `${v.toFixed(1)}×`), delta: null, dir: 'neutral', key: 'frequency' },
+          { label: 'Spend', value: money(totals.spend), delta: d?.spend, dir: 'neutral', key: 'spend' },
         ] as const;
 
         return (
@@ -228,7 +230,7 @@ function Content({ data }: { data: HourlyResult }) {
         </Card>
 
         <Card>
-          <CardHeader title="Delivery" subtitle="Impressions and clicks per hour" />
+          <CardHeader title="Impressions & VTR" subtitle="Impressions and 6-second view-through rate per hour" />
           <CardBody className="pl-1 pr-3">
             <DeliveryChart data={data.hours} />
           </CardBody>
@@ -236,8 +238,8 @@ function Content({ data }: { data: HourlyResult }) {
 
         <Card>
           <CardHeader
-            title="Efficiency by hour"
-            subtitle="Cost per thousand impressions vs. click-through rate"
+            title="View-through rate by hour"
+            subtitle="6-second vs. 15-second view-through rate"
           />
           <CardBody className="pl-1 pr-3">
             <EfficiencyChart data={data.hours} currency={data.client.currency} />

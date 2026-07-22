@@ -41,6 +41,10 @@ export interface HourlyCopy {
   stat: {
     spend: string;
     impressions: string;
+    reach: string;
+    frequency: string;
+    vtr6s: string;
+    vtr15s: string;
     clicks: string;
     ctr: string;
     cpc: string;
@@ -51,9 +55,12 @@ export interface HourlyCopy {
     pacingTitle: string;
     deliveryTitle: string;
     efficiencyTitle: string;
+    vtrTitle: string;
     delivered: string;
     evenPace: string;
     impressions: string;
+    vtr6s: string;
+    vtr15s: string;
     clicks: string;
     cpm: string;
     ctr: string;
@@ -111,7 +118,7 @@ export interface HourlyCopy {
   };
   /** Section-level analyst prose. */
   narrative: {
-    summary: (a: { name: string; spend: string; days: number; hours: number; cpm: string; ctr: string }) => string;
+    summary: (a: { name: string; days: number; hours: number; impressions: string; vtr6s: string; vtr15s: string }) => string;
     daypart: (a: { peak: string; trough: string; multiple: string; share: string }) => string;
     efficiency: (a: { cheap: string; dear: string; multiple: string; ctrBest: string; ctrWorst: string }) => string;
     mix: (a: { name: string; share: string; count: number }) => string;
@@ -316,15 +323,18 @@ const ID: ReportCopy = {
       appendix: 'Lampiran: Rincian Per Jam',
     },
     stat: {
-      spend: 'Biaya', impressions: 'Impresi', clicks: 'Klik',
+      spend: 'Biaya', impressions: 'Impresi', reach: 'Jangkauan', frequency: 'Frekuensi',
+      vtr6s: 'VTR 6 dtk', vtr15s: 'VTR 15 dtk', clicks: 'Klik',
       ctr: 'CTR', cpc: 'CPC', cpm: 'CPM', hours: 'Jam Tercatat',
     },
     chart: {
       pacingTitle: 'Laju Belanja Kumulatif',
-      deliveryTitle: 'Pengiriman Per Jam',
+      deliveryTitle: 'Impresi & VTR Per Jam',
       efficiencyTitle: 'Efisiensi Per Jam',
+      vtrTitle: 'View-Through Rate Per Jam',
       delivered: 'Terpakai', evenPace: 'Laju merata',
-      impressions: 'Impresi', clicks: 'Klik', cpm: 'CPM', ctr: 'CTR',
+      impressions: 'Impresi', vtr6s: 'VTR 6 dtk', vtr15s: 'VTR 15 dtk',
+      clicks: 'Klik', cpm: 'CPM', ctr: 'CTR',
     },
     table: {
       hour: 'Jam', spend: 'Biaya', impressions: 'Impresi', clicks: 'Klik',
@@ -383,7 +393,7 @@ const ID: ReportCopy = {
     },
     narrative: {
       summary: (a) =>
-        `Laporan ini menyajikan analisis performa iklan TikTok ${a.name} pada tingkat per jam selama ${a.days} hari (${a.hours} jam penuh). Total belanja mencapai ${a.spend} dengan CPM rata-rata ${a.cpm} dan CTR ${a.ctr}. Analisis per jam memperlihatkan pola harian yang tidak terlihat pada laporan harian.`,
+        `Laporan ini menganalisis performa tayangan iklan TikTok ${a.name} pada tingkat per jam selama ${a.days} hari (${a.hours} jam penuh). Sebagai merek FMCG, fokusnya adalah efisiensi menonton: ${a.impressions} tayangan menghasilkan view-through rate 6 detik ${a.vtr6s} dan 15 detik ${a.vtr15s}. Analisis per jam memperlihatkan pada jam mana tayangan ditonton paling efisien.`,
       daypart: (a) =>
         `Belanja terkonsentrasi pada ${a.peak} dan terendah pada ${a.trough}, dengan selisih ${a.multiple}. Paruh yang lebih padat menyerap ${a.share} dari total belanja harian, sehingga penyesuaian jadwal tayang berpotensi memberi dampak langsung pada efisiensi.`,
       efficiency: (a) =>
@@ -574,15 +584,18 @@ const EN: ReportCopy = {
       appendix: 'Appendix: Hour-by-Hour Detail',
     },
     stat: {
-      spend: 'Spend', impressions: 'Impressions', clicks: 'Clicks',
+      spend: 'Spend', impressions: 'Impressions', reach: 'Reach', frequency: 'Frequency',
+      vtr6s: 'VTR 6s', vtr15s: 'VTR 15s', clicks: 'Clicks',
       ctr: 'CTR', cpc: 'CPC', cpm: 'CPM', hours: 'Hours Recorded',
     },
     chart: {
       pacingTitle: 'Cumulative Spend Pacing',
-      deliveryTitle: 'Delivery by Hour',
+      deliveryTitle: 'Impressions & VTR by Hour',
       efficiencyTitle: 'Efficiency by Hour',
+      vtrTitle: 'View-Through Rate by Hour',
       delivered: 'Delivered', evenPace: 'Even pace',
-      impressions: 'Impressions', clicks: 'Clicks', cpm: 'CPM', ctr: 'CTR',
+      impressions: 'Impressions', vtr6s: 'VTR 6s', vtr15s: 'VTR 15s',
+      clicks: 'Clicks', cpm: 'CPM', ctr: 'CTR',
     },
     table: {
       hour: 'Hour', spend: 'Spend', impressions: 'Impressions', clicks: 'Clicks',
@@ -640,7 +653,7 @@ const EN: ReportCopy = {
     },
     narrative: {
       summary: (a) =>
-        `This report analyses ${a.name}'s TikTok ad performance at hourly resolution across ${a.days} days (${a.hours} full hours). Total spend reached ${a.spend} at an average ${a.cpm} CPM and ${a.ctr} CTR. The hourly view exposes a within-day pattern that a daily report cannot show.`,
+        `This report analyses ${a.name}'s TikTok ad performance at hourly resolution across ${a.days} days (${a.hours} full hours). As an FMCG brand, the focus is viewing efficiency: ${a.impressions} impressions returned a ${a.vtr6s} 6-second and ${a.vtr15s} 15-second view-through rate. The hourly view exposes which hours earn efficient views and which do not.`,
       daypart: (a) =>
         `Spend concentrates around ${a.peak} and bottoms at ${a.trough}, a ${a.multiple} swing. The heavier half of the day absorbs ${a.share} of daily spend, so schedule changes have immediate leverage on efficiency.`,
       efficiency: (a) =>

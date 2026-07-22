@@ -56,6 +56,21 @@ describe('parseHourlyExport', () => {
     expect(buckets.map((b) => b.spend)).toEqual([100, 100, 100, 100]);
   });
 
+  it('maps the 6s and 15s view columns to their bucket fields', () => {
+    // These two columns feed VTR6s/VTR15s downstream; a rename in the export
+    // would silently zero the brand's headline metric if this mapping drifted.
+    const { buckets } = parseHourlyExport(
+      csvWith({
+        impressions: [0, 1000, 2000],
+        video_watched_6s: [0, 400, 900],
+        engaged_view_15s: [0, 200, 500],
+      }),
+    );
+    expect(buckets.map((b) => b.videoWatched6s)).toEqual([400, 500]);
+    expect(buckets.map((b) => b.engagedView15s)).toEqual([200, 300]);
+    expect(buckets.map((b) => b.impressions)).toEqual([1000, 1000]);
+  });
+
   it('marks the first bucket with the hours it absorbs', () => {
     // Nothing until hour 20, which then reports the whole day at once.
     const cumulative = Array(25).fill(0);

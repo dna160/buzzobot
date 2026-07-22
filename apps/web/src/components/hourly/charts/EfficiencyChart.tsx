@@ -10,29 +10,24 @@ import {
   YAxis,
 } from 'recharts';
 import type { HourPoint } from '@tempo/db';
-import { formatCurrencyCompact, formatPercent, type Currency } from '@tempo/core';
+import { formatPercent } from '@tempo/core';
 import { hourLabel, hourRangeLabel } from '@/lib/format-kpi';
 import { makeTooltip } from '@/components/dashboard/charts/ChartTooltip';
 import { useChartTheme } from '@/components/dashboard/charts/useChartTheme';
 
 /**
- * Cost of attention by hour: CPM (left) against CTR (right).
+ * View quality by hour: the 6-second and 15-second view-through rates.
  *
- * Recharts skips null points, so hours where a ratio is undefined (no
- * impressions, no clicks) leave a gap rather than dropping to a false zero.
+ * Recharts skips null points, so hours where a rate is undefined (no
+ * impressions) leave a gap rather than dropping to a false zero. `currency` is
+ * unused now that both series are rates, but kept for a stable call signature.
  */
-export function EfficiencyChart({ data, currency }: { data: HourPoint[]; currency: string }) {
+export function EfficiencyChart({ data }: { data: HourPoint[]; currency: string }) {
   const c = useChartTheme();
-  const cur = currency as Currency;
   const Tip = makeTooltip(
     [
-      {
-        dataKey: 'cpm',
-        label: 'CPM',
-        color: c.roas,
-        format: (v) => formatCurrencyCompact(v, cur),
-      },
-      { dataKey: 'ctr', label: 'CTR', color: c.engagement, format: (v) => formatPercent(v) },
+      { dataKey: 'vtr6s', label: 'VTR 6s', color: c.paid, format: (v) => formatPercent(v, 1) },
+      { dataKey: 'vtr15s', label: 'VTR 15s', color: c.engagement, format: (v) => formatPercent(v, 1) },
     ],
     (h) => hourRangeLabel(Number(h)),
   );
@@ -53,16 +48,7 @@ export function EfficiencyChart({ data, currency }: { data: HourPoint[]; currenc
         />
         <YAxis
           yAxisId="left"
-          tickFormatter={(v) => formatCurrencyCompact(Math.round(Number(v)), cur)}
-          tick={{ fill: c.tick, fontSize: 11 }}
-          tickLine={false}
-          axisLine={false}
-          width={76}
-        />
-        <YAxis
-          yAxisId="right"
-          orientation="right"
-          tickFormatter={(v) => formatPercent(Number(v), 1)}
+          tickFormatter={(v) => formatPercent(Number(v), 0)}
           tick={{ fill: c.tick, fontSize: 11 }}
           tickLine={false}
           axisLine={false}
@@ -72,17 +58,17 @@ export function EfficiencyChart({ data, currency }: { data: HourPoint[]; currenc
         <Line
           yAxisId="left"
           type="monotone"
-          dataKey="cpm"
-          stroke={c.roas}
+          dataKey="vtr6s"
+          stroke={c.paid}
           strokeWidth={2}
           dot={false}
           connectNulls={false}
           isAnimationActive={false}
         />
         <Line
-          yAxisId="right"
+          yAxisId="left"
           type="monotone"
-          dataKey="ctr"
+          dataKey="vtr15s"
           stroke={c.engagement}
           strokeWidth={2}
           dot={false}

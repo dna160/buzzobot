@@ -11,18 +11,18 @@ import {
   YAxis,
 } from 'recharts';
 import type { HourPoint } from '@tempo/db';
-import { formatNumberCompact } from '@tempo/core';
+import { formatNumberCompact, formatPercent } from '@tempo/core';
 import { hourLabel, hourRangeLabel } from '@/lib/format-kpi';
 import { makeTooltip } from '@/components/dashboard/charts/ChartTooltip';
 import { useChartTheme } from '@/components/dashboard/charts/useChartTheme';
 
-/** Delivery throughput per hour: impressions (bars) against clicks (line). */
+/** The headline view: impressions (bars) against the 6-second VTR (line). */
 export function DeliveryChart({ data }: { data: HourPoint[] }) {
   const c = useChartTheme();
   const Tip = makeTooltip(
     [
       { dataKey: 'impressions', label: 'Impressions', color: c.paid, format: formatNumberCompact },
-      { dataKey: 'clicks', label: 'Clicks', color: c.engagement, format: formatNumberCompact },
+      { dataKey: 'vtr6s', label: 'VTR 6s', color: c.engagement, format: (v) => formatPercent(v, 1) },
     ],
     (h) => hourRangeLabel(Number(h)),
   );
@@ -50,7 +50,7 @@ export function DeliveryChart({ data }: { data: HourPoint[] }) {
         <YAxis
           yAxisId="right"
           orientation="right"
-          tickFormatter={(v) => formatNumberCompact(Number(v))}
+          tickFormatter={(v) => formatPercent(Number(v), 0)}
           tick={{ fill: c.tick, fontSize: 11 }}
           tickLine={false}
           axisLine={false}
@@ -68,10 +68,11 @@ export function DeliveryChart({ data }: { data: HourPoint[] }) {
         <Line
           yAxisId="right"
           type="monotone"
-          dataKey="clicks"
+          dataKey="vtr6s"
           stroke={c.engagement}
           strokeWidth={2}
           dot={false}
+          connectNulls={false}
           isAnimationActive={false}
         />
       </ComposedChart>

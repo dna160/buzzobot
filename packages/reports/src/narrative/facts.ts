@@ -1,55 +1,65 @@
-import { formatCurrencyCompact, formatPercent, type Currency } from '@tempo/core';
+import { formatCurrencyCompact, formatNumberCompact, formatPercent, type Currency } from '@tempo/core';
 import type { HourlyReportBase } from '../hourly-model.js';
-import { analyseHourly, type HourlyAnalysis } from '../hourly-analysis.js';
 import { hourLabel } from '../layout.js';
 
 /**
  * The fact sheet handed to the model.
  *
- * This is the scaffolding that makes an LLM-written report trustworthy: the
- * deterministic engine computes every figure first, and the model is given
- * *only* those figures, pre-formatted, with an explicit instruction that it may
- * not introduce any other number. The model's job is interpretation and prose —
- * never arithmetic, never recall.
+ * This is the scaffolding that makes an LLM-written report trustworthy AND keeps
+ * it focused on the right metric. The client is an FMCG brand whose product is
+ * already on shelves everywhere, so clicks and cost-per-click are not the goal —
+ * efficient *views* are. The sheet therefore leads with impressions and the two
+ * view-through rates (6s and 15s), hour by hour, and demotes cost to a single
+ * context figure.
  *
+ * The deterministic engine computes every figure first; the model is given
+ * *only* those figures, pre-formatted, and may not introduce any other number.
  * `allowedNumbers` is the enforcement surface: after generation, every
  * number-like token in the output is checked against it (see verify.ts).
  */
 export interface FactSheet {
   client: { name: string; currency: string; timezone: string };
+  /** Plain-language framing so a small model optimises for the right thing. */
+  brief: string;
   window: { firstDate: string; lastDate: string; days: number; trueHours: number };
-  totals: Record<string, string>;
+  /** Window-level headline. Impressions & VTR lead; spend is context only. */
+  totals: {
+    impressions: string;
+    reach: string;
+    frequency: string;
+    vtr6s: string;
+    vtr15s: string;
+    videoWatched6s: string;
+    engagedView15s: string;
+    /** Kept for context; not the objective for this brand. */
+    spendContext: string;
+  };
   comparison: { basis: string; deltas: Record<string, string> } | null;
   focusDay: {
     date: string;
     hoursCovered: string;
-    peak: { hour: string; spend: string };
-    trough: { hour: string; spend: string };
-    heavierHalfShare: string;
-    cheapestClickHour: { hour: string; cpc: string; ctr: string } | null;
-    dearestClickHour: { hour: string; cpc: string; ctr: string } | null;
-    /** Pooled CPC of the top-spend third vs the bottom-spend third. */
-    spendWeightedCpcRatio: string | null;
-    hourly: Array<Record<string, string>>;
+    peakImpressionsHour: { hour: string; impressions: string } | null;
+    bestViewHour: { hour: string; vtr6s: string } | null;
+    weakestViewHour: { hour: string; vtr6s: string } | null;
+    /** Share of the day's impressions delivered by its busiest third of hours. */
+    impressionsConcentration: string;
+    /** The hour-by-hour grain: impressions against both view-through rates. */
+    hourly: Array<{ hour: string; impressions: string; vtr6s: string; vtr15s: string }>;
   };
   campaigns: Array<{
     name: string;
     objective: string;
-    spend: string;
-    shareOfSpend: string;
     impressions: string;
-    clicks: string;
-    ctr: string;
-    cpc: string;
-    cpm: string;
+    shareOfImpressions: string;
+    vtr6s: string;
+    vtr15s: string;
     adgroups: Array<{
       name: string;
-      spend: string;
-      clicks: string;
-      ctr: string;
-      cpc: string;
-      /** True when click volume is too low for CPC to be meaningful. */
-      cpcUnreliable: boolean;
+      impressions: string;
+      vtr6s: string;
+      vtr15s: string;
+      /** True when impressions are too thin for the rate to be meaningful. */
+      rateUnreliable: boolean;
     }>;
   }>;
   dataGaps: string[];
@@ -62,17 +72,17 @@ export interface FactSheet {
   allowedNumbers: string[];
 }
 
-const MIN_CLICKS_FOR_CPC = 100;
+/** Below this, an hour/adgroup has too few impressions to trust a VTR. */
+const MIN_IMPRESSIONS_FOR_VTR = 5_000;
 
-export function buildFactSheet(
-  model: HourlyReportBase,
-  analysis: HourlyAnalysis = analyseHourly(model),
-): FactSheet {
+export function buildFactSheet(model: HourlyReportBase): FactSheet {
   const cur = model.client.currency as Currency;
   const money = (v: number) => formatCurrencyCompact(Math.round(v), cur);
+  const num = (v: number) => formatNumberCompact(Math.round(v));
   const pct = (v: number | null, dp = 2) => (v === null ? 'n/a' : formatPercent(v, dp));
-  const num = (v: number) => Math.round(v).toLocaleString('en-US');
+  const mult = (v: number | null) => (v === null ? 'n/a' : `${v.toFixed(1)}×`);
 
+  const t = model.windowTotals;
   const focus = model.focus;
   const hours = focus.hours;
 
@@ -82,69 +92,60 @@ export function buildFactSheet(
     return s;
   };
 
-  const totals: Record<string, string> = {
-    spend: track(money(model.windowTotals.spend)),
-    impressions: track(num(model.windowTotals.impressions)),
-    clicks: track(num(model.windowTotals.clicks)),
-    ctr: track(pct(model.windowTotals.ctr)),
-    cpc: track(model.windowTotals.cpc === null ? 'n/a' : money(model.windowTotals.cpc)),
-    cpm: track(model.windowTotals.cpm === null ? 'n/a' : money(model.windowTotals.cpm)),
+  const totals = {
+    impressions: track(num(t.impressions)),
+    reach: track(num(t.reach)),
+    frequency: track(mult(t.frequency)),
+    vtr6s: track(pct(t.vtr6s)),
+    vtr15s: track(pct(t.vtr15s)),
+    videoWatched6s: track(num(t.videoWatched6s)),
+    engagedView15s: track(num(t.engagedView15s)),
+    spendContext: track(money(t.spend)),
   };
 
   const comparison = model.comparison
     ? {
         basis: track(model.comparison.label),
         deltas: Object.fromEntries(
-          Object.entries(model.comparison.deltas).map(([k, v]) => [
-            k,
-            track(v === null ? 'n/a' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`),
-          ]),
+          Object.entries(model.comparison.deltas)
+            // Keep the view-first metrics; drop cost deltas from the model's view.
+            .filter(([k]) => ['impressions', 'reach', 'vtr6s', 'vtr15s'].includes(k))
+            .map(([k, v]) => [
+              k,
+              track(v === null ? 'n/a' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`),
+            ]),
         ),
       }
     : null;
 
-  const peak = hours.length ? hours.reduce((a, b) => (b.spend > a.spend ? b : a)) : null;
-  const trough = hours.length ? hours.reduce((a, b) => (b.spend < a.spend ? b : a)) : null;
+  // Hours thick enough for a VTR to mean something.
+  const solid = hours.filter((x) => x.impressions >= MIN_IMPRESSIONS_FOR_VTR);
+  const byVtr = [...solid].sort((a, b) => (a.vtr6s ?? 0) - (b.vtr6s ?? 0));
+  const best = byVtr[byVtr.length - 1] ?? null;
+  const weakest = byVtr[0] ?? null;
+  const peakImpr = hours.length ? hours.reduce((a, b) => (b.impressions > a.impressions ? b : a)) : null;
 
-  const mid = Math.floor(hours.length / 2);
-  const firstHalf = hours.slice(0, mid).reduce((s, x) => s + x.spend, 0);
-  const secondHalf = hours.slice(mid).reduce((s, x) => s + x.spend, 0);
-  const totalHalves = firstHalf + secondHalf;
-
-  const priced = hours.filter((x) => x.cpc !== null && x.clicks >= 20);
-  const byCpc = [...priced].sort((a, b) => (a.cpc ?? 0) - (b.cpc ?? 0));
-  const cheapest = byCpc[0] ?? null;
-  const dearest = byCpc[byCpc.length - 1] ?? null;
-
-  const bySpend = [...priced].sort((a, b) => b.spend - a.spend);
-  const third = Math.max(1, Math.round(bySpend.length / 3));
-  const pooled = (hs: typeof priced) => {
-    const c = hs.reduce((s, x) => s + x.clicks, 0);
-    return c > 0 ? hs.reduce((s, x) => s + x.spend, 0) / c : null;
-  };
-  const topCpc = pooled(bySpend.slice(0, third));
-  const botCpc = pooled(bySpend.slice(-third));
-  const ratio = topCpc && botCpc && botCpc > 0 ? topCpc / botCpc : null;
+  // Impressions concentration: the busiest third of hours' share of the day.
+  const totalImpr = hours.reduce((s, x) => s + x.impressions, 0);
+  const bySize = [...hours].sort((a, b) => b.impressions - a.impressions);
+  const topThird = bySize.slice(0, Math.max(1, Math.round(hours.length / 3)));
+  const concentration = totalImpr > 0 ? topThird.reduce((s, x) => s + x.impressions, 0) / totalImpr : null;
 
   const campaigns = model.campaigns.map((c) => ({
     name: c.name,
     objective: c.objective,
-    spend: track(money(c.totals.spend)),
-    shareOfSpend: track(
-      model.windowTotals.spend > 0 ? formatPercent(c.totals.spend / model.windowTotals.spend, 0) : 'n/a',
-    ),
     impressions: track(num(c.totals.impressions)),
-    clicks: track(num(c.totals.clicks)),
-    ctr: track(pct(c.totals.ctr)),
-    cpc: track(c.totals.cpc === null ? 'n/a' : money(c.totals.cpc)),
-    cpm: track(c.totals.cpm === null ? 'n/a' : money(c.totals.cpm)),
+    shareOfImpressions: track(
+      t.impressions > 0 ? formatPercent(c.totals.impressions / t.impressions, 0) : 'n/a',
+    ),
+    vtr6s: track(pct(c.totals.vtr6s)),
+    vtr15s: track(pct(c.totals.vtr15s)),
     adgroups: c.adgroups.map((a) => ({
       name: a.name,
-      spend: track(money(a.totals.spend)),
-      clicks: track(num(a.totals.clicks)),
-      ctr: track(pct(a.totals.ctr)),
-      cpc: track(a.totals.cpc === null ? 'n/a' : money(a.totals.cpc)),
-      cpcUnreliable: a.totals.clicks < MIN_CLICKS_FOR_CPC,
+      impressions: track(num(a.totals.impressions)),
+      vtr6s: track(pct(a.totals.vtr6s)),
+      vtr15s: track(pct(a.totals.vtr15s)),
+      rateUnreliable: a.totals.impressions < MIN_IMPRESSIONS_FOR_VTR,
     })),
   }));
 
@@ -154,6 +155,12 @@ export function buildFactSheet(
       currency: model.client.currency,
       timezone: model.client.timezone,
     },
+    brief:
+      `${model.client.name} is an FMCG brand whose products are already widely available in stores. ` +
+      `The goal of this TikTok activity is efficient video views, measured by view-through rate (VTR): ` +
+      `VTR6s = 6-second views ÷ impressions, VTR15s = 15-second views ÷ impressions. ` +
+      `Clicks, cost-per-click and conversions are NOT the objective here — do not frame the analysis around them. ` +
+      `Read the report by hour: where impressions and VTR are strong, and where impressions are spent on hours that view poorly.`,
     window: {
       firstDate: model.days[0]?.date ?? '',
       lastDate: model.days[model.days.length - 1]?.date ?? '',
@@ -169,38 +176,21 @@ export function buildFactSheet(
           ? `${hourLabel(focus.coverage.firstHour)}–${hourLabel(focus.coverage.lastHour)}`
           : 'n/a',
       ),
-      peak: peak
-        ? { hour: track(hourLabel(peak.hour)), spend: track(money(peak.spend)) }
-        : { hour: 'n/a', spend: 'n/a' },
-      trough: trough
-        ? { hour: track(hourLabel(trough.hour)), spend: track(money(trough.spend)) }
-        : { hour: 'n/a', spend: 'n/a' },
-      heavierHalfShare: track(
-        totalHalves > 0 ? formatPercent(Math.max(firstHalf, secondHalf) / totalHalves, 0) : 'n/a',
-      ),
-      cheapestClickHour: cheapest
-        ? {
-            hour: track(hourLabel(cheapest.hour)),
-            cpc: track(money(cheapest.cpc ?? 0)),
-            ctr: track(pct(cheapest.ctr)),
-          }
+      peakImpressionsHour: peakImpr
+        ? { hour: track(hourLabel(peakImpr.hour)), impressions: track(num(peakImpr.impressions)) }
         : null,
-      dearestClickHour: dearest
-        ? {
-            hour: track(hourLabel(dearest.hour)),
-            cpc: track(money(dearest.cpc ?? 0)),
-            ctr: track(pct(dearest.ctr)),
-          }
+      bestViewHour: best
+        ? { hour: track(hourLabel(best.hour)), vtr6s: track(pct(best.vtr6s)) }
         : null,
-      spendWeightedCpcRatio: ratio ? track(`${ratio.toFixed(1)}×`) : null,
+      weakestViewHour: weakest
+        ? { hour: track(hourLabel(weakest.hour)), vtr6s: track(pct(weakest.vtr6s)) }
+        : null,
+      impressionsConcentration: track(concentration === null ? 'n/a' : formatPercent(concentration, 0)),
       hourly: hours.map((x) => ({
         hour: track(hourLabel(x.hour)),
-        spend: track(money(x.spend)),
         impressions: track(num(x.impressions)),
-        clicks: track(num(x.clicks)),
-        ctr: track(pct(x.ctr)),
-        cpc: track(x.cpc === null ? 'n/a' : money(x.cpc)),
-        cpm: track(x.cpm === null ? 'n/a' : money(x.cpm)),
+        vtr6s: track(pct(x.vtr6s)),
+        vtr15s: track(pct(x.vtr15s)),
       })),
     },
     campaigns,
@@ -209,10 +199,7 @@ export function buildFactSheet(
       'The source is a TikTok Ads (paid) export; organic content performance is not included.',
       ...model.days
         .filter((d) => !d.coverage.isComplete && d.coverage.lastHour !== null)
-        .map(
-          (d) =>
-            `${d.date} is incomplete — the export stops after ${hourLabel(d.coverage.lastHour!)}.`,
-        ),
+        .map((d) => `${d.date} is incomplete — the export stops after ${hourLabel(d.coverage.lastHour!)}.`),
       ...model.days.flatMap((d) =>
         d.coverage.aggregatedHours
           .filter((a) => a.spanHours >= 3)
@@ -222,18 +209,57 @@ export function buildFactSheet(
           ),
       ),
     ],
-    establishedFindings: [
-      analysis.daypart?.finding.body,
-      analysis.efficiency?.finding.body,
-      analysis.mix?.finding.body,
-      analysis.adgroup?.finding.body,
-    ].filter((x): x is string => Boolean(x)),
+    establishedFindings: buildFindings(model, { best, weakest, concentration }, { pct, mult, num }),
     allowedNumbers: [],
   };
 
-  // Numbers appearing in the established findings are also fair game.
   for (const f of sheet.establishedFindings) track(f);
-
   sheet.allowedNumbers = [...allowed].sort();
   return sheet;
+}
+
+/**
+ * VTR-based grounding, computed here rather than pulled from the (cost-oriented)
+ * analysis engine, so the model's starting facts match the brief.
+ */
+function buildFindings(
+  model: HourlyReportBase,
+  ctx: {
+    best: { hour: number; vtr6s: number | null } | null;
+    weakest: { hour: number; vtr6s: number | null } | null;
+    concentration: number | null;
+  },
+  fmt: { pct: (v: number | null, dp?: number) => string; mult: (v: number | null) => string; num: (v: number) => string },
+): string[] {
+  const t = model.windowTotals;
+  const out: string[] = [];
+
+  // Overall view efficiency.
+  out.push(
+    `Across ${model.totalHours} observed hours, ${fmt.num(t.impressions)} impressions returned a ${fmt.pct(t.vtr6s)} 6-second view-through rate and a ${fmt.pct(t.vtr15s)} 15-second rate.`,
+  );
+
+  // 6s→15s retention: of viewers who reached 6s, how many reached 15s.
+  const retention = t.videoWatched6s > 0 ? t.engagedView15s / t.videoWatched6s : null;
+  if (retention !== null) {
+    out.push(
+      `Of viewers who watched 6 seconds, ${fmt.pct(retention, 0)} went on to a 15-second engaged view — the depth signal for creative that holds attention.`,
+    );
+  }
+
+  // Best vs weakest viewing hour.
+  if (ctx.best && ctx.weakest && ctx.best.hour !== ctx.weakest.hour) {
+    out.push(
+      `The strongest viewing hour is ${String(ctx.best.hour).padStart(2, '0')}:00 at ${fmt.pct(ctx.best.vtr6s)} VTR6s, against ${String(ctx.weakest.hour).padStart(2, '0')}:00 at ${fmt.pct(ctx.weakest.vtr6s)} — the same impression is worth more in some hours than others.`,
+    );
+  }
+
+  // Impressions concentration.
+  if (ctx.concentration !== null) {
+    out.push(
+      `The busiest third of hours carries ${fmt.pct(ctx.concentration, 0)} of the day's impressions; whether those hours also view well decides how efficiently reach is bought.`,
+    );
+  }
+
+  return out;
 }

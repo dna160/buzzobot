@@ -60,6 +60,10 @@ export interface PaidHourlyMetricDTO {
   clicks: number;
   reach: number;
   videoViews: number;
+  /** 6-second video views (`video_watched_6s`): numerator for VTR6s. */
+  videoWatched6s: number;
+  /** 15-second engaged views (`engaged_view_15s`): numerator for VTR15s. */
+  engagedView15s: number;
   engagements: number;
   likes: number;
   comments: number;

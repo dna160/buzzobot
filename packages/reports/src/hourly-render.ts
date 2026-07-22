@@ -13,7 +13,6 @@ import {
   ENG_COLOR,
   MUTED_COLOR,
   PAID_COLOR,
-  ROAS_COLOR,
   callout,
   chartCard,
   cover,
@@ -77,14 +76,14 @@ export function renderHourlyReportHtml(model: HourlyReportModel): string {
     ${sectionTitle('01', h.sections.summary)}
     <p class="lede">${esc(a.headline)}</p>
     ${kpiRow([
-      { label: h.stat.spend, value: money(model.windowTotals.spend), delta: cmp?.deltas.spend, goodDirection: 'neutral', caption },
       { label: h.stat.impressions, value: formatNumberCompact(model.windowTotals.impressions), delta: cmp?.deltas.impressions, goodDirection: 'up', caption },
-      { label: h.stat.clicks, value: formatNumberCompact(model.windowTotals.clicks), delta: cmp?.deltas.clicks, goodDirection: 'up', caption },
-      { label: h.stat.ctr, value: model.windowTotals.ctr === null ? h.notReported : formatPercent(model.windowTotals.ctr), delta: cmp?.deltas.ctr, goodDirection: 'up', caption },
+      { label: h.stat.reach, value: formatNumberCompact(model.windowTotals.reach), delta: cmp?.deltas.reach, goodDirection: 'up', caption },
+      { label: h.stat.vtr6s, value: model.windowTotals.vtr6s === null ? h.notReported : formatPercent(model.windowTotals.vtr6s), delta: cmp?.deltas.vtr6s, goodDirection: 'up', caption },
+      { label: h.stat.vtr15s, value: model.windowTotals.vtr15s === null ? h.notReported : formatPercent(model.windowTotals.vtr15s), delta: cmp?.deltas.vtr15s, goodDirection: 'up', caption },
     ])}
     ${kpiRow([
-      { label: h.stat.cpc, value: model.windowTotals.cpc === null ? h.notReported : money(model.windowTotals.cpc), delta: cmp?.deltas.cpc, goodDirection: 'down', caption },
-      { label: h.stat.cpm, value: model.windowTotals.cpm === null ? h.notReported : money(model.windowTotals.cpm), delta: cmp?.deltas.cpm, goodDirection: 'down', caption },
+      { label: h.stat.frequency, value: model.windowTotals.frequency === null ? h.notReported : `${model.windowTotals.frequency.toFixed(1)}×` },
+      { label: h.stat.spend, value: money(model.windowTotals.spend), delta: cmp?.deltas.spend, goodDirection: 'neutral', caption },
       { label: h.stat.hours, value: String(model.totalHours) },
       { label: h.table.campaign, value: String(model.campaigns.length) },
     ])}
@@ -239,13 +238,14 @@ function pacingCard(day: HourlyReportDay, copy: ReportCopy): string {
   );
 }
 
+/** The headline chart: impressions (bars) against the 6-second VTR (line). */
 function deliveryCard(day: HourlyReportDay, copy: ReportCopy): string {
   const h = copy.hourly;
   const svg = comboChart(
-    day.hours.map((x) => ({ label: hourLabel(x.hour), bar: x.impressions, line: x.clicks })),
+    day.hours.map((x) => ({ label: hourLabel(x.hour), bar: x.impressions, line: x.vtr6s ?? 0 })),
     {
       formatBar: (v) => formatNumberCompact(v),
-      formatLine: (v) => formatNumberCompact(v),
+      formatLine: (v) => formatPercent(v, 1),
       barColor: PAID_COLOR,
       lineColor: ENG_COLOR,
       maxXLabels: 8,
@@ -256,30 +256,28 @@ function deliveryCard(day: HourlyReportDay, copy: ReportCopy): string {
     svg,
     legend([
       [h.chart.impressions, PAID_COLOR, 'bar'],
-      [h.chart.clicks, ENG_COLOR, 'line'],
+      [h.chart.vtr6s, ENG_COLOR, 'line'],
     ]),
   );
 }
 
-function efficiencyCard(day: HourlyReportDay, copy: ReportCopy, cur: Currency): string {
+/** View quality: the 6s and 15s view-through rates side by side, by hour. */
+function efficiencyCard(day: HourlyReportDay, copy: ReportCopy, _cur: Currency): string {
   const h = copy.hourly;
   const pts = day.hours.filter((x) => x.impressions > 0);
-  const svg = comboChart(
-    pts.map((x) => ({ label: hourLabel(x.hour), bar: x.cpm ?? 0, line: x.ctr ?? 0 })),
-    {
-      formatBar: (v) => formatCurrencyCompact(Math.round(v), cur),
-      formatLine: (v) => formatPercent(v, 1),
-      barColor: ROAS_COLOR,
-      lineColor: ENG_COLOR,
-      maxXLabels: 8,
-    },
+  const svg = multiLineChart(
+    [
+      { points: pts.map((x) => ({ label: hourLabel(x.hour), value: x.vtr6s })), color: PAID_COLOR },
+      { points: pts.map((x) => ({ label: hourLabel(x.hour), value: x.vtr15s })), color: ENG_COLOR },
+    ],
+    { format: (v) => formatPercent(v, 1) },
   );
   return chartCard(
-    `${h.chart.efficiencyTitle} — ${shortDate(day.date, copy)}`,
+    `${h.chart.vtrTitle} — ${shortDate(day.date, copy)}`,
     svg,
     legend([
-      [h.chart.cpm, ROAS_COLOR, 'bar'],
-      [h.chart.ctr, ENG_COLOR, 'line'],
+      [h.chart.vtr6s, PAID_COLOR, 'line'],
+      [h.chart.vtr15s, ENG_COLOR, 'line'],
     ]),
   );
 }

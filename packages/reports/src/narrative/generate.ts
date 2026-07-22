@@ -70,7 +70,7 @@ export async function generateNarrative(
     };
   }
 
-  const facts = buildFactSheet(model, analysis);
+  const facts = buildFactSheet(model);
   const system = systemPrompt(locale);
   const user = userPrompt(facts);
 

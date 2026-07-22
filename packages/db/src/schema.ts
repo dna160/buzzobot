@@ -166,6 +166,17 @@ export const paidHourlyMetrics = pgTable(
     clicks: integer('clicks').notNull().default(0),
     reach: integer('reach').notNull().default(0),
     videoViews: integer('video_views').notNull().default(0),
+    /**
+     * 6-second video views (TikTok `video_watched_6s`). Numerator for the 6s
+     * view-through rate — VTR6s = videoWatched6s / impressions. The headline
+     * quality metric for a view-objective FMCG brand.
+     */
+    videoWatched6s: integer('video_watched_6s').notNull().default(0),
+    /**
+     * 15-second engaged views (TikTok `engaged_view_15s`). Numerator for the
+     * 15s view-through rate — VTR15s = engagedView15s / impressions.
+     */
+    engagedView15s: integer('engaged_view_15s').notNull().default(0),
     engagements: integer('engagements').notNull().default(0),
     likes: integer('likes').notNull().default(0),
     comments: integer('comments').notNull().default(0),

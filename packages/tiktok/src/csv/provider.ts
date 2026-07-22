@@ -137,6 +137,8 @@ export class CsvTikTokProvider implements TikTokDataProvider {
         clicks: Math.round(b.clicks),
         reach: Math.round(b.reach),
         videoViews: Math.round(b.videoViews),
+        videoWatched6s: Math.round(b.videoWatched6s),
+        engagedView15s: Math.round(b.engagedView15s),
         engagements: Math.round(b.engagements),
         likes: Math.round(b.likes),
         comments: Math.round(b.comments),

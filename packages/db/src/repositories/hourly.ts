@@ -26,8 +26,22 @@ export interface HourPoint {
   clicks: number;
   reach: number;
   videoViews: number;
+  /** 6-second video views (`video_watched_6s`). */
+  videoWatched6s: number;
+  /** 15-second engaged views (`engaged_view_15s`). */
+  engagedView15s: number;
   engagements: number;
-  /** Derived. Null when the denominator is zero — never a fake 0. */
+  /**
+   * View-through rates — the headline metric. Derived from summed totals, null
+   * when impressions are zero (never a fake 0).
+   *   vtr6s  = videoWatched6s / impressions
+   *   vtr15s = engagedView15s / impressions
+   */
+  vtr6s: number | null;
+  vtr15s: number | null;
+  /** Impressions per person reached (impressions / reach). */
+  frequency: number | null;
+  /** Cost context — derived, demoted below the view metrics. */
   ctr: number | null;
   cpc: number | null;
   cpm: number | null;
@@ -40,7 +54,12 @@ export interface Totals {
   clicks: number;
   reach: number;
   videoViews: number;
+  videoWatched6s: number;
+  engagedView15s: number;
   engagements: number;
+  vtr6s: number | null;
+  vtr15s: number | null;
+  frequency: number | null;
   ctr: number | null;
   cpc: number | null;
   cpm: number | null;
@@ -109,8 +128,11 @@ export interface Comparison {
   previous: Totals;
   /** Fractional change per metric; null when there's no baseline. */
   deltas: {
-    spend: number | null;
     impressions: number | null;
+    reach: number | null;
+    vtr6s: number | null;
+    vtr15s: number | null;
+    spend: number | null;
     clicks: number | null;
     ctr: number | null;
     cpc: number | null;
@@ -151,6 +173,8 @@ interface Raw {
   clicks: number;
   reach: number;
   videoViews: number;
+  videoWatched6s: number;
+  engagedView15s: number;
   engagements: number;
   spanHours: number;
   campaignId: string;
@@ -160,12 +184,17 @@ interface Raw {
   adgroupName: string | null;
 }
 
-const zero = (): Omit<Totals, 'ctr' | 'cpc' | 'cpm' | 'cpv'> => ({
+const zero = (): Omit<
+  Totals,
+  'ctr' | 'cpc' | 'cpm' | 'cpv' | 'vtr6s' | 'vtr15s' | 'frequency'
+> => ({
   spend: 0,
   impressions: 0,
   clicks: 0,
   reach: 0,
   videoViews: 0,
+  videoWatched6s: 0,
+  engagedView15s: 0,
   engagements: 0,
 });
 
@@ -175,12 +204,18 @@ function add(acc: ReturnType<typeof zero>, r: Raw): void {
   acc.clicks += r.clicks;
   acc.reach += r.reach;
   acc.videoViews += r.videoViews;
+  acc.videoWatched6s += r.videoWatched6s;
+  acc.engagedView15s += r.engagedView15s;
   acc.engagements += r.engagements;
 }
 
 function finish(acc: ReturnType<typeof zero>): Totals {
   return {
     ...acc,
+    // View-through rates lead; cost ratios are kept for context.
+    vtr6s: ratio(acc.videoWatched6s, acc.impressions),
+    vtr15s: ratio(acc.engagedView15s, acc.impressions),
+    frequency: ratio(acc.impressions, acc.reach),
     ctr: ratio(acc.clicks, acc.impressions),
     cpc: ratio(acc.spend, acc.clicks),
     cpm: acc.impressions > 0 ? (acc.spend / acc.impressions) * 1000 : null,
@@ -248,6 +283,8 @@ async function fetchRows(db: Database, clientId: string, date?: string): Promise
       clicks: paidHourlyMetrics.clicks,
       reach: paidHourlyMetrics.reach,
       videoViews: paidHourlyMetrics.videoViews,
+      videoWatched6s: paidHourlyMetrics.videoWatched6s,
+      engagedView15s: paidHourlyMetrics.engagedView15s,
       engagements: paidHourlyMetrics.engagements,
       spanHours: paidHourlyMetrics.spanHours,
       campaignId: paidHourlyMetrics.campaignId,
@@ -337,8 +374,11 @@ export async function getHourlyDashboard(
         current: cur,
         previous: prv,
         deltas: {
-          spend: deltaPct(cur.spend, prv.spend),
           impressions: deltaPct(cur.impressions, prv.impressions),
+          reach: deltaPct(cur.reach, prv.reach),
+          vtr6s: ratioDelta(cur.vtr6s, prv.vtr6s),
+          vtr15s: ratioDelta(cur.vtr15s, prv.vtr15s),
+          spend: deltaPct(cur.spend, prv.spend),
           clicks: deltaPct(cur.clicks, prv.clicks),
           ctr: ratioDelta(cur.ctr, prv.ctr),
           cpc: ratioDelta(cur.cpc, prv.cpc),

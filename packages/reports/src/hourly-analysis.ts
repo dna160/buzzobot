@@ -1,4 +1,4 @@
-import { formatCurrencyCompact, formatPercent, type Currency } from '@tempo/core';
+import { formatCurrencyCompact, formatNumberCompact, formatPercent, type Currency } from '@tempo/core';
 import type { CampaignBreakdown, HourPoint } from '@tempo/db';
 import type { HourlyReportBase } from './hourly-model.js';
 import { hourLabel, type CalloutTone, type Severity } from './layout.js';
@@ -89,11 +89,11 @@ export function analyseHourly(model: HourlyReportBase): HourlyAnalysis {
 
   const summaryProse = h.narrative.summary({
     name: client.name,
-    spend: money(windowTotals.spend),
     days: days.length,
     hours: totalHours,
-    cpm: windowTotals.cpm === null ? h.notReported : money(windowTotals.cpm),
-    ctr: windowTotals.ctr === null ? h.notReported : formatPercent(windowTotals.ctr),
+    impressions: formatNumberCompact(windowTotals.impressions),
+    vtr6s: windowTotals.vtr6s === null ? h.notReported : formatPercent(windowTotals.vtr6s),
+    vtr15s: windowTotals.vtr15s === null ? h.notReported : formatPercent(windowTotals.vtr15s),
   });
 
   const risks: RiskItem[] = [];

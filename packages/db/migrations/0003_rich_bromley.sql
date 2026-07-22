@@ -1,0 +1,2 @@
+ALTER TABLE "paid_hourly_metrics" ADD COLUMN "video_watched_6s" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "paid_hourly_metrics" ADD COLUMN "engaged_view_15s" integer DEFAULT 0 NOT NULL;

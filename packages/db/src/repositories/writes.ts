@@ -107,6 +107,8 @@ export async function upsertPaidHourlyMetrics(
       clicks: m.clicks,
       reach: m.reach,
       videoViews: m.videoViews,
+      videoWatched6s: m.videoWatched6s,
+      engagedView15s: m.engagedView15s,
       engagements: m.engagements,
       likes: m.likes,
       comments: m.comments,

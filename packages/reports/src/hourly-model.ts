@@ -59,8 +59,11 @@ export interface HourlyReportBase {
   comparison: {
     label: string;
     deltas: {
-      spend: number | null;
       impressions: number | null;
+      reach: number | null;
+      vtr6s: number | null;
+      vtr15s: number | null;
+      spend: number | null;
       clicks: number | null;
       ctr: number | null;
       cpc: number | null;
@@ -102,17 +105,32 @@ const ratio = (n: number, d: number): number | null => (d > 0 ? n / d : null);
 
 /** Pool a set of totals. Ratios are recomputed from the sums, never averaged. */
 function poolTotals(all: readonly Totals[]): Totals {
-  const acc = { spend: 0, impressions: 0, clicks: 0, reach: 0, videoViews: 0, engagements: 0 };
+  const acc = {
+    spend: 0,
+    impressions: 0,
+    clicks: 0,
+    reach: 0,
+    videoViews: 0,
+    videoWatched6s: 0,
+    engagedView15s: 0,
+    engagements: 0,
+  };
   for (const t of all) {
     acc.spend += t.spend;
     acc.impressions += t.impressions;
     acc.clicks += t.clicks;
     acc.reach += t.reach;
     acc.videoViews += t.videoViews;
+    acc.videoWatched6s += t.videoWatched6s;
+    acc.engagedView15s += t.engagedView15s;
     acc.engagements += t.engagements;
   }
   return {
     ...acc,
+    // View-through rates lead; cost ratios kept for context (see hourly.ts).
+    vtr6s: ratio(acc.videoWatched6s, acc.impressions),
+    vtr15s: ratio(acc.engagedView15s, acc.impressions),
+    frequency: ratio(acc.impressions, acc.reach),
     ctr: ratio(acc.clicks, acc.impressions),
     cpc: ratio(acc.spend, acc.clicks),
     cpm: acc.impressions > 0 ? (acc.spend / acc.impressions) * 1000 : null,
