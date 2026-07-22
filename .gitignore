@@ -45,5 +45,7 @@ coverage/
 tmp/
 .cache/
 
-# Local brand data exports (not for commit)
-data/
+# Local brand data exports (not for commit) — except the committed Cimory demo
+# set, which the app seeds from. Any OTHER export dropped in data/ stays ignored.
+data/*
+!data/cimory-hourly.csv
