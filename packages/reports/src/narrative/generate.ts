@@ -1,3 +1,4 @@
+import type { NorthStar } from '@tempo/core';
 import type { Locale } from '../i18n.js';
 import type { HourlyReportBase } from '../hourly-model.js';
 import { analyseHourly, type HourlyAnalysis } from '../hourly-analysis.js';
@@ -11,7 +12,11 @@ import {
 } from './provider.js';
 import { AnthropicNarrativeProvider } from './providers/anthropic.js';
 import { OpenAiCompatibleNarrativeProvider } from './providers/openai-compatible.js';
-import { verifyNarrative, verifyNoUnsupportedMetrics } from './verify.js';
+import {
+  stripUnactionableRisks,
+  verifyNarrative,
+  verifyNoUnsupportedMetrics,
+} from './verify.js';
 
 export interface NarrativeResult {
   narrative: Narrative;
@@ -71,7 +76,7 @@ export async function generateNarrative(
   }
 
   const facts = buildFactSheet(model);
-  const system = systemPrompt(locale);
+  const system = systemPrompt(locale, model.client.northStar);
   const user = userPrompt(facts);
 
   let lastError = '';
@@ -80,7 +85,7 @@ export async function generateNarrative(
     const timer = setTimeout(() => controller.abort(), config.timeoutMs);
     try {
       const raw = await provider.complete({ system, user, signal: controller.signal });
-      const narrative = parseAndVerify(raw, facts);
+      const narrative = parseAndVerify(raw, facts, model.client.northStar);
       return {
         narrative,
         source: 'llm',
@@ -113,7 +118,7 @@ export async function generateNarrative(
 }
 
 /** Parse, schema-check, and run both guards. Throws with a usable message. */
-export function parseAndVerify(raw: string, facts: FactSheet): Narrative {
+export function parseAndVerify(raw: string, facts: FactSheet, northStar: NorthStar): Narrative {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -121,7 +126,9 @@ export function parseAndVerify(raw: string, facts: FactSheet): Narrative {
     throw new Error(`Response was not valid JSON (starts: ${raw.slice(0, 120)})`);
   }
 
-  const result = NarrativeSchema.safeParse(parsed);
+  // Unactionable measurement-gap entries are removed before validation, so the
+  // register's minimum size is enforced against risks a team can actually act on.
+  const result = NarrativeSchema.safeParse(stripUnactionableRisks(parsed, northStar));
   if (!result.success) {
     const issues = result.error.issues
       .slice(0, 4)
@@ -141,7 +148,7 @@ export function parseAndVerify(raw: string, facts: FactSheet): Narrative {
     );
   }
 
-  const metrics = verifyNoUnsupportedMetrics(result.data);
+  const metrics = verifyNoUnsupportedMetrics(result.data, northStar);
   if (!metrics.ok) {
     const shown = metrics.violations.slice(0, 3).map((v) => `${v.token} (${v.field})`).join('; ');
     throw new Error(`Narrative presented a value for an unsupported metric — ${shown}`);

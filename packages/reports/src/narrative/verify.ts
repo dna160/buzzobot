@@ -1,3 +1,4 @@
+import { NorthStar } from '@tempo/core';
 import type { FactSheet } from './facts.js';
 import type { Narrative } from './schema.js';
 
@@ -23,7 +24,11 @@ export interface VerificationResult {
  * from the fact sheet.
  */
 function isBenign(token: string): boolean {
-  if (/^\d{1,2}:\d{2}$/.test(token)) return true; // clock time
+  if (/^\d{1,2}:\d{2}$/.test(token)) return true; // clock time HH:MM
+  // Indonesian/EU clock notation writes 19:00 as "19.00". Bounded to a valid
+  // hour so a real hour reference is not mistaken for a fabricated decimal,
+  // while an invented number like "56.00" still fails.
+  if (/^([01]?\d|2[0-4])\.[0-5]\d$/.test(token)) return true; // clock time HH.MM
   if (/^\d{4}-\d{2}-\d{2}$/.test(token)) return true; // ISO date
   const bare = token.replace(/[.,]/g, '');
   if (!/^\d+$/.test(bare)) return false;
@@ -85,21 +90,85 @@ export function verifyNarrative(narrative: Narrative, facts: FactSheet): Verific
 }
 
 /**
- * Metrics the export cannot support. Naming them to say they are unavailable is
- * correct; presenting a value for one is the failure mode this catches.
+ * Metrics a given client's export cannot support. Naming them to say they are
+ * unavailable is correct; presenting a value for one is the failure mode this
+ * catches. Which patterns apply depends on the north star: a Shop client has
+ * real conversions and (sometimes) ROAS, so neither is forbidden for it; an
+ * app-install client has real "conversions" (installs) but never a monetary
+ * ROAS/revenue figure.
  */
-const FORBIDDEN_VALUE_PATTERNS: Array<{ label: string; re: RegExp }> = [
+const ROAS_PATTERNS = [
   { label: 'ROAS value', re: /\bROAS\b[^.!?]{0,24}\d/i },
   { label: 'ROAS multiple', re: /\d\s*(?:x|×)\s*(?:blended\s+)?ROAS/i },
+];
+const CPA_AND_CONVERSION_PATTERNS = [
   { label: 'CPA value', re: /\bCPA\b[^.!?]{0,24}\d/i },
   { label: 'conversion count', re: /\b\d[\d.,]*\s+(?:conversions?|konversi)\b/i },
 ];
 
-/** Reject any sentence that presents a figure for an unsupported metric. */
-export function verifyNoUnsupportedMetrics(narrative: Narrative): VerificationResult {
+const FORBIDDEN_VALUE_PATTERNS: Record<NorthStar, Array<{ label: string; re: RegExp }>> = {
+  [NorthStar.Vtr]: [...ROAS_PATTERNS, ...CPA_AND_CONVERSION_PATTERNS],
+  [NorthStar.Shop]: [],
+  [NorthStar.AppInstall]: [...ROAS_PATTERNS],
+};
+
+/**
+ * Risk-register entries about a missing on-platform outcome that this
+ * particular client's brief already explains is either permanent (VTR: sales
+ * happen offline) or simply false (Shop/App Install: conversions ARE real and
+ * measured for them). As a *risk entry* it is unactionable filler either way —
+ * no team can change how the category sells, and a false "we can't measure
+ * this" claim wastes a slot a real finding could occupy. Stripped before
+ * schema validation so the six-entry floor is measured against genuinely
+ * actionable risks.
+ *
+ * The "TikTok Shop" pattern only applies to a 'vtr' client, where any mention
+ * of it is necessarily about the impossibility of on-platform conversion for
+ * that brand — for a 'shop' client, "TikTok Shop" is normal, expected
+ * vocabulary in a legitimate risk (e.g. a checkout drop-off) and must not be
+ * stripped.
+ */
+const ALWAYS_UNACTIONABLE_PATTERNS: RegExp[] = [
+  /conversion\s+tracking|pelacakan\s+konversi|pixel/i,
+  // An outcome metric named alongside its own absence.
+  /\b(roas|cpa|convers\w+|konversi|revenue|pendapatan|penjualan|install\w*)\b[^.!?]{0,60}\b(cannot|can't|can not|no|not|never|without|unavailable|missing|absent|impossible|tidak|tanpa|belum|mustahil)\b/i,
+  /\b(cannot|can't|can not|no|not|never|without|unavailable|missing|absent|impossible|tidak|tanpa|belum|mustahil)\b[^.!?]{0,60}\b(roas|cpa|convers\w+|konversi|revenue|pendapatan|penjualan|install\w*)\b/i,
+];
+
+const isUnactionableRisk = (text: string, northStar: NorthStar): boolean =>
+  ALWAYS_UNACTIONABLE_PATTERNS.some((re) => re.test(text)) ||
+  (northStar === NorthStar.Vtr && /tiktok\s*shop/i.test(text));
+
+/**
+ * Drop unactionable measurement-gap entries from a raw parsed response, before
+ * it is schema-checked. Operates on `unknown` because it runs pre-validation;
+ * anything not shaped as expected is passed through untouched for the schema to
+ * reject with a better message.
+ */
+export function stripUnactionableRisks(parsed: unknown, northStar: NorthStar): unknown {
+  if (typeof parsed !== 'object' || parsed === null) return parsed;
+  const obj = parsed as Record<string, unknown>;
+  if (!Array.isArray(obj.risks)) return parsed;
+
+  const kept = obj.risks.filter((r) => {
+    if (typeof r !== 'object' || r === null) return true;
+    const entry = r as Record<string, unknown>;
+    const risk = typeof entry.risk === 'string' ? entry.risk : '';
+    const action = typeof entry.action === 'string' ? entry.action : '';
+    return !isUnactionableRisk(`${risk} ${action}`, northStar);
+  });
+
+  return kept.length === obj.risks.length ? parsed : { ...obj, risks: kept };
+}
+
+/** Reject any sentence that presents a figure for a metric this client's export cannot support. */
+export function verifyNoUnsupportedMetrics(
+  narrative: Narrative,
+  northStar: NorthStar,
+): VerificationResult {
   const violations: VerificationResult['violations'] = [];
   for (const { field, text } of collectStrings(narrative)) {
-    for (const { label, re } of FORBIDDEN_VALUE_PATTERNS) {
+    for (const { label, re } of FORBIDDEN_VALUE_PATTERNS[northStar]) {
       const m = text.match(re);
       if (m) violations.push({ field, token: label, sentence: m[0] });
     }

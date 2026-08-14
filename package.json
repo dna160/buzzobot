@@ -20,6 +20,9 @@
     "db:migrate": "pnpm --filter @tempo/db db:migrate",
     "db:seed": "pnpm --filter @tempo/db db:seed",
     "db:inspect": "pnpm --filter @tempo/db db:inspect",
+    "db:inspect-tempo": "pnpm --filter @tempo/db db:inspect-tempo",
+    "db:sanitize": "pnpm --filter @tempo/db db:sanitize",
+    "db:scheduler": "pnpm --filter @tempo/db db:scheduler",
     "db:studio": "pnpm --filter @tempo/db db:studio",
     "ingest": "pnpm --filter @tempo/ingestion start",
     "clean": "turbo run clean && rm -rf node_modules"
@@ -31,5 +34,11 @@
     "prettier-plugin-tailwindcss": "^0.6.9",
     "turbo": "^2.3.3",
     "typescript": "^5.7.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sharp"
+    ]
   }
 }

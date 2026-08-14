@@ -12,6 +12,7 @@
     "clean": "rm -rf .next .turbo"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.2.17",
     "@tanstack/react-query": "^5.64.1",
     "@tempo/core": "workspace:*",
     "@tempo/db": "workspace:*",

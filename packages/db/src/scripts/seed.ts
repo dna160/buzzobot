@@ -23,7 +23,7 @@ async function main() {
   const accounts = await provider.listAccounts();
   // A bounded source (a CSV export) knows its own window; otherwise fall back
   // to the fixed demo window so fixture seeds stay deterministic.
-  const range = provider.describeRange?.() ?? rangePreset('90d', DEMO_TODAY);
+  const range = (await provider.describeRange?.()) ?? rangePreset('90d', DEMO_TODAY);
   console.log(`  window ${range.start} → ${range.end}`);
 
   let total = 0;

@@ -2,12 +2,13 @@ import { loadTikTokConfig, type TikTokConfig } from './config.js';
 import { CsvTikTokProvider } from './csv/provider.js';
 import { FixtureTikTokProvider } from './fixtures/provider.js';
 import { LiveTikTokProvider } from './live/provider.js';
+import { PostgresTikTokProvider } from './postgres/provider.js';
 import type { TikTokDataProvider } from './types.js';
 
 /**
  * The one entry point the rest of the system uses to obtain a data provider.
  * Selection is driven entirely by configuration/env — no caller ever branches
- * on live-vs-fixture-vs-csv themselves.
+ * on live-vs-fixture-vs-csv-vs-postgres themselves.
  */
 export const createTikTokProvider = (
   config: TikTokConfig = loadTikTokConfig(),
@@ -20,6 +21,14 @@ export const createTikTokProvider = (
       );
     }
     return new CsvTikTokProvider(config.csv);
+  }
+  if (config.provider === 'postgres') {
+    if (!config.postgres) {
+      throw new Error(
+        'TIKTOK_DATA_PROVIDER=postgres but TIKTOK_PG_TABLE is not set — nothing to read.',
+      );
+    }
+    return new PostgresTikTokProvider(config.postgres);
   }
   return new FixtureTikTokProvider();
 };

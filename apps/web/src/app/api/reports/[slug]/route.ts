@@ -10,11 +10,14 @@ import { htmlToPdf } from '@/lib/report-pdf';
 import { authenticate, corsHeaders, preflight } from '@/lib/api-auth';
 
 /**
- * GET /api/reports/:slug?lang=id|en&format=pdf|html|json
+ * GET /api/reports/:slug?lang=id|en&format=pdf|html|json&date=YYYY-MM-DD&days=N
  *
- * Generates the client's intraday performance report across every date the
- * ingested export covers: an executive summary plus a full hour-by-hour
- * appendix. Defaults to Bahasa Indonesia.
+ * Generates the client's intraday performance report for a trailing window
+ * ending on `date` (default: the most recently ingested date) — an executive
+ * summary plus a full hour-by-hour appendix for that window. `days` sizes the
+ * window (default 7); `date` is clamped down to the nearest ingested date at
+ * or before it, so picking today or a gap date still resolves to real data.
+ * Defaults to Bahasa Indonesia.
  *
  *   format=pdf   (default) streams the rendered PDF — the one-click download
  *   format=html  the raw document, for previewing
@@ -25,6 +28,11 @@ import { authenticate, corsHeaders, preflight } from '@/lib/api-auth';
  */
 export const runtime = 'nodejs';
 export const maxDuration = 60;
+// Every export must reflect the latest ingested data and a freshly generated
+// narrative — never a build-time or CDN-cached response.
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+export const revalidate = 0;
 
 export async function OPTIONS(request: Request) {
   return preflight(request);
@@ -54,6 +62,11 @@ export async function GET(
   const langParam = url.searchParams.get('lang');
   const locale = isLocale(langParam) ? langParam : DEFAULT_LOCALE;
 
+  const dateParam = url.searchParams.get('date');
+  const endDate = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : undefined;
+  const daysParam = Number(url.searchParams.get('days'));
+  const windowDays = Number.isInteger(daysParam) && daysParam > 0 ? daysParam : undefined;
+
   // The operator's Settings override (if any) wins over the .env defaults.
   // Read and validate it here so a bad row can never break report generation.
   const storedAi = await getSetting(db, SETTINGS_KEYS.reportNarrative);
@@ -64,6 +77,8 @@ export async function GET(
   const model = await buildHourlyReport(db, client, {
     generatedAt: new Date(),
     locale,
+    endDate,
+    windowDays,
     narrativeConfig,
   });
   if (!model) {
@@ -92,7 +107,7 @@ export async function GET(
 
   if (format === 'html') {
     return new Response(html, {
-      headers: { ...cors, 'Content-Type': 'text/html; charset=utf-8' },
+      headers: { ...cors, 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
     });
   }
 

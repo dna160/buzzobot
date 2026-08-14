@@ -145,4 +145,66 @@ describe('parseHourlyExport', () => {
     const { buckets } = parseHourlyExport(csvWith({ spend: cumulative }));
     expect(buckets.every((b) => b.spend >= 0)).toBe(true);
   });
+
+  it('still registers a campaign that never carries a name, falling back to its id', () => {
+    // Some brands' export never populates campaign_name/adgroup_name at all.
+    // Losing the campaign here means every hourly row for it silently fails
+    // to resolve downstream and gets skipped from ingestion entirely.
+    const header = 'campaign_id,date,adgroup_id,metrics,h00,h01,campaign_name,adgroup_name';
+    const row = 'C9,2026-07-24,,spend,0,500,,';
+    const { buckets, campaigns } = parseHourlyExport(`${header}\n${row}`);
+
+    expect(campaigns).toEqual([{ externalId: 'C9', name: 'C9' }]);
+    expect(buckets).toHaveLength(1);
+    expect(buckets[0]!.campaignExternalId).toBe('C9');
+    expect(buckets[0]!.spend).toBe(500);
+  });
+
+  it('synthesizes a campaign rollup when the export carries only adgroup-level rows', () => {
+    // Some brands' export has zero campaign-level (adgroup_id = '') rows at
+    // all — every row is adgroup-grain. The account-level dashboard reads
+    // only rollup buckets, so without this the campaign would show zero
+    // everywhere despite real adgroup data existing.
+    const header = 'campaign_id,date,adgroup_id,metrics,h00,h01,campaign_name,adgroup_name';
+    const rows = [
+      'C1,2026-07-24,A1,spend,0,100,,',
+      'C1,2026-07-24,A1,impressions,0,1000,,',
+      'C1,2026-07-24,A2,spend,0,50,,',
+      'C1,2026-07-24,A2,impressions,0,500,,',
+    ].join('\n');
+    const { buckets } = parseHourlyExport(`${header}\n${rows}`);
+
+    const rollup = buckets.find((b) => b.campaignExternalId === 'C1' && b.adgroupExternalId === null);
+    expect(rollup).toBeDefined();
+    expect(rollup!.spend).toBe(150);
+    expect(rollup!.impressions).toBe(1500);
+
+    const adgroupBuckets = buckets.filter((b) => b.adgroupExternalId !== null);
+    expect(adgroupBuckets).toHaveLength(2);
+  });
+
+  it('leaves a campaign with a native rollup untouched — never doubles it', () => {
+    const header = 'campaign_id,date,adgroup_id,metrics,h00,h01,campaign_name,adgroup_name';
+    const rows = [
+      'C1,2026-07-24,,spend,0,999,,',
+      'C1,2026-07-24,A1,spend,0,100,,',
+    ].join('\n');
+    const { buckets } = parseHourlyExport(`${header}\n${rows}`);
+
+    const rollups = buckets.filter((b) => b.campaignExternalId === 'C1' && b.adgroupExternalId === null);
+    expect(rollups).toHaveLength(1);
+    expect(rollups[0]!.spend).toBe(999);
+  });
+
+  it('maps a brand-specific conversion metric via extraFields, e.g. onsite_shopping for a Shop client', () => {
+    const header = 'campaign_id,date,adgroup_id,metrics,h00,h01,campaign_name,adgroup_name';
+    const rows = [
+      'C1,2026-07-24,,spend,0,1000,Test,',
+      'C1,2026-07-24,,onsite_shopping,0,3,Test,',
+    ].join('\n');
+    const { buckets } = parseHourlyExport(`${header}\n${rows}`, { onsite_shopping: 'conversions' });
+
+    expect(buckets[0]!.spend).toBe(1000);
+    expect(buckets[0]!.conversions).toBe(3);
+  });
 });

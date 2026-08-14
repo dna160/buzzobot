@@ -14,6 +14,7 @@ import {
   StatTileSkeleton,
 } from '@tempo/ui';
 import {
+  NorthStar,
   formatCurrencyCompact,
   formatNumberCompact,
   formatPercent,
@@ -25,6 +26,8 @@ import { hourLabel, orNa, shortDate } from '@/lib/format-kpi';
 import { PacingChart } from './charts/PacingChart';
 import { DeliveryChart } from './charts/DeliveryChart';
 import { EfficiencyChart } from './charts/EfficiencyChart';
+import { ConversionChart } from './charts/ConversionChart';
+import { CpaChart } from './charts/CpaChart';
 import { DayOverDayChart } from './charts/DayOverDayChart';
 import { HourlyCampaignTable } from './HourlyCampaignTable';
 import { ExportHourlyReportButton } from './ExportHourlyReportButton';
@@ -74,7 +77,7 @@ export function HourlyView({ slug }: { slug: string }) {
             />
           ) : null}
           <div className="mx-1 h-5 w-px bg-border" aria-hidden />
-          <ExportHourlyReportButton slug={slug} />
+          <ExportHourlyReportButton slug={slug} date={data?.date} />
         </div>
       </header>
 
@@ -164,16 +167,52 @@ function Content({ data }: { data: HourlyResult }) {
         const spark = <K extends keyof (typeof data.hours)[number]>(key: K) =>
           data.hours.map((h) => h[key]).filter((v): v is number => typeof v === 'number');
 
-        // FMCG brand: view efficiency (VTR) leads; spend is context, cost
-        // ratios (CTR/CPC/CPM) drop off the headline.
-        const tiles = [
-          { label: 'Impressions', value: formatNumberCompact(totals.impressions), delta: d?.impressions, dir: 'up', key: 'impressions' },
-          { label: 'Reach', value: formatNumberCompact(totals.reach), delta: d?.reach, dir: 'up', key: 'reach' },
-          { label: 'VTR 6s', value: orNa(totals.vtr6s, (v) => formatPercent(v)), delta: d?.vtr6s, dir: 'up', key: 'vtr6s' },
-          { label: 'VTR 15s', value: orNa(totals.vtr15s, (v) => formatPercent(v)), delta: d?.vtr15s, dir: 'up', key: 'vtr15s' },
-          { label: 'Frequency', value: orNa(totals.frequency, (v) => `${v.toFixed(1)}×`), delta: null, dir: 'neutral', key: 'frequency' },
-          { label: 'Spend', value: money(totals.spend), delta: d?.spend, dir: 'neutral', key: 'spend' },
-        ] as const;
+        // Which figures lead depends on the client's north star: a brand with
+        // no on-platform outcome (VTR) reads on viewing efficiency; a Shop or
+        // App Install client reads on the actual conversion and its cost —
+        // CTR/CPC/CPM still matter for them, they're just not the whole story.
+        const northStar = data.client.northStar;
+        const tiles =
+          northStar === NorthStar.Vtr
+            ? ([
+                { label: 'Impressions', value: formatNumberCompact(totals.impressions), delta: d?.impressions, dir: 'up', key: 'impressions' },
+                { label: 'Reach', value: formatNumberCompact(totals.reach), delta: d?.reach, dir: 'up', key: 'reach' },
+                { label: 'VTR 6s', value: orNa(totals.vtr6s, (v) => formatPercent(v)), delta: d?.vtr6s, dir: 'up', key: 'vtr6s' },
+                { label: 'VTR 15s', value: orNa(totals.vtr15s, (v) => formatPercent(v)), delta: d?.vtr15s, dir: 'up', key: 'vtr15s' },
+                { label: 'Frequency', value: orNa(totals.frequency, (v) => `${v.toFixed(1)}×`), delta: null, dir: 'neutral', key: 'frequency' },
+                { label: 'Spend', value: money(totals.spend), delta: d?.spend, dir: 'neutral', key: 'spend' },
+              ] as const)
+            : ([
+                { label: 'Impressions', value: formatNumberCompact(totals.impressions), delta: d?.impressions, dir: 'up', key: 'impressions' },
+                { label: 'Clicks', value: formatNumberCompact(totals.clicks), delta: d?.clicks, dir: 'up', key: 'clicks' },
+                { label: 'CTR', value: orNa(totals.ctr, (v) => formatPercent(v)), delta: d?.ctr, dir: 'up', key: 'ctr' },
+                { label: 'Spend', value: money(totals.spend), delta: d?.spend, dir: 'neutral', key: 'spend' },
+                {
+                  label: northStar === NorthStar.AppInstall ? 'Installs' : 'Conversions',
+                  value: formatNumberCompact(totals.conversions),
+                  delta: d?.conversions,
+                  dir: 'up',
+                  key: 'conversions',
+                },
+                {
+                  label: northStar === NorthStar.AppInstall ? 'CPI' : 'CPA',
+                  value: orNa(totals.cpa, money),
+                  delta: d?.cpa,
+                  dir: 'down',
+                  key: 'cpa',
+                },
+                ...(totals.roas !== null
+                  ? ([
+                      {
+                        label: 'ROAS',
+                        value: `${totals.roas.toFixed(1)}×`,
+                        delta: d?.roas,
+                        dir: 'up',
+                        key: 'roas',
+                      },
+                    ] as const)
+                  : []),
+              ] as const);
 
         return (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -229,22 +268,61 @@ function Content({ data }: { data: HourlyResult }) {
           </CardBody>
         </Card>
 
-        <Card>
-          <CardHeader title="Impressions & VTR" subtitle="Impressions and 6-second view-through rate per hour" />
-          <CardBody className="pl-1 pr-3">
-            <DeliveryChart data={data.hours} />
-          </CardBody>
-        </Card>
+        {data.client.northStar === NorthStar.Vtr ? (
+          <>
+            <Card>
+              <CardHeader title="Impressions & VTR" subtitle="Impressions and 6-second view-through rate per hour" />
+              <CardBody className="pl-1 pr-3">
+                <DeliveryChart data={data.hours} />
+              </CardBody>
+            </Card>
 
-        <Card>
-          <CardHeader
-            title="View-through rate by hour"
-            subtitle="6-second vs. 15-second view-through rate"
-          />
-          <CardBody className="pl-1 pr-3">
-            <EfficiencyChart data={data.hours} currency={data.client.currency} />
-          </CardBody>
-        </Card>
+            <Card>
+              <CardHeader
+                title="View-through rate by hour"
+                subtitle="6-second vs. 15-second view-through rate"
+              />
+              <CardBody className="pl-1 pr-3">
+                <EfficiencyChart data={data.hours} currency={data.client.currency} />
+              </CardBody>
+            </Card>
+          </>
+        ) : (
+          <>
+            <Card>
+              <CardHeader
+                title={
+                  data.client.northStar === NorthStar.AppInstall
+                    ? 'Impressions & Installs'
+                    : 'Impressions & Conversions'
+                }
+                subtitle={`Impressions and ${
+                  data.client.northStar === NorthStar.AppInstall ? 'app installs' : 'conversions'
+                } per hour`}
+              />
+              <CardBody className="pl-1 pr-3">
+                <ConversionChart
+                  data={data.hours}
+                  label={data.client.northStar === NorthStar.AppInstall ? 'Installs' : 'Conversions'}
+                />
+              </CardBody>
+            </Card>
+
+            <Card>
+              <CardHeader
+                title={data.client.northStar === NorthStar.AppInstall ? 'Cost per install' : 'Cost per conversion'}
+                subtitle="Cost per outcome vs. the click-to-conversion rate, by hour"
+              />
+              <CardBody className="pl-1 pr-3">
+                <CpaChart
+                  data={data.hours}
+                  currency={data.client.currency}
+                  cpaLabel={data.client.northStar === NorthStar.AppInstall ? 'CPI' : 'CPA'}
+                />
+              </CardBody>
+            </Card>
+          </>
+        )}
 
         <Card>
           <CardHeader
@@ -268,7 +346,11 @@ function Content({ data }: { data: HourlyResult }) {
         />
         <CardBody className="px-2 py-0">
           {data.campaigns.length > 0 ? (
-            <HourlyCampaignTable campaigns={data.campaigns} currency={data.client.currency} />
+            <HourlyCampaignTable
+              campaigns={data.campaigns}
+              currency={data.client.currency}
+              northStar={data.client.northStar}
+            />
           ) : (
             <div className="px-2 py-8">
               <EmptyState

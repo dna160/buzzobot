@@ -1,4 +1,4 @@
-import type { CampaignObjective, DataSurface, EntityStatus } from '@tempo/core';
+import type { CampaignObjective, DataSurface, EntityStatus, NorthStar } from '@tempo/core';
 import type { DateRange } from '@tempo/core';
 
 /**
@@ -70,6 +70,10 @@ export interface PaidHourlyMetricDTO {
   shares: number;
   follows: number;
   profileVisits: number;
+  /** The platform-reported primary conversion event — see HourBucket. */
+  conversions: number;
+  /** Revenue/value attached to `conversions`, when the source reports one. */
+  conversionValue: number;
   /** >1 when this bucket absorbs earlier unsynced hours; not a true hour. */
   spanHours: number;
 }
@@ -108,6 +112,8 @@ export interface TenantDTO {
   currency: string;
   timezone: string;
   brandColor: string | null;
+  /** Which figure this client's dashboard/reports are built around. */
+  northStar: NorthStar;
 }
 
 export interface TikTokDataProvider {
@@ -132,8 +138,12 @@ export interface TikTokDataProvider {
 
   /** The tenant this provider's data belongs to, if it knows. */
   describeTenant?(): TenantDTO;
-  /** The date span this provider actually holds data for, if it is bounded. */
-  describeRange?(): DateRange | null;
+  /**
+   * The date span this provider actually holds data for, if it is bounded.
+   * May be async — a provider backed by a live query cannot answer this
+   * synchronously the way a provider backed by a file on disk can.
+   */
+  describeRange?(): DateRange | null | Promise<DateRange | null>;
   listAdgroups?(advertiserId: string): Promise<AdgroupDTO[]>;
   getPaidHourlyMetrics?(advertiserId: string, range: DateRange): Promise<PaidHourlyMetricDTO[]>;
 }

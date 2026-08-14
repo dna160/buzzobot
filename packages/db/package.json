@@ -21,14 +21,20 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
+    "build": "esbuild src/scripts/scheduler.ts --bundle --platform=node --format=cjs --outfile=dist/scheduler.cjs --external:pg --external:@electric-sql/pglite",
     "clean": "rm -rf dist .turbo",
-    "db:inspect": "tsx --env-file-if-exists=../../.env src/scripts/inspect-hourly.ts"
+    "db:inspect": "tsx --env-file-if-exists=../../.env src/scripts/inspect-hourly.ts",
+    "db:inspect-tempo": "tsx --env-file-if-exists=../../.env src/scripts/inspect-tempo.ts",
+    "db:sanitize": "tsx --env-file-if-exists=../../.env src/scripts/sanitize.ts",
+    "db:scheduler": "tsx --env-file-if-exists=../../.env src/scripts/scheduler.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",
     "@tempo/core": "workspace:*",
     "@tempo/tiktok": "workspace:*",
     "drizzle-orm": "^0.38.3",
+    "node-cron": "^3.0.3",
+    "pg": "^8.13.1",
     "postgres": "^3.4.5",
     "zod": "^3.24.1"
   },
@@ -36,6 +42,8 @@
     "@tempo/eslint-config": "workspace:*",
     "@tempo/tsconfig": "workspace:*",
     "@types/node": "^22.10.5",
+    "@types/node-cron": "^3.0.11",
+    "@types/pg": "^8.11.10",
     "drizzle-kit": "^0.30.1",
     "eslint": "^9.18.0",
     "tsx": "^4.19.2",

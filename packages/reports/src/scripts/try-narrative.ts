@@ -25,8 +25,9 @@ if (n.narrative.efficiency) {
   console.log(`efficiency: [${n.narrative.efficiency.finding.title}] ${n.narrative.efficiency.finding.body}`);
 }
 console.log(`\nrisks     : ${n.narrative.risks.length}`);
-for (const r of n.narrative.risks.slice(0, 3)) {
-  console.log(`  [${r.severity}] ${r.risk} → ${r.owner}`);
+for (const r of n.narrative.risks) {
+  console.log(`  [${r.severity}] ${r.risk}`);
+  console.log(`      → ${r.action}  (${r.owner})`);
 }
 console.log(`confidence: ${n.narrative.confidence}`);
 process.exit(0);

@@ -115,6 +115,8 @@ export async function upsertPaidHourlyMetrics(
       shares: m.shares,
       follows: m.follows,
       profileVisits: m.profileVisits,
+      conversions: m.conversions,
+      conversionValue: m.conversionValue,
       spanHours: m.spanHours,
     };
     const { date: _d, hour: _h, campaignId: _c, adgroupId: _a, ...updatable } = values;

@@ -44,6 +44,23 @@ export const SyncStatus = {
 } as const;
 export type SyncStatus = (typeof SyncStatus)[keyof typeof SyncStatus];
 
+/**
+ * Which figure a client's dashboard and reports are built around. Different
+ * brands buy TikTok media for fundamentally different outcomes, so the
+ * "headline" metric — and which risks/recommendations even make sense — is
+ * not universal:
+ *   VTR         — no on-platform outcome exists (e.g. offline FMCG retail);
+ *                 view-through rate is the honest proxy for attention earned.
+ *   Shop        — real TikTok Shop purchases; conversions and ROAS lead.
+ *   AppInstall  — app installs are the buyable outcome; CPI leads.
+ */
+export const NorthStar = {
+  Vtr: 'vtr',
+  Shop: 'shop',
+  AppInstall: 'app_install',
+} as const;
+export type NorthStar = (typeof NorthStar)[keyof typeof NorthStar];
+
 /** Currency codes we format for. Extend as the agency onboards new markets. */
 export const Currency = {
   USD: 'USD',

@@ -54,7 +54,12 @@ export class OpenAiCompatibleNarrativeProvider implements NarrativeProvider {
             type: 'json_schema',
             json_schema: { name: 'report_narrative', schema: NARRATIVE_JSON_SCHEMA, strict: true },
           },
-          max_tokens: 8192,
+          // Output cap only. LM Studio validates prompt_tokens + max_tokens against
+          // the loaded context window, so this must leave room for the ~6.5k-token
+          // prompt inside that window. At a 32k context this stays well clear
+          // (6.5k + 12k ≈ 19k < 32k) while giving the model far more room than the
+          // ~2.3k tokens a narrative needs plus a generous reasoning budget.
+          max_tokens: 12288,
           stream: false,
         }),
       });

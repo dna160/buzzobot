@@ -9,18 +9,31 @@ import { Button } from '@tempo/ui';
  * work (render + headless Chromium) happens server-side; this just triggers
  * the download and shows progress.
  *
- * The report covers every ingested date rather than a selected one, so it does
- * not take the view's date — an export that silently reported only the day you
- * happened to be looking at would be easy to misread.
+ * Scoped to the currently selected date's trailing 7-day window (the same
+ * "date" the dashboard's own picker resolves to) — exporting from a given day
+ * means that day and the week behind it, never the account's entire ingested
+ * history.
  */
-export function ExportHourlyReportButton({ slug, lang }: { slug: string; lang?: 'id' | 'en' }) {
+export function ExportHourlyReportButton({
+  slug,
+  lang,
+  date,
+}: {
+  slug: string;
+  lang?: 'id' | 'en';
+  /** The dashboard's currently selected/resolved date, e.g. "2026-07-31". */
+  date?: string;
+}) {
   const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle');
 
   const onClick = async () => {
     setState('loading');
     try {
-      const query = lang ? `?lang=${lang}` : '';
-      const res = await fetch(`/api/reports/${slug}${query}`);
+      const params = new URLSearchParams();
+      if (lang) params.set('lang', lang);
+      if (date) params.set('date', date);
+      const query = params.size > 0 ? `?${params.toString()}` : '';
+      const res = await fetch(`/api/reports/${slug}${query}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(`Report request failed (${res.status})`);
       const blob = await res.blob();
 

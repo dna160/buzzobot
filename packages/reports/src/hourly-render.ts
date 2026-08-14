@@ -2,6 +2,7 @@ import {
   formatCurrencyCompact,
   formatNumberCompact,
   formatPercent,
+  NorthStar,
   type Currency,
 } from '@tempo/core';
 import type { CampaignBreakdown, HourPoint, Totals } from '@tempo/db';
@@ -47,6 +48,13 @@ export function renderHourlyReportHtml(model: HourlyReportModel): string {
   const money = (v: number) => formatCurrencyCompact(Math.round(v), cur);
   const na = `<span class="na">${esc(h.notReported)}</span>`;
   const ratio = (v: number | null, fmt: (n: number) => string) => (v === null ? na : esc(fmt(v)));
+  // Which vertical this client is scored on. VTR clients have no on-platform
+  // outcome to report; Shop/App Install clients have real conversions but no
+  // view-through metric — each path reads on the figures that actually exist.
+  const isVtr = client.northStar === NorthStar.Vtr;
+  const outcomeLabel = client.northStar === NorthStar.AppInstall ? 'Installs' : 'Conversions';
+  const outcomeWord = client.northStar === NorthStar.AppInstall ? 'install' : 'conversion';
+  const cpaLabel = client.northStar === NorthStar.AppInstall ? 'CPI' : 'CPA';
   // The narrative is already resolved on the model (LLM or deterministic);
   // the renderer treats both identically.
   const a = model.narrative.narrative;
@@ -75,17 +83,30 @@ export function renderHourlyReportHtml(model: HourlyReportModel): string {
   <section class="sheet">
     ${sectionTitle('01', h.sections.summary)}
     <p class="lede">${esc(a.headline)}</p>
-    ${kpiRow([
+    ${isVtr ? kpiRow([
       { label: h.stat.impressions, value: formatNumberCompact(model.windowTotals.impressions), delta: cmp?.deltas.impressions, goodDirection: 'up', caption },
       { label: h.stat.reach, value: formatNumberCompact(model.windowTotals.reach), delta: cmp?.deltas.reach, goodDirection: 'up', caption },
       { label: h.stat.vtr6s, value: model.windowTotals.vtr6s === null ? h.notReported : formatPercent(model.windowTotals.vtr6s), delta: cmp?.deltas.vtr6s, goodDirection: 'up', caption },
       { label: h.stat.vtr15s, value: model.windowTotals.vtr15s === null ? h.notReported : formatPercent(model.windowTotals.vtr15s), delta: cmp?.deltas.vtr15s, goodDirection: 'up', caption },
+    ]) : kpiRow([
+      { label: h.stat.impressions, value: formatNumberCompact(model.windowTotals.impressions), delta: cmp?.deltas.impressions, goodDirection: 'up', caption },
+      { label: h.stat.clicks, value: formatNumberCompact(model.windowTotals.clicks), delta: cmp?.deltas.clicks, goodDirection: 'up', caption },
+      { label: h.stat.ctr, value: model.windowTotals.ctr === null ? h.notReported : formatPercent(model.windowTotals.ctr), delta: cmp?.deltas.ctr, goodDirection: 'up', caption },
+      { label: h.stat.spend, value: money(model.windowTotals.spend), delta: cmp?.deltas.spend, goodDirection: 'neutral', caption },
     ])}
-    ${kpiRow([
+    ${isVtr ? kpiRow([
       { label: h.stat.frequency, value: model.windowTotals.frequency === null ? h.notReported : `${model.windowTotals.frequency.toFixed(1)}×` },
       { label: h.stat.spend, value: money(model.windowTotals.spend), delta: cmp?.deltas.spend, goodDirection: 'neutral', caption },
       { label: h.stat.hours, value: String(model.totalHours) },
       { label: h.table.campaign, value: String(model.campaigns.length) },
+    ]) : kpiRow([
+      { label: outcomeLabel, value: formatNumberCompact(model.windowTotals.conversions), delta: cmp?.deltas.conversions, goodDirection: 'up', caption },
+      { label: cpaLabel, value: model.windowTotals.cpa === null ? h.notReported : money(model.windowTotals.cpa), delta: cmp?.deltas.cpa, goodDirection: 'down', caption },
+      { label: h.stat.hours, value: String(model.totalHours) },
+      { label: h.table.campaign, value: String(model.campaigns.length) },
+      ...(model.windowTotals.roas !== null
+        ? [{ label: 'ROAS', value: `${model.windowTotals.roas.toFixed(2)}×`, delta: cmp?.deltas.roas, goodDirection: 'up' as const, caption }]
+        : []),
     ])}
     ${dailyTrendCard(model, copy, cur)}
     ${prose([a.summaryProse])}
@@ -94,15 +115,15 @@ export function renderHourlyReportHtml(model: HourlyReportModel): string {
   <section class="sheet">
     ${sectionTitle('02', h.sections.pattern)}
     ${pacingCard(model.focus, copy)}
-    ${deliveryCard(model.focus, copy)}
+    ${deliveryCard(model.focus, copy, isVtr, outcomeLabel)}
     ${a.daypart ? findingBlock(a.daypart.finding, a.daypart.prose) : ''}
   </section>
 
   <section class="sheet">
     ${sectionTitle('03', h.sections.efficiency)}
-    ${efficiencyCard(model.focus, copy, cur)}
+    ${efficiencyCard(model.focus, copy, cur, isVtr, outcomeWord, cpaLabel)}
     ${a.efficiency ? findingBlock(a.efficiency.finding, a.efficiency.prose) : ''}
-    ${bestWorstTable(model.focus, copy, ratio, money)}
+    ${bestWorstTable(model.focus, copy, ratio, money, isVtr, cpaLabel)}
   </section>
 
   ${a.mix ? `<section class="sheet">
@@ -122,12 +143,16 @@ export function renderHourlyReportHtml(model: HourlyReportModel): string {
       '',
     )}
     ${findingBlock(a.mix.finding, a.mix.prose)}
-    ${campaignTable(model.campaigns, copy, ratio, money, false)}
+    ${campaignTable(model.campaigns, copy, ratio, money, false, isVtr, outcomeLabel, cpaLabel, outcomeWord)}
+    ${model.focusCampaigns
+      .filter((c) => c.hours.length > 0)
+      .map((c) => campaignTempoCard(c, copy, cur, isVtr))
+      .join('')}
   </section>` : ''}
 
   ${a.adgroup ? `<section class="sheet">
     ${sectionTitle('05', h.sections.adgroups)}
-    ${adgroupCards(model.campaigns, copy, money)}
+    ${adgroupCards(model.campaigns, copy, money, isVtr, outcomeLabel, cpaLabel, outcomeWord)}
     ${findingBlock(a.adgroup.finding, a.adgroup.prose)}
   </section>` : ''}
 
@@ -238,61 +263,129 @@ function pacingCard(day: HourlyReportDay, copy: ReportCopy): string {
   );
 }
 
-/** The headline chart: impressions (bars) against the 6-second VTR (line). */
-function deliveryCard(day: HourlyReportDay, copy: ReportCopy): string {
+/**
+ * The headline chart: impressions (bars) against the account's north-star
+ * outcome (line) — the 6-second VTR for a VTR client, or the raw
+ * conversion/install count for a Shop or App Install client.
+ */
+function deliveryCard(day: HourlyReportDay, copy: ReportCopy, isVtr: boolean, outcomeLabel: string): string {
   const h = copy.hourly;
   const svg = comboChart(
-    day.hours.map((x) => ({ label: hourLabel(x.hour), bar: x.impressions, line: x.vtr6s ?? 0 })),
+    day.hours.map((x) => ({
+      label: hourLabel(x.hour),
+      bar: x.impressions,
+      line: isVtr ? (x.vtr6s ?? 0) : x.conversions,
+    })),
     {
       formatBar: (v) => formatNumberCompact(v),
-      formatLine: (v) => formatPercent(v, 1),
+      formatLine: (v) => (isVtr ? formatPercent(v, 1) : formatNumberCompact(v)),
       barColor: PAID_COLOR,
       lineColor: ENG_COLOR,
       maxXLabels: 8,
     },
   );
   return chartCard(
-    `${h.chart.deliveryTitle} — ${shortDate(day.date, copy)}`,
+    `${isVtr ? h.chart.deliveryTitle : `Impressions & ${outcomeLabel}`} — ${shortDate(day.date, copy)}`,
     svg,
     legend([
       [h.chart.impressions, PAID_COLOR, 'bar'],
-      [h.chart.vtr6s, ENG_COLOR, 'line'],
+      [isVtr ? h.chart.vtr6s : outcomeLabel, ENG_COLOR, 'line'],
     ]),
   );
 }
 
-/** View quality: the 6s and 15s view-through rates side by side, by hour. */
-function efficiencyCard(day: HourlyReportDay, copy: ReportCopy, _cur: Currency): string {
+/**
+ * One campaign's hourly tempo: spend (bar) against its 6-second VTR, or its
+ * conversion/install count, whichever is this client's north star.
+ */
+function campaignTempoCard(campaign: CampaignBreakdown, copy: ReportCopy, cur: Currency, isVtr: boolean): string {
+  const h = copy.hourly;
+  const svg = comboChart(
+    campaign.hours.map((x) => ({
+      label: hourLabel(x.hour),
+      bar: x.spend,
+      line: isVtr ? (x.vtr6s ?? 0) : x.conversions,
+    })),
+    {
+      formatBar: (v) => formatCurrencyCompact(Math.round(v), cur),
+      formatLine: (v) => (isVtr ? formatPercent(v, 1) : formatNumberCompact(v)),
+      barColor: PAID_COLOR,
+      lineColor: ENG_COLOR,
+      maxXLabels: 8,
+    },
+  );
+  return chartCard(
+    campaign.name,
+    svg,
+    legend([
+      [h.stat.spend, PAID_COLOR, 'bar'],
+      [isVtr ? h.chart.vtr6s : 'Conversions', ENG_COLOR, 'line'],
+    ]),
+  );
+}
+
+/**
+ * The account's cost-efficiency lens: 6s/15s view-through rates for a VTR
+ * client, or conversion rate against cost-per-outcome for a Shop/App Install
+ * client — the same two axes the live dashboard's efficiency card plots.
+ */
+function efficiencyCard(
+  day: HourlyReportDay,
+  copy: ReportCopy,
+  _cur: Currency,
+  isVtr: boolean,
+  outcomeWord: string,
+  cpaLabel: string,
+): string {
   const h = copy.hourly;
   const pts = day.hours.filter((x) => x.impressions > 0);
+  if (isVtr) {
+    const svg = multiLineChart(
+      [
+        { points: pts.map((x) => ({ label: hourLabel(x.hour), value: x.vtr6s })), color: PAID_COLOR },
+        { points: pts.map((x) => ({ label: hourLabel(x.hour), value: x.vtr15s })), color: ENG_COLOR },
+      ],
+      { format: (v) => formatPercent(v, 1) },
+    );
+    return chartCard(
+      `${h.chart.vtrTitle} — ${shortDate(day.date, copy)}`,
+      svg,
+      legend([
+        [h.chart.vtr6s, PAID_COLOR, 'line'],
+        [h.chart.vtr15s, ENG_COLOR, 'line'],
+      ]),
+    );
+  }
   const svg = multiLineChart(
-    [
-      { points: pts.map((x) => ({ label: hourLabel(x.hour), value: x.vtr6s })), color: PAID_COLOR },
-      { points: pts.map((x) => ({ label: hourLabel(x.hour), value: x.vtr15s })), color: ENG_COLOR },
-    ],
+    [{ points: pts.map((x) => ({ label: hourLabel(x.hour), value: x.conversionRate })), color: PAID_COLOR }],
     { format: (v) => formatPercent(v, 1) },
   );
   return chartCard(
-    `${h.chart.vtrTitle} — ${shortDate(day.date, copy)}`,
+    `${outcomeWord[0]!.toUpperCase()}${outcomeWord.slice(1)} rate by hour (${cpaLabel} shown in the table below) — ${shortDate(day.date, copy)}`,
     svg,
-    legend([
-      [h.chart.vtr6s, PAID_COLOR, 'line'],
-      [h.chart.vtr15s, ENG_COLOR, 'line'],
-    ]),
+    legend([[`${outcomeWord} rate`, PAID_COLOR, 'line']]),
   );
 }
 
-/** The three cheapest and three dearest hours, side by side. */
+/**
+ * The three cheapest and three dearest hours, side by side. Ranked by CPC for
+ * a VTR client (no conversion cost exists); ranked by cost-per-outcome for a
+ * Shop/App Install client, since that is the figure that actually decides
+ * whether the hour was worth buying.
+ */
 function bestWorstTable(
   day: HourlyReportDay,
   copy: ReportCopy,
   ratio: (v: number | null, fmt: (n: number) => string) => string,
   money: (v: number) => string,
+  isVtr: boolean,
+  cpaLabel: string,
 ): string {
   const h = copy.hourly;
-  const priced = day.hours.filter((x) => x.cpc !== null && x.clicks >= 20);
+  const rankMetric = (x: HourPoint) => (isVtr ? x.cpc : x.cpa);
+  const priced = day.hours.filter((x) => rankMetric(x) !== null && x.clicks >= 20);
   if (priced.length < 4) return '';
-  const sorted = [...priced].sort((a, b) => (a.cpc ?? 0) - (b.cpc ?? 0));
+  const sorted = [...priced].sort((a, b) => (rankMetric(a) ?? 0) - (rankMetric(b) ?? 0));
   const pick = [...sorted.slice(0, 3), ...sorted.slice(-3).reverse()];
 
   const row = (x: HourPoint, rank: 'best' | 'worst') => `<tr>
@@ -300,7 +393,7 @@ function bestWorstTable(
       <td class="num">${esc(money(x.spend))}</td>
       <td class="num">${esc(formatNumberCompact(x.clicks))}</td>
       <td class="num">${ratio(x.ctr, (v) => formatPercent(v))}</td>
-      <td class="num strong">${ratio(x.cpc, money)}</td>
+      <td class="num strong">${ratio(isVtr ? x.cpc : x.cpa, money)}</td>
       <td class="num">${ratio(x.cpm, money)}</td>
       <td><span class="sev sev-${rank === 'best' ? 'low' : 'medium'}">${esc(
         rank === 'best' ? h.rankLabel.cheapest : h.rankLabel.dearest,
@@ -313,7 +406,7 @@ function bestWorstTable(
       <th class="num">${esc(h.table.spend)}</th>
       <th class="num">${esc(h.table.clicks)}</th>
       <th class="num">${esc(h.table.ctr)}</th>
-      <th class="num">${esc(h.table.cpc)}</th>
+      <th class="num">${esc(isVtr ? h.table.cpc : cpaLabel)}</th>
       <th class="num">${esc(h.table.cpm)}</th>
       <th></th>
     </tr></thead>
@@ -321,13 +414,19 @@ function bestWorstTable(
   </table>`;
 }
 
-/** Below this, a cost-per-click figure is too noisy to stand unqualified. */
-const MIN_CLICKS_FOR_CPC = 100;
+/** Below this, a view-through rate is too noisy to stand unqualified. */
+const MIN_IMPRESSIONS_FOR_VTR = 5_000;
+/** Below this, a conversion/install rate is too noisy to stand unqualified. */
+const MIN_CLICKS_FOR_RATE = 100;
 
 function adgroupCards(
   campaigns: CampaignBreakdown[],
   copy: ReportCopy,
   money: (v: number) => string,
+  isVtr: boolean,
+  outcomeLabel: string,
+  cpaLabel: string,
+  outcomeWord: string,
 ): string {
   const h = copy.hourly;
   const rows = campaigns
@@ -337,36 +436,46 @@ function adgroupCards(
 
   let anyLowVolume = false;
   const items = rows.map(({ ag, campaign }) => {
-    // A CPC computed over a handful of clicks is arithmetically real but
-    // statistically meaningless. Show it, and mark it, rather than letting it
-    // read as a solid figure next to ones backed by thousands of clicks.
-    const lowVolume = ag.totals.cpc !== null && ag.totals.clicks < MIN_CLICKS_FOR_CPC;
-    if (lowVolume) anyLowVolume = true;
+    // A VTR (or conversion rate) computed over a handful of impressions
+    // (or clicks) is arithmetically real but statistically meaningless. Show
+    // it, and mark it, rather than letting it read as a solid figure next to
+    // ones backed by far more volume.
+    const lowVolume = isVtr
+      ? ag.totals.impressions < MIN_IMPRESSIONS_FOR_VTR
+      : ag.totals.clicks < MIN_CLICKS_FOR_RATE;
+    if (isVtr) {
+      if (lowVolume && (ag.totals.vtr6s !== null || ag.totals.vtr15s !== null)) anyLowVolume = true;
+    } else if (lowVolume && ag.totals.conversionRate !== null) {
+      anyLowVolume = true;
+    }
+    const flag = (v: number | null) =>
+      v === null ? h.notReported : `${formatPercent(v)}${lowVolume ? ' *' : ''}`;
     return {
       name: ag.name,
       sub: campaign,
-      metrics: [
-        { label: h.stat.spend, value: money(ag.totals.spend) },
-        { label: h.stat.clicks, value: formatNumberCompact(ag.totals.clicks) },
-        {
-          label: h.stat.ctr,
-          value: ag.totals.ctr === null ? h.notReported : formatPercent(ag.totals.ctr),
-        },
-        {
-          label: h.stat.cpc,
-          value:
-            ag.totals.cpc === null
-              ? h.notReported
-              : `${money(ag.totals.cpc)}${lowVolume ? ' *' : ''}`,
-        },
-      ],
+      metrics: isVtr
+        ? [
+            { label: h.stat.spend, value: money(ag.totals.spend) },
+            { label: h.stat.impressions, value: formatNumberCompact(ag.totals.impressions) },
+            { label: h.stat.vtr6s, value: flag(ag.totals.vtr6s) },
+            { label: h.stat.vtr15s, value: flag(ag.totals.vtr15s) },
+          ]
+        : [
+            { label: h.stat.spend, value: money(ag.totals.spend) },
+            { label: h.stat.clicks, value: formatNumberCompact(ag.totals.clicks) },
+            { label: outcomeLabel, value: formatNumberCompact(ag.totals.conversions) },
+            { label: cpaLabel, value: ag.totals.cpa === null ? h.notReported : money(ag.totals.cpa) },
+            { label: `${outcomeWord} rate`, value: flag(ag.totals.conversionRate) },
+          ],
     };
   });
 
   return `${entityCards(items)}${
     anyLowVolume
       ? `<p class="muted small" style="margin-top:8px">${esc(
-          h.lowVolumeNote({ min: MIN_CLICKS_FOR_CPC }),
+          isVtr
+            ? h.lowVolumeNote({ min: MIN_IMPRESSIONS_FOR_VTR })
+            : `* ${outcomeWord} rate on fewer than ${MIN_CLICKS_FOR_RATE} clicks is unstable and is not used to support any recommendation.`,
         )}</p>`
       : ''
   }`;
@@ -412,6 +521,10 @@ function campaignTable(
   ratio: (v: number | null, fmt: (n: number) => string) => string,
   money: (v: number) => string,
   withAdgroups = true,
+  isVtr = true,
+  outcomeLabel = 'Conversions',
+  cpaLabel = 'CPA',
+  outcomeWord = 'conversion',
 ): string {
   const h = copy.hourly;
   const t = h.table;
@@ -427,10 +540,15 @@ function campaignTable(
       }</td>
       <td class="num">${esc(money(totals.spend))}</td>
       <td class="num">${esc(formatNumberCompact(totals.impressions))}</td>
-      <td class="num">${esc(formatNumberCompact(totals.clicks))}</td>
-      <td class="num">${ratio(totals.ctr, (v) => formatPercent(v))}</td>
-      <td class="num">${ratio(totals.cpc, money)}</td>
-      <td class="num">${ratio(totals.cpm, money)}</td>
+      ${
+        isVtr
+          ? `<td class="num strong">${ratio(totals.vtr6s, (v) => formatPercent(v))}</td>
+      <td class="num strong">${ratio(totals.vtr15s, (v) => formatPercent(v))}</td>
+      <td class="num">${ratio(totals.cpm, money)}</td>`
+          : `<td class="num">${esc(formatNumberCompact(totals.conversions))}</td>
+      <td class="num strong">${ratio(totals.cpa, money)}</td>
+      <td class="num">${ratio(totals.conversionRate, (v) => formatPercent(v))}</td>`
+      }
     </tr>`;
 
   return `<table class="data">
@@ -438,10 +556,15 @@ function campaignTable(
       <th>${esc(t.campaign)}</th>
       <th class="num">${esc(t.spend)}</th>
       <th class="num">${esc(t.impressions)}</th>
-      <th class="num">${esc(t.clicks)}</th>
-      <th class="num">${esc(t.ctr)}</th>
-      <th class="num">${esc(t.cpc)}</th>
-      <th class="num">${esc(t.cpm)}</th>
+      ${
+        isVtr
+          ? `<th class="num">${esc(t.vtr6s)}</th>
+      <th class="num">${esc(t.vtr15s)}</th>
+      <th class="num">${esc(t.cpm)}</th>`
+          : `<th class="num">${esc(outcomeLabel)}</th>
+      <th class="num">${esc(cpaLabel)}</th>
+      <th class="num">${esc(outcomeWord)} rate</th>`
+      }
     </tr></thead>
     <tbody>${campaigns
       .map(

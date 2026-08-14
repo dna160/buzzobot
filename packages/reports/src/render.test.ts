@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { NorthStar } from '@tempo/core';
 import type { DashboardData, KpiCard } from '@tempo/db';
 import { buildInsights } from './insights.js';
 import { renderReportHtml } from './render.js';
@@ -25,6 +26,7 @@ const dashboard: DashboardData = {
     brandColor: '#1FD8C7',
     currency: 'USD',
     timezone: 'UTC',
+    northStar: NorthStar.Vtr,
   },
   range: { start: '2026-06-20', end: '2026-07-19' },
   paidKpis: [

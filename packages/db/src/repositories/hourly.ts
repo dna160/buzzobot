@@ -32,8 +32,8 @@ export interface HourPoint {
   engagedView15s: number;
   engagements: number;
   /**
-   * View-through rates — the headline metric. Derived from summed totals, null
-   * when impressions are zero (never a fake 0).
+   * View-through rates — the headline metric for a 'vtr' north-star client.
+   * Derived from summed totals, null when impressions are zero (never a fake 0).
    *   vtr6s  = videoWatched6s / impressions
    *   vtr15s = engagedView15s / impressions
    */
@@ -41,11 +41,25 @@ export interface HourPoint {
   vtr15s: number | null;
   /** Impressions per person reached (impressions / reach). */
   frequency: number | null;
-  /** Cost context — derived, demoted below the view metrics. */
+  /** Cost context — derived, demoted below the view metrics for a 'vtr' client. */
   ctr: number | null;
   cpc: number | null;
   cpm: number | null;
   cpv: number | null;
+  /**
+   * The platform-reported primary conversion event — TikTok Shop purchases
+   * for a 'shop' client, app installs for an 'app_install' client. Always 0
+   * for a 'vtr' client.
+   */
+  conversions: number;
+  /** Revenue/value attached to `conversions`, when the source reports one. */
+  conversionValue: number;
+  /** Cost per conversion — the headline metric for 'shop'/'app_install'. Null when conversions is 0. */
+  cpa: number | null;
+  /** conversions / clicks — the click-to-conversion rate. Null when clicks is 0. */
+  conversionRate: number | null;
+  /** conversionValue / spend — return on ad spend. Null when spend is 0 or the source reports no value (e.g. app installs). */
+  roas: number | null;
 }
 
 export interface Totals {
@@ -64,6 +78,11 @@ export interface Totals {
   cpc: number | null;
   cpm: number | null;
   cpv: number | null;
+  conversions: number;
+  conversionValue: number;
+  cpa: number | null;
+  conversionRate: number | null;
+  roas: number | null;
 }
 
 export interface PacingPoint {
@@ -137,6 +156,9 @@ export interface Comparison {
     ctr: number | null;
     cpc: number | null;
     cpm: number | null;
+    conversions: number | null;
+    cpa: number | null;
+    roas: number | null;
   };
 }
 
@@ -176,6 +198,8 @@ interface Raw {
   videoWatched6s: number;
   engagedView15s: number;
   engagements: number;
+  conversions: number;
+  conversionValue: number;
   spanHours: number;
   campaignId: string;
   campaignName: string;
@@ -186,7 +210,7 @@ interface Raw {
 
 const zero = (): Omit<
   Totals,
-  'ctr' | 'cpc' | 'cpm' | 'cpv' | 'vtr6s' | 'vtr15s' | 'frequency'
+  'ctr' | 'cpc' | 'cpm' | 'cpv' | 'vtr6s' | 'vtr15s' | 'frequency' | 'cpa' | 'conversionRate' | 'roas'
 > => ({
   spend: 0,
   impressions: 0,
@@ -196,6 +220,8 @@ const zero = (): Omit<
   videoWatched6s: 0,
   engagedView15s: 0,
   engagements: 0,
+  conversions: 0,
+  conversionValue: 0,
 });
 
 function add(acc: ReturnType<typeof zero>, r: Raw): void {
@@ -207,12 +233,15 @@ function add(acc: ReturnType<typeof zero>, r: Raw): void {
   acc.videoWatched6s += r.videoWatched6s;
   acc.engagedView15s += r.engagedView15s;
   acc.engagements += r.engagements;
+  acc.conversions += r.conversions;
+  acc.conversionValue += r.conversionValue;
 }
 
 function finish(acc: ReturnType<typeof zero>): Totals {
   return {
     ...acc,
-    // View-through rates lead; cost ratios are kept for context.
+    // View-through rates lead for a 'vtr' client; cost ratios are kept for
+    // context there, and lead instead for a 'shop'/'app_install' client.
     vtr6s: ratio(acc.videoWatched6s, acc.impressions),
     vtr15s: ratio(acc.engagedView15s, acc.impressions),
     frequency: ratio(acc.impressions, acc.reach),
@@ -220,6 +249,9 @@ function finish(acc: ReturnType<typeof zero>): Totals {
     cpc: ratio(acc.spend, acc.clicks),
     cpm: acc.impressions > 0 ? (acc.spend / acc.impressions) * 1000 : null,
     cpv: ratio(acc.spend, acc.videoViews),
+    cpa: ratio(acc.spend, acc.conversions),
+    conversionRate: ratio(acc.conversions, acc.clicks),
+    roas: acc.spend > 0 && acc.conversionValue > 0 ? acc.conversionValue / acc.spend : null,
   };
 }
 
@@ -286,6 +318,8 @@ async function fetchRows(db: Database, clientId: string, date?: string): Promise
       videoWatched6s: paidHourlyMetrics.videoWatched6s,
       engagedView15s: paidHourlyMetrics.engagedView15s,
       engagements: paidHourlyMetrics.engagements,
+      conversions: paidHourlyMetrics.conversions,
+      conversionValue: paidHourlyMetrics.conversionValue,
       spanHours: paidHourlyMetrics.spanHours,
       campaignId: paidHourlyMetrics.campaignId,
       campaignName: campaigns.name,
@@ -383,6 +417,9 @@ export async function getHourlyDashboard(
           ctr: ratioDelta(cur.ctr, prv.ctr),
           cpc: ratioDelta(cur.cpc, prv.cpc),
           cpm: ratioDelta(cur.cpm, prv.cpm),
+          conversions: deltaPct(cur.conversions, prv.conversions),
+          cpa: ratioDelta(cur.cpa, prv.cpa),
+          roas: ratioDelta(cur.roas, prv.roas),
         },
       };
     }

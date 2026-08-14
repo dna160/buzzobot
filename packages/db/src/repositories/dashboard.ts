@@ -2,6 +2,7 @@ import { and, asc, desc, eq, gte, lte } from 'drizzle-orm';
 import {
   type DateRange,
   type MetricKey,
+  type NorthStar,
   METRICS,
   derivePaid,
   deriveOrganic,
@@ -38,6 +39,8 @@ export interface ClientSummary {
   brandColor: string | null;
   currency: string;
   timezone: string;
+  /** Which figure this client's dashboard/reports are built around. */
+  northStar: NorthStar;
 }
 
 export interface KpiCard {
@@ -113,11 +116,15 @@ export async function getClientBySlug(
       brandColor: clients.brandColor,
       currency: clients.currency,
       timezone: clients.timezone,
+      northStar: clients.northStar,
     })
     .from(clients)
     .where(eq(clients.slug, slug))
     .limit(1);
-  return row ?? null;
+  // clients.northStar is a plain text column at the storage layer (so an
+  // unrecognized value degrades gracefully instead of failing a write); the
+  // narrower NorthStar union is the application-level contract.
+  return (row as ClientSummary | undefined) ?? null;
 }
 
 export async function listClients(db: Database): Promise<ClientSummary[]> {
@@ -129,9 +136,10 @@ export async function listClients(db: Database): Promise<ClientSummary[]> {
       brandColor: clients.brandColor,
       currency: clients.currency,
       timezone: clients.timezone,
+      northStar: clients.northStar,
     })
     .from(clients)
-    .orderBy(asc(clients.name));
+    .orderBy(asc(clients.name)) as unknown as Promise<ClientSummary[]>;
 }
 
 // --- Raw fact fetchers ------------------------------------------------------

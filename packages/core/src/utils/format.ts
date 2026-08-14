@@ -17,6 +17,9 @@ const currencyFormatter = (currency: Currency, precision: number) =>
   new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency,
+    // 'narrowSymbol' renders the local symbol (IDR → "Rp", USD → "$") instead of
+    // the ISO code the en-US default would print for non-USD currencies ("IDR").
+    currencyDisplay: 'narrowSymbol',
     minimumFractionDigits: precision,
     maximumFractionDigits: precision,
   });

@@ -5,10 +5,12 @@ import { ChevronRight } from 'lucide-react';
 import { Sparkline, TBody, TD, TH, THead, TR, Table, cn } from '@tempo/ui';
 import type { CampaignBreakdown } from '@tempo/db';
 import {
+  NorthStar,
   formatCurrencyCompact,
   formatNumberCompact,
   formatPercent,
   type Currency,
+  type NorthStar as NorthStarType,
 } from '@tempo/core';
 import { orNa } from '@/lib/format-kpi';
 
@@ -16,18 +18,28 @@ import { orNa } from '@/lib/format-kpi';
  * Campaigns for the selected date, expandable to their adgroups. The sparkline
  * is the campaign's true-hour spend curve, so the shape of the day is legible
  * without opening a chart.
+ *
+ * Columns adapt to the client's north star: a conversion-goal client (Shop or
+ * App Install) adds its outcome and cost-per-outcome alongside the always-on
+ * cost columns, rather than replacing them — CPM/CPC still matter, they are
+ * just not the whole story for these clients.
  */
 export function HourlyCampaignTable({
   campaigns,
   currency,
+  northStar,
 }: {
   campaigns: CampaignBreakdown[];
   currency: string;
+  northStar: NorthStarType;
 }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const cur = currency as Currency;
   // Sub-unit precision is noise for IDR; round before formatting.
   const money = (v: number) => formatCurrencyCompact(Math.round(v), cur);
+  const showConversions = northStar !== NorthStar.Vtr;
+  const conversionLabel = northStar === NorthStar.AppInstall ? 'Installs' : 'Conversions';
+  const cpaLabel = northStar === NorthStar.AppInstall ? 'CPI' : 'CPA';
 
   const toggle = (id: string) =>
     setOpen((prev) => {
@@ -48,6 +60,8 @@ export function HourlyCampaignTable({
           <TH numeric>CTR</TH>
           <TH numeric>CPC</TH>
           <TH numeric>CPM</TH>
+          {showConversions ? <TH numeric>{conversionLabel}</TH> : null}
+          {showConversions ? <TH numeric>{cpaLabel}</TH> : null}
           <TH numeric>Hourly shape</TH>
         </TR>
       </THead>
@@ -80,6 +94,10 @@ export function HourlyCampaignTable({
                 <TD numeric>{orNa(c.totals.ctr, (v) => formatPercent(v))}</TD>
                 <TD numeric>{orNa(c.totals.cpc, money)}</TD>
                 <TD numeric>{orNa(c.totals.cpm, money)}</TD>
+                {showConversions ? (
+                  <TD numeric>{formatNumberCompact(c.totals.conversions)}</TD>
+                ) : null}
+                {showConversions ? <TD numeric>{orNa(c.totals.cpa, money)}</TD> : null}
                 <TD numeric>
                   <div className="flex justify-end">
                     <Sparkline data={c.hours.map((h) => h.spend)} width={72} height={20} />
@@ -102,6 +120,10 @@ export function HourlyCampaignTable({
                       <TD numeric>{orNa(a.totals.ctr, (v) => formatPercent(v))}</TD>
                       <TD numeric>{orNa(a.totals.cpc, money)}</TD>
                       <TD numeric>{orNa(a.totals.cpm, money)}</TD>
+                      {showConversions ? (
+                        <TD numeric>{formatNumberCompact(a.totals.conversions)}</TD>
+                      ) : null}
+                      {showConversions ? <TD numeric>{orNa(a.totals.cpa, money)}</TD> : null}
                       <TD numeric>
                         <div className="flex justify-end">
                           <Sparkline data={a.hours.map((h) => h.spend)} width={72} height={20} />

@@ -48,6 +48,12 @@ export interface HourlyReportBase {
   focus: HourlyReportDay;
   /** Campaign/adgroup breakdown aggregated across the whole window. */
   campaigns: CampaignBreakdown[];
+  /**
+   * Campaign breakdown for the focus day only, with real hour series (unlike
+   * `campaigns`, whose per-day `hours` are discarded when pooled across the
+   * window). Powers the per-campaign hourly tempo chart.
+   */
+  focusCampaigns: CampaignBreakdown[];
   /** Totals across every day in the window. */
   windowTotals: Totals;
   /** Count of true hours across the window. */
@@ -68,6 +74,9 @@ export interface HourlyReportBase {
       ctr: number | null;
       cpc: number | null;
       cpm: number | null;
+      conversions: number | null;
+      cpa: number | null;
+      roas: number | null;
     };
   } | null;
   periodLabel: string;
@@ -114,6 +123,8 @@ function poolTotals(all: readonly Totals[]): Totals {
     videoWatched6s: 0,
     engagedView15s: 0,
     engagements: 0,
+    conversions: 0,
+    conversionValue: 0,
   };
   for (const t of all) {
     acc.spend += t.spend;
@@ -124,10 +135,13 @@ function poolTotals(all: readonly Totals[]): Totals {
     acc.videoWatched6s += t.videoWatched6s;
     acc.engagedView15s += t.engagedView15s;
     acc.engagements += t.engagements;
+    acc.conversions += t.conversions;
+    acc.conversionValue += t.conversionValue;
   }
   return {
     ...acc,
-    // View-through rates lead; cost ratios kept for context (see hourly.ts).
+    // Which ratio "leads" depends on the client's north star (see hourly.ts);
+    // this pool computes all of them uniformly and lets the renderer choose.
     vtr6s: ratio(acc.videoWatched6s, acc.impressions),
     vtr15s: ratio(acc.engagedView15s, acc.impressions),
     frequency: ratio(acc.impressions, acc.reach),
@@ -135,6 +149,9 @@ function poolTotals(all: readonly Totals[]): Totals {
     cpc: ratio(acc.spend, acc.clicks),
     cpm: acc.impressions > 0 ? (acc.spend / acc.impressions) * 1000 : null,
     cpv: ratio(acc.spend, acc.videoViews),
+    cpa: ratio(acc.spend, acc.conversions),
+    conversionRate: ratio(acc.conversions, acc.clicks),
+    roas: acc.spend > 0 && acc.conversionValue > 0 ? acc.conversionValue / acc.spend : null,
   };
 }
 
@@ -173,10 +190,49 @@ function mergeCampaigns(perDay: readonly HourlyDashboardData[]): CampaignBreakdo
     .sort((a, b) => b.totals.spend - a.totals.spend);
 }
 
+/** Trailing window size, in days, when the caller doesn't ask for a different span. */
+export const DEFAULT_WINDOW_DAYS = 7;
+
+/** `iso` shifted by `delta` calendar days (negative goes back). Both ends stay 'YYYY-MM-DD'. */
+function addDays(iso: string, delta: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
+
 /**
- * Assemble an intraday report across every date the export holds. Reuses the
- * same read-model the dashboard renders, so the report cannot disagree with
- * what is on screen.
+ * Pure date-window resolution, split out from `buildHourlyReport` so the
+ * calendar arithmetic (clamping, gap-tolerance, custom window sizes) is
+ * testable without a database. `allDates` must be sorted ascending, as
+ * `listHourlyDates` already returns them.
+ *
+ * The window is a fixed calendar span ending on the resolved date (e.g. the 7
+ * calendar days Jul 25–31) — not a count of ingested days. A gap in the
+ * source (a day nothing was synced) simply means fewer entries land inside
+ * that span; the report still correctly labels the calendar period it covers.
+ */
+export function resolveReportWindow(
+  allDates: readonly string[],
+  opts: { endDate?: string; windowDays?: number } = {},
+): string[] {
+  if (allDates.length === 0) return [];
+  const windowDays = opts.windowDays ?? DEFAULT_WINDOW_DAYS;
+  // The nearest ingested date at or before the requested one — so a future
+  // date (nothing synced yet) or a gap date still resolves to real data,
+  // exactly like the dashboard's own date picker does.
+  const end =
+    [...allDates].reverse().find((d) => !opts.endDate || d <= opts.endDate) ??
+    allDates[allDates.length - 1]!;
+  const start = addDays(end, -(windowDays - 1));
+  return allDates.filter((d) => d >= start && d <= end);
+}
+
+/**
+ * Assemble an intraday report scoped to a trailing window ending on a chosen
+ * date — the same date the dashboard has selected, so exporting from a given
+ * day always means "this day and its preceding week," never the account's
+ * entire ingested history. Reuses the same read-model the dashboard renders,
+ * so the report cannot disagree with what is on screen.
  */
 export async function buildHourlyReport(
   db: Database,
@@ -184,6 +240,14 @@ export async function buildHourlyReport(
   opts: {
     generatedAt: Date;
     locale?: Locale;
+    /**
+     * The last date the report should cover. Defaults to the most recently
+     * ingested date. Clamped down to the nearest available date at or before
+     * it, so a future or gap date still resolves to something real.
+     */
+    endDate?: string;
+    /** Size of the trailing window in days, counting `endDate` itself. */
+    windowDays?: number;
     /**
      * Overrides the environment-derived narrative config, field by field. The
      * API layer passes the operator's saved Settings here so a UI-configured
@@ -195,7 +259,10 @@ export async function buildHourlyReport(
   const locale = opts.locale ?? DEFAULT_LOCALE;
   const copy = getCopy(locale);
 
-  const dates = await listHourlyDates(db, client.id);
+  const allDates = await listHourlyDates(db, client.id);
+  if (allDates.length === 0) return null;
+
+  const dates = resolveReportWindow(allDates, opts);
   if (dates.length === 0) return null;
 
   const perDay: HourlyDashboardData[] = [];
@@ -220,6 +287,7 @@ export async function buildHourlyReport(
   const windowTotals = poolTotals(days.map((d) => d.totals));
   const totalHours = days.reduce((n, d) => n + d.hours.length, 0);
   const campaigns = mergeCampaigns(perDay);
+  const focusCampaigns = perDay.find((d) => d.date === focus.date)?.campaigns ?? [];
 
   const first = dates[0]!;
   const last = dates[dates.length - 1]!;
@@ -247,6 +315,7 @@ export async function buildHourlyReport(
     days,
     focus,
     campaigns,
+    focusCampaigns,
     windowTotals,
     totalHours,
     comparison,

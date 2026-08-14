@@ -12,7 +12,7 @@ import type {
   TikTokDataProvider,
   VideoDTO,
 } from '../types.js';
-import { parseHourlyExport, type ParsedExport } from './parse.js';
+import { parseHourlyExport, type HourBucket, type ParsedExport } from './parse.js';
 
 /**
  * Serves a real brand's data from a TikTok "daily in hourly" CSV export.
@@ -25,10 +25,14 @@ export interface CsvProviderOptions {
   filePath: string;
   advertiserId: string;
   tenant: TenantDTO;
+  /** Raw metric name that feeds the generic `conversions` field, e.g. "onsite_shopping" or "app_install". */
+  conversionMetric?: string;
+  /** Raw metric name that feeds `conversionValue` (revenue), when the source reports one. */
+  conversionValueMetric?: string;
 }
 
 /** Campaign names in this export encode the objective, e.g. "… | 15s Views | …". */
-function inferObjective(name: string): CampaignObjective {
+export function inferObjective(name: string): CampaignObjective {
   const n = name.toLowerCase();
   if (n.includes('views') || n.includes('view')) return CampaignObjective.VideoViews;
   if (n.includes('reach') || n.includes('r&f')) return CampaignObjective.Reach;
@@ -72,7 +76,12 @@ export class CsvTikTokProvider implements TikTokDataProvider {
           `TikTok CSV export not found at "${path}" (from TIKTOK_CSV_PATH="${this.opts.filePath}").`,
         );
       }
-      this.parsed = parseHourlyExport(readFileSync(path, 'utf8'));
+      const extraFields: Record<string, keyof HourBucket> = {};
+      if (this.opts.conversionMetric) extraFields[this.opts.conversionMetric] = 'conversions';
+      if (this.opts.conversionValueMetric) {
+        extraFields[this.opts.conversionValueMetric] = 'conversionValue';
+      }
+      this.parsed = parseHourlyExport(readFileSync(path, 'utf8'), extraFields);
     }
     return this.parsed;
   }
@@ -145,15 +154,18 @@ export class CsvTikTokProvider implements TikTokDataProvider {
         shares: Math.round(b.shares),
         follows: Math.round(b.follows),
         profileVisits: Math.round(b.profileVisits),
+        conversions: Math.round(b.conversions),
+        conversionValue: b.conversionValue,
         spanHours: b.spanHours,
       }));
   }
 
   /**
    * Daily rollup, derived by summing this export's own hourly buckets for the
-   * campaign-level rows. `conversions`/`conversionValue` are 0 because the
-   * export carries no revenue or conversion-value column at all — the daily
-   * table is retained for continuity but the hourly grain is the real product.
+   * campaign-level rows. `conversions`/`conversionValue` are 0 unless this
+   * client's provider was configured with a conversion metric mapping (see
+   * `conversionMetric`/`conversionValueMetric`) — the daily table is retained
+   * for continuity but the hourly grain is the real product.
    */
   async getPaidDailyMetrics(_advertiserId: string, range: DateRange): Promise<PaidMetricDTO[]> {
     const acc = new Map<string, PaidMetricDTO>();
@@ -175,6 +187,8 @@ export class CsvTikTokProvider implements TikTokDataProvider {
       row.impressions += Math.round(b.impressions);
       row.clicks += Math.round(b.clicks);
       row.videoViews += Math.round(b.videoViews);
+      row.conversions += Math.round(b.conversions);
+      row.conversionValue += b.conversionValue;
       acc.set(key, row);
     }
     return [...acc.values()];

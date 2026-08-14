@@ -45,6 +45,18 @@ export const clients = pgTable(
     brandColor: text('brand_color'),
     timezone: text('timezone').notNull().default('UTC'),
     currency: text('currency').notNull().default('USD'),
+    /**
+     * Which figure this client's dashboard and reports are built around —
+     * different brands buy TikTok media for fundamentally different outcomes,
+     * and presenting the wrong headline (e.g. view-through rate for a brand
+     * whose real conversions are on TikTok Shop) would misrepresent what
+     * actually matters to them:
+     *   'vtr'         — no on-platform outcome exists (e.g. offline FMCG
+     *                    retail); view-through rate is the honest proxy.
+     *   'shop'        — real TikTok Shop purchases; conversions and ROAS lead.
+     *   'app_install'  — app installs are the buyable outcome; CPI leads.
+     */
+    northStar: text('north_star').notNull().default('vtr'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex('clients_agency_slug_uq').on(t.agencyId, t.slug)],
@@ -183,6 +195,15 @@ export const paidHourlyMetrics = pgTable(
     shares: integer('shares').notNull().default(0),
     follows: integer('follows').notNull().default(0),
     profileVisits: integer('profile_visits').notNull().default(0),
+    /**
+     * The platform-reported primary conversion event, generic across north
+     * stars: TikTok Shop purchases for a 'shop' client, app installs for an
+     * 'app_install' client. Always 0 for a 'vtr' client — no column here means
+     * "not tracked," never a fabricated zero used as a real figure.
+     */
+    conversions: integer('conversions').notNull().default(0),
+    /** Revenue/value attached to `conversions`, when the source reports one (e.g. Shop GMV). */
+    conversionValue: doublePrecision('conversion_value').notNull().default(0),
     /**
      * Hours of activity this row represents. 1 for a true hour; >1 when the
      * bucket is the first synced hour of the day and therefore absorbs every

@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import { NorthStar } from '@tempo/core';
 import type { TikTokDataProvider } from '@tempo/tiktok';
 import type { Database } from '../client.js';
 import { agencies, clients, tiktokAccounts } from '../schema.js';
@@ -22,6 +23,7 @@ const DEMO_CLIENT = {
   brandColor: '#1FD8C7',
   currency: 'USD',
   timezone: 'America/Los_Angeles',
+  northStar: NorthStar.Vtr,
 };
 
 export async function ensureDemoTenant(
@@ -41,6 +43,7 @@ export async function ensureDemoTenant(
         brandColor: declared.brandColor,
         currency: declared.currency,
         timezone: declared.timezone,
+        northStar: declared.northStar,
       }
     : DEMO_CLIENT;
 
@@ -62,6 +65,7 @@ export async function ensureDemoTenant(
         brandColor: clientValues.brandColor,
         currency: clientValues.currency,
         timezone: clientValues.timezone,
+        northStar: clientValues.northStar,
       },
     })
     .returning({ id: clients.id });

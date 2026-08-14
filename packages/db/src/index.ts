@@ -14,6 +14,8 @@ export { ingestAccount } from './ingest/pipeline.js';
 export type { IngestResult } from './ingest/pipeline.js';
 export { ensureDemoTenant, listConnectedAccounts } from './ingest/bootstrap.js';
 export type { DemoTenant } from './ingest/bootstrap.js';
+export { fetchSanitizeAndSeed } from './ingest/sanitize.js';
+export type { FetchSanitizeOptions } from './ingest/sanitize.js';
 
 export {
   getClientBySlug,
