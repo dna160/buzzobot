@@ -34,6 +34,12 @@ const ALL_HOUR_COLUMNS = Array.from({ length: 25 }, (_, i) => `h${String(i).padS
 export interface FetchSanitizeOptions {
   pgliteDir?: string;
   closeOnComplete?: boolean;
+  /**
+   * Reuse an already-open PGlite instance instead of opening one from
+   * `pgliteDir`. When provided, the caller owns its lifecycle and it is not
+   * closed here (regardless of `closeOnComplete`).
+   */
+  pglite?: PGlite;
 }
 
 export const toIsoDate = (v: unknown): string => {
