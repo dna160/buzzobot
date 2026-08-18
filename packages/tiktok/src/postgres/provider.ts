@@ -75,8 +75,17 @@ function assertSafeIdentifier(name: string): void {
   }
 }
 
+// Parse PostgreSQL DATE type (OID 1082) as plain string to avoid local timezone offset shifting dates
+pg.types.setTypeParser(1082, (val: string) => val);
+
 const toIsoDate = (v: unknown): string => {
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  if (typeof v === 'string') return v.slice(0, 10);
+  if (v instanceof Date) {
+    const year = v.getFullYear();
+    const month = String(v.getMonth() + 1).padStart(2, '0');
+    const day = String(v.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
   return String(v).slice(0, 10);
 };
 

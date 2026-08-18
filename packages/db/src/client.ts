@@ -18,6 +18,7 @@ export type DbBackend = 'postgres' | 'pglite';
 export interface DbHandle {
   db: Database;
   backend: DbBackend;
+  pglite?: PGlite;
   /** Close underlying connections/resources. */
   close: () => Promise<void>;
 }
@@ -69,6 +70,7 @@ export const getDb = (): DbHandle => {
       backend: 'postgres',
       close: async () => {
         await client.end({ timeout: 5 });
+        cached = null;
       },
     };
     return cached;
@@ -80,8 +82,10 @@ export const getDb = (): DbHandle => {
   cached = {
     db,
     backend: 'pglite',
+    pglite: client,
     close: async () => {
       await client.close();
+      cached = null;
     },
   };
   return cached;

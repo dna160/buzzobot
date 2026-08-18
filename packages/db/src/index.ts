@@ -14,8 +14,19 @@ export { ingestAccount } from './ingest/pipeline.js';
 export type { IngestResult } from './ingest/pipeline.js';
 export { ensureDemoTenant, listConnectedAccounts } from './ingest/bootstrap.js';
 export type { DemoTenant } from './ingest/bootstrap.js';
-export { fetchSanitizeAndSeed } from './ingest/sanitize.js';
+export { fetchSanitizeAndSeed, syncBrandToDomain } from './ingest/sanitize.js';
 export type { FetchSanitizeOptions } from './ingest/sanitize.js';
+export { triggerAutoSyncIfStale } from './ingest/auto-sync.js';
+export type { AutoSyncOptions } from './ingest/auto-sync.js';
+export {
+  discoverPostgresBrands,
+  discoverSanitizedBrands,
+  deriveBrandColor,
+  formatBrandName,
+  formatBrandSlug,
+  inferBrandNorthStar,
+} from './ingest/discovery.js';
+export type { DiscoveredBrand } from './ingest/discovery.js';
 
 export {
   getClientBySlug,
