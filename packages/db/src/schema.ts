@@ -120,7 +120,7 @@ export const videos = pgTable(
 export const paidDailyMetrics = pgTable(
   'paid_daily_metrics',
   {
-    date: date('date').notNull(),
+    date: date('date', { mode: 'string' }).notNull(),
     campaignId: uuid('campaign_id')
       .notNull()
       .references(() => campaigns.id, { onDelete: 'cascade' }),
@@ -166,7 +166,7 @@ export const paidHourlyMetrics = pgTable(
   'paid_hourly_metrics',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    date: date('date').notNull(),
+    date: date('date', { mode: 'string' }).notNull(),
     /** 0..23, in the advertiser account's own timezone. */
     hour: integer('hour').notNull(),
     campaignId: uuid('campaign_id')
@@ -226,7 +226,7 @@ export const paidHourlyMetrics = pgTable(
 export const organicDailyMetrics = pgTable(
   'organic_daily_metrics',
   {
-    date: date('date').notNull(),
+    date: date('date', { mode: 'string' }).notNull(),
     videoId: uuid('video_id')
       .notNull()
       .references(() => videos.id, { onDelete: 'cascade' }),
