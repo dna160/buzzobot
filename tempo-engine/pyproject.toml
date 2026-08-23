@@ -1,0 +1,76 @@
+[project]
+name = "tempo-engine"
+version = "0.1.0"
+description = "Tempo Intelligence Engine — analysis, agentic orchestration, and narrative synthesis behind Tempo Insight Engine (dna160/buzzobot)."
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.7",
+    # Read-only access to Tempo's Postgres (tempo.* boundary) and read/write
+    # access to this engine's own insight.* schema. See src/engine/ports/tempo_read.py.
+    "asyncpg>=0.29",
+    # Async HTTP client for the LM Studio OpenAI-compatible endpoint
+    # (src/engine/llm/client.py). httpx over requests because the narrators
+    # (and eventually the analyst/critic/synthesist agents) all need async
+    # calls that can run concurrently — B4's narrators are meant to be
+    # dispatched in parallel (PRD §5.3), which a sync client can't do.
+    "httpx>=0.27",
+    # B5's graph (src/engine/graphs/brief.py): durable, resumable runs and
+    # interrupt() for the human review gate (PRD §4.1 step 8, §10) — the
+    # entire reason the PRD specifies LangGraph over a plain function
+    # pipeline. langgraph-checkpoint-postgres persists graph state into the
+    # engine's own insight schema, not a separate store.
+    "langgraph>=1.2.11",
+    "langgraph-checkpoint-postgres>=3.1.2",
+    # langgraph-checkpoint-postgres depends on plain psycopg, whose default
+    # "python" implementation needs libpq installed system-wide — absent on
+    # this Windows dev machine. [binary] bundles a compiled libpq, no system
+    # install required.
+    "psycopg[binary]>=3.3.4",
+    # B6: the review API (PRD §1.1's POST /v1/briefs, GET /v1/briefs/{id},
+    # POST /v1/briefs/{id}/review) — a minimal surface living inside
+    # tempo-engine itself, not apps/web (out of scope to touch Tempo's repo).
+    "fastapi>=0.141.1",
+    "uvicorn[standard]>=0.52.4",
+    # Loads .env at API startup (src/engine/api/app.py) so the process picks
+    # up TEMPO_ENGINE_DATABASE_URL the same way scripts/bootstrap_engine_role.py
+    # already relies on .env — needed once the service is launched by a
+    # process manager (PM2) rather than a shell that already exported it.
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "hypothesis>=6.100",
+]
+
+# FastAPI and Redis (job queue) are still not added — B5's graph is invoked
+# directly from tests/scripts, not yet behind an HTTP API (that's the
+# dispatcher, PRD §12 doesn't schedule it as its own milestone but it's
+# needed before POST /v1/briefs is real). polars/pandas, numpy, scipy,
+# statsmodels remain gated on B14's advanced statistical layer per PRD §6.4
+# ("do not build these before B7").
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/engine"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "."]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.11"
