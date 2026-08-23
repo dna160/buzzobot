@@ -18,6 +18,13 @@ function resolveChromiumPath(): string | undefined {
   if (process.env.PLAYWRIGHT_CHROMIUM_PATH && existsSync(process.env.PLAYWRIGHT_CHROMIUM_PATH)) {
     return process.env.PLAYWRIGHT_CHROMIUM_PATH;
   }
+  const chromeWin = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+  if (existsSync(chromeWin)) return chromeWin;
+  const edgeWin = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+  if (existsSync(edgeWin)) return edgeWin;
+  if (process.env.PLAYWRIGHT_CHROMIUM_PATH && existsSync(process.env.PLAYWRIGHT_CHROMIUM_PATH)) {
+    return process.env.PLAYWRIGHT_CHROMIUM_PATH;
+  }
   const base = process.env.PLAYWRIGHT_BROWSERS_PATH ?? '/opt/pw-browsers';
   if (!existsSync(base)) return undefined;
   const candidates = readdirSync(base)

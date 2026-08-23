@@ -43,3 +43,11 @@ export {
   type ProbeStep,
   type ProbeConfig,
 } from './narrative/probe.js';
+
+export { BriefObjective, OBJECTIVE_NORTH_STAR, isBriefObjective } from './brief-objective.js';
+export {
+  renderEngineBriefHtml,
+  type EngineBriefContent,
+  type EngineSectionDraft,
+  type EngineRisk,
+} from './engine-brief/render.js';

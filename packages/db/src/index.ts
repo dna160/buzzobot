@@ -55,5 +55,13 @@ export type {
   Totals,
 } from './repositories/hourly.js';
 
+export { getDailyBriefDashboard, listDailyBriefDates } from './repositories/daily-brief.js';
+export type {
+  DailyBriefDashboardData,
+  DayPoint,
+  CampaignWindowRow,
+  DailyBriefComparison,
+} from './repositories/daily-brief.js';
+
 export { recentSyncRuns } from './repositories/sync.js';
 export { getSetting, setSetting, SETTINGS_KEYS } from './repositories/settings.js';

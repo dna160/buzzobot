@@ -48,6 +48,10 @@ export const resolvePgliteDir = (): string => {
   return dir;
 };
 
+const globalForDb = globalThis as unknown as {
+  __tempo_db_handle?: DbHandle | null;
+};
+
 let cached: DbHandle | null = null;
 
 /**
@@ -55,43 +59,51 @@ let cached: DbHandle | null = null;
  *  - DATABASE_URL present → Postgres (production/staging).
  *  - otherwise → embedded PGlite persisted to disk (local/demo/CI).
  *
- * The handle is memoized per process so Next.js route handlers and background
- * scripts don't each open a new pool.
+ * The handle is memoized per process (and on globalThis for Next.js Fast Refresh)
+ * so route handlers and background scripts don't open competing instances.
  */
 export const getDb = (): DbHandle => {
+  if (globalForDb.__tempo_db_handle) return globalForDb.__tempo_db_handle;
   if (cached) return cached;
 
   const url = process.env.DATABASE_URL;
   if (url) {
     const client = postgres(url, { max: 10, prepare: false });
     const db = drizzlePostgres(client, { schema });
-    cached = {
+    const handle: DbHandle = {
       db,
       backend: 'postgres',
       close: async () => {
         await client.end({ timeout: 5 });
         cached = null;
+        globalForDb.__tempo_db_handle = null;
       },
     };
-    return cached;
+    cached = handle;
+    globalForDb.__tempo_db_handle = handle;
+    return handle;
   }
 
   const dataDir = resolvePgliteDir();
   const client = new PGlite(dataDir);
   const db = drizzlePglite(client, { schema }) as unknown as Database;
-  cached = {
+  const handle: DbHandle = {
     db,
     backend: 'pglite',
     pglite: client,
     close: async () => {
       await client.close();
       cached = null;
+      globalForDb.__tempo_db_handle = null;
     },
   };
-  return cached;
+  cached = handle;
+  globalForDb.__tempo_db_handle = handle;
+  return handle;
 };
 
 /** Reset the memoized handle. Primarily for tests. */
 export const __resetDbForTests = () => {
   cached = null;
+  globalForDb.__tempo_db_handle = null;
 };

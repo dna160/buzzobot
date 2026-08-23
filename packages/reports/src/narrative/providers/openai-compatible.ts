@@ -24,10 +24,12 @@ export class OpenAiCompatibleNarrativeProvider implements NarrativeProvider {
     system,
     user,
     signal,
+    jsonSchema,
   }: {
     system: string;
     user: string;
     signal: AbortSignal;
+    jsonSchema?: { name: string; schema: Record<string, unknown> };
   }): Promise<string> {
     const url = `${this.config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
 
@@ -52,7 +54,11 @@ export class OpenAiCompatibleNarrativeProvider implements NarrativeProvider {
           // Honoured by LM Studio ≥0.3 and vLLM; harmlessly ignored elsewhere.
           response_format: {
             type: 'json_schema',
-            json_schema: { name: 'report_narrative', schema: NARRATIVE_JSON_SCHEMA, strict: true },
+            json_schema: {
+              name: jsonSchema?.name ?? 'report_narrative',
+              schema: jsonSchema?.schema ?? NARRATIVE_JSON_SCHEMA,
+              strict: true,
+            },
           },
           // Output cap only. LM Studio validates prompt_tokens + max_tokens against
           // the loaded context window, so this must leave room for the ~6.5k-token

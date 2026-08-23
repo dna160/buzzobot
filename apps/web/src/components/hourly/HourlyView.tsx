@@ -31,6 +31,7 @@ import { CpaChart } from './charts/CpaChart';
 import { DayOverDayChart } from './charts/DayOverDayChart';
 import { HourlyCampaignTable } from './HourlyCampaignTable';
 import { ExportHourlyReportButton } from './ExportHourlyReportButton';
+import { ExportDailyBriefButton } from './ExportDailyBriefButton';
 
 export function HourlyView({ slug }: { slug: string }) {
   const [date, setDate] = useState<string | undefined>(undefined);
@@ -78,6 +79,13 @@ export function HourlyView({ slug }: { slug: string }) {
           ) : null}
           <div className="mx-1 h-5 w-px bg-border" aria-hidden />
           <ExportHourlyReportButton slug={slug} date={data?.date} />
+          <ExportDailyBriefButton slug={slug} objective="awareness" date={data?.date} />
+          {data?.client.northStar === NorthStar.Shop ? (
+            <ExportDailyBriefButton slug={slug} objective="gmv" date={data?.date} />
+          ) : null}
+          {data?.client.northStar === NorthStar.AppInstall ? (
+            <ExportDailyBriefButton slug={slug} objective="install" date={data?.date} />
+          ) : null}
         </div>
       </header>
 

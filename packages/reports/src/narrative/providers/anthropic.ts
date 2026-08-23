@@ -25,10 +25,12 @@ export class AnthropicNarrativeProvider implements NarrativeProvider {
     system,
     user,
     signal,
+    jsonSchema,
   }: {
     system: string;
     user: string;
     signal: AbortSignal;
+    jsonSchema?: { name: string; schema: Record<string, unknown> };
   }): Promise<string> {
     const stream = this.client.messages.stream(
       {
@@ -38,7 +40,7 @@ export class AnthropicNarrativeProvider implements NarrativeProvider {
         thinking: { type: 'adaptive' },
         output_config: {
           effort: 'high',
-          format: { type: 'json_schema', schema: NARRATIVE_JSON_SCHEMA },
+          format: { type: 'json_schema', schema: jsonSchema?.schema ?? NARRATIVE_JSON_SCHEMA },
         },
         messages: [{ role: 'user', content: user }],
       },

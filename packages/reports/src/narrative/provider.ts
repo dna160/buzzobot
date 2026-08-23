@@ -61,5 +61,12 @@ export interface NarrativeProvider {
     system: string;
     user: string;
     signal: AbortSignal;
+    /**
+     * The JSON schema to constrain output to, when the caller wants something
+     * other than the intraday report's `NARRATIVE_JSON_SCHEMA` — the daily
+     * briefs pass their own, smaller schema here. Defaults to the intraday
+     * schema so the original call site is unaffected.
+     */
+    jsonSchema?: { name: string; schema: Record<string, unknown> };
   }): Promise<string>;
 }
