@@ -183,6 +183,15 @@ Two BAD entries — do NOT do this:
   },
 };
 
+/**
+ * The "WHY THIS BRAND" business-context block for a north star, reused verbatim
+ * by the daily-brief prompts (`daily-brief/prompt.ts`) so the same understanding
+ * of why the metric matters backs both the intraday report and the briefs.
+ */
+export function businessContextFor(northStar: NorthStar): string {
+  return NORTH_STAR_PARTS[northStar].businessContext;
+}
+
 export function systemPrompt(locale: Locale, northStar: NorthStar): string {
   const p = NORTH_STAR_PARTS[northStar];
   return `You are a senior performance-marketing analyst writing a client-facing report on TikTok advertising performance. You write in ${LANGUAGE[locale]}.

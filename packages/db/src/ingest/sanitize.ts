@@ -302,15 +302,11 @@ export async function fetchSanitizeAndSeed(options: FetchSanitizeOptions = {}) {
   let postgresPool: pg.Pool | null = null;
   let discoveredBrands: DiscoveredBrand[] = [];
 
-  const hasPgConfig = Boolean(process.env.DATABASE_URL || (host && database && user));
+  const hasPgConfig = Boolean(host && database && user);
 
   if (hasPgConfig) {
     try {
-      postgresPool = new pg.Pool(
-        process.env.DATABASE_URL
-          ? { connectionString: process.env.DATABASE_URL }
-          : { host, port, database, user, password },
-      );
+      postgresPool = new pg.Pool({ host, port, database, user, password });
       discoveredBrands = await discoverPostgresBrands(postgresPool);
     } catch (err) {
       console.warn('⚠️ Could not connect to external PostgreSQL to discover brand tables:', err);
