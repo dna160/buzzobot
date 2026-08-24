@@ -1,21 +1,24 @@
 /**
- * @tempo/reports — client-ready report generation.
+ * @tempo/reports — the Brief Deck.
  *
- * Assembles a report model from the dashboard read-model (adding auto-generated
- * narrative + a prioritized action plan) and renders it to a self-contained,
- * print-optimized HTML document. The PDF conversion itself lives in the app
- * layer (headless Chromium), keeping this package pure and testable.
+ * One landscape 16:9 deck per client per objective
+ * (docs/architecture/PRD_tempo_brief_deck.md). `buildDeckModel` is the only
+ * place engine content, read-model rows and the report spec meet;
+ * `renderDeckHtml` reads nothing but the resulting `DeckModel`. That boundary
+ * is what keeps the output format swappable — the PDF conversion itself lives
+ * in the app layer (headless Chromium), so this package stays pure.
+ *
+ * Since M7 there is nothing else here. The Phase 1.5 daily report, the hourly
+ * report document, the fact-sheet narrative stack and the report copy monolith
+ * were deleted once the deck replaced them (PRD §1, K1/K2/K3/K7).
+ *
+ * `BriefObjective` and friends come from `@tempo/core` and are re-exported so
+ * a caller that already depends on this package need not add another import.
  */
 
-export { buildReport, type ReportModel } from './model.js';
-export { renderReportHtml } from './render.js';
-export { buildInsights, type ReportInsights, type Recommendation, type Priority } from './insights.js';
+export { BriefObjective, OBJECTIVE_NORTH_STAR, NORTH_STAR_OBJECTIVE, isBriefObjective } from '@tempo/core';
 export { comboChart, type ComboPoint, type ComboOptions } from './charts.js';
-export { getCopy, isLocale, DEFAULT_LOCALE, type Locale, type ReportCopy } from './i18n.js';
 
-export { BriefObjective, OBJECTIVE_NORTH_STAR, isBriefObjective } from './brief-objective.js';
-
-// --- Brief Deck (docs/architecture/PRD_tempo_brief_deck.md) ----------------
 export {
   parseEngineContent,
   selectedFindings,

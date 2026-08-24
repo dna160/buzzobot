@@ -1,7 +1,8 @@
 /**
  * Dependency-free SVG chart generators. They return self-contained SVG strings
  * with concrete colors (no CSS variables) so they render identically in a
- * headless-Chromium PDF as in a browser. Used for the report's trend charts.
+ * headless-Chromium PDF as in a browser. Used for the deck's trend and ranking
+ * charts — the only part of the pre-Brief-Deck renderer the deck still reads.
  */
 
 const esc = (s: string): string =>
@@ -124,116 +125,6 @@ export function comboChart(points: ComboPoint[], opts: ComboOptions): string {
     parts.push(
       `<text x="${xCenter(i).toFixed(1)}" y="${height - 10}" text-anchor="middle" font-size="10" fill="${tickColor}">${esc(
         points[i]!.label,
-      )}</text>`,
-    );
-  }
-
-  parts.push('</svg>');
-  return parts.join('');
-}
-
-export interface LinePoint {
-  label: string;
-  /** Null renders a gap — an unsynced hour is not a zero. */
-  value: number | null;
-}
-
-export interface MultiLineOptions {
-  width?: number;
-  height?: number;
-  gridColor?: string;
-  axisColor?: string;
-  tickColor?: string;
-  format: (v: number) => string;
-  /** Fixed axis bound, e.g. 1 for a 0–100% share chart. */
-  max?: number;
-  maxXLabels?: number;
-}
-
-/**
- * One or more lines on a shared axis — used for the pacing chart (delivered
- * share vs. an even-pace reference). Dashed series render as the reference.
- */
-export function multiLineChart(
-  series: Array<{ points: LinePoint[]; color: string; dashed?: boolean }>,
-  opts: MultiLineOptions,
-): string {
-  const {
-    width = 720,
-    height = 220,
-    gridColor = '#E5E8EC',
-    axisColor = '#C9CED6',
-    tickColor = '#6B7280',
-    format,
-    max,
-    maxXLabels = 8,
-  } = opts;
-
-  const first = series[0]?.points ?? [];
-  if (first.length === 0) {
-    return `<svg width="${width}" height="${height}" role="img" aria-label="No data"></svg>`;
-  }
-
-  const padL = 60;
-  const padR = 16;
-  const padT = 14;
-  const padB = 30;
-  const plotW = width - padL - padR;
-  const plotH = height - padT - padB;
-
-  const observed = series.flatMap((s) => s.points.map((p) => p.value)).filter((v): v is number => v !== null);
-  const bound = max ?? niceMax(Math.max(...observed, 0));
-
-  const n = first.length;
-  const x = (i: number) => padL + (n === 1 ? plotW / 2 : (plotW / (n - 1)) * i);
-  const y = (v: number) => padT + plotH - (bound > 0 ? (v / bound) * plotH : 0);
-
-  const parts: string[] = [];
-  parts.push(
-    `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="Inter, system-ui, sans-serif">`,
-  );
-
-  const steps = 4;
-  for (let s = 0; s <= steps; s += 1) {
-    const gy = padT + (plotH / steps) * s;
-    parts.push(
-      `<line x1="${padL}" y1="${gy.toFixed(1)}" x2="${padL + plotW}" y2="${gy.toFixed(1)}" stroke="${gridColor}" stroke-width="1"/>`,
-    );
-    parts.push(
-      `<text x="${padL - 8}" y="${(gy + 3).toFixed(1)}" text-anchor="end" font-size="10" fill="${tickColor}">${esc(
-        format(bound * (1 - s / steps)),
-      )}</text>`,
-    );
-  }
-
-  for (const s of series) {
-    // Break the path at nulls so gaps stay gaps.
-    let d = '';
-    let pen = false;
-    s.points.forEach((p, i) => {
-      if (p.value === null) {
-        pen = false;
-        return;
-      }
-      d += `${pen ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.value).toFixed(1)} `;
-      pen = true;
-    });
-    parts.push(
-      `<path d="${d.trim()}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round"${
-        s.dashed ? ' stroke-dasharray="5 4" stroke-width="1.5"' : ''
-      }/>`,
-    );
-  }
-
-  parts.push(
-    `<line x1="${padL}" y1="${padT + plotH}" x2="${padL + plotW}" y2="${padT + plotH}" stroke="${axisColor}" stroke-width="1"/>`,
-  );
-  const every = Math.max(1, Math.ceil(n / maxXLabels));
-  for (let i = 0; i < n; i += 1) {
-    if (i % every !== 0 && i !== n - 1) continue;
-    parts.push(
-      `<text x="${x(i).toFixed(1)}" y="${height - 10}" text-anchor="middle" font-size="10" fill="${tickColor}">${esc(
-        first[i]!.label,
       )}</text>`,
     );
   }
