@@ -567,7 +567,7 @@
     "attempts": 0,
     "draft": {
       "headline": "Perubahan pada Sovella berasal dari komponen yang berbeda bobotnya.",
-      "summary": "Perubahan pada Sovella berasal dari komponen yang berbeda bobotnya. Belanja pada 5 adgroup entities belum menghasilkan keluaran yang tercatat. Belanja pada 5 adgroup entities belum menghasilkan keluaran yang tercatat. SOVELLA Lennon menempati porsi penting dalam hasil penjualan. Belanja tanpa hasil: Belanja pada 5 adgroup entities belum menghasilkan keluaran yang tercatat."
+      "summary": "Perubahan pada Sovella berasal dari komponen yang berbeda bobotnya. Belanja pada 5 adgroup entities belum menghasilkan keluaran yang tercatat. SOVELLA Lennon menempati porsi penting dalam hasil penjualan. Belanja tanpa hasil: Belanja pada 5 adgroup entities belum menghasilkan keluaran yang tercatat."
     },
     "fallback_reason": null,
     "source": "template"
@@ -643,7 +643,7 @@
           "g07_comparability_artifact"
         ],
         "headline": "Perubahan pada Sovella berasal dari komponen yang berbeda bobotnya.",
-        "mechanism": "Pada Sovella tercatat primary_outcome: gmv; current_value: 506.058.865,00; prior_value: 642.010.558,00; delta: -135.951.693,00. Pada Sovella tercatat outcome_metric: gmv; current_active_days: 4; prior_active_days: 7; nominal_delta_pct: -21,18."
+        "mechanism": "Pada Sovella tercatat current value 506.058.865,00; prior value 642.010.558,00; delta -135.951.693,00. Pada Sovella tercatat current active days 4; prior active days 7; nominal delta pct -21,18."
       },
       "narration_attempts": 0,
       "narration_source": "template"
@@ -663,7 +663,7 @@
           "m01_session_efficiency_leader_live_03"
         ],
         "headline": "Belanja pada 5 adgroup entities belum menghasilkan keluaran yang tercatat.",
-        "mechanism": "Pada 5 adgroup entities tercatat rule: dormant_entity; count_metric: orders; entity_count: 5; total_cost: 0,00. Iklan 19951234 \u2014 metric: cost; cohort_level: adgroup; cohort_size: 8; hhi: 0,39. Pada SOVELLA Lennon tercatat metric: gmv; cohort_level: product; cohort_size: 3; hhi: 0,33."
+        "mechanism": "Pada 5 adgroup entities tercatat entity count 5; total cost 0,00. Iklan 19951234 \u2014 cohort size 8; hhi 0,39; gini 0,71. Pada SOVELLA Lennon tercatat cohort size 3; hhi 0,33; gini 0,03."
       },
       "narration_attempts": 0,
       "narration_source": "template"
@@ -680,7 +680,7 @@
           "g02_live_03"
         ],
         "headline": "Belanja pada 5 adgroup entities belum menghasilkan keluaran yang tercatat.",
-        "mechanism": "Pada 5 adgroup entities tercatat rule: dormant_entity; count_metric: orders; entity_count: 5; total_cost: 0,00. Angka periode ini untuk Promo Special Payday Sale #2: metric: roi; value: 27,34; cohort_median: 8,82; z_score: 6,71."
+        "mechanism": "Pada 5 adgroup entities tercatat entity count 5; total cost 0,00. Angka periode ini untuk Promo Special Payday Sale #2: value 27,34; cohort median 8,82; z score 6,71."
       },
       "narration_attempts": 0,
       "narration_source": "template"
@@ -697,7 +697,7 @@
           "m04_efficiency_sku_marsha"
         ],
         "headline": "SOVELLA Lennon menempati porsi penting dalam hasil penjualan.",
-        "mechanism": "SOVELLA Lennon \u2014 gmv: 60.059.187,00; gmv_share: 0,35; product_count: 3; total_gmv: 171.177.081,00. Angka periode ini untuk SOVELLA Marsha: gmv: 52.157.191,00; roi: 8,83."
+        "mechanism": "SOVELLA Lennon \u2014 gmv 60.059.187,00; gmv share 0,35; product count 3. Angka periode ini untuk SOVELLA Marsha: gmv 52.157.191,00; roi 8,83."
       },
       "narration_attempts": 0,
       "narration_source": "template"

@@ -69,6 +69,16 @@ export interface ChartSeries {
   color: string;
   kind: 'bar' | 'line';
   values: Array<number | null>;
+  /**
+   * Which metric these values are, so a renderer can format *any* value — not
+   * only the ones in `values`. Axis ticks are computed by the chart generator
+   * and are not series members, so a pre-formatted lookup table cannot cover
+   * them: without this, a rupiah axis prints as `21000000`.
+   *
+   * Formatting from a `MetricDef` is rendering, not analysis — it stays on this
+   * side of the boundary, and a second renderer would do exactly the same.
+   */
+  metric: MetricKey;
 }
 
 export interface ChartSpec {
@@ -76,8 +86,6 @@ export interface ChartSpec {
   title: string;
   labels: string[];
   series: ChartSeries[];
-  /** Pre-formatted axis/point labels — the renderer formats nothing itself. */
-  valueLabels?: string[][];
 }
 
 export interface TableCell {

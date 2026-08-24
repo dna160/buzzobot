@@ -402,10 +402,34 @@ def _frame_copy(claim_frame: str) -> FrameCopy:
     return FRAME_COPY.get(claim_frame, _GENERIC)
 
 
-def _evidence_phrase(finding: Finding, limit: int = 4) -> str:
+# Evidence keys a client should never read: internal switches and labels that
+# repeat what the claim frame already says. Their *values* are still available
+# to the deck's evidence chips (M3) — this only governs the prose sentence.
+_PROSE_SKIP_KEYS = frozenset({"rule", "count_metric", "cohort_level", "basis", "method"})
+
+
+def _humanize_key(key: str) -> str:
+    """`total_cost` -> `total cost`. The key is a variable name, not copy; the
+    numbers are what carry the claim, so the label around them should not read
+    like a debug dump."""
+    return key.replace("_", " ")
+
+
+def _evidence_phrase(finding: Finding, limit: int = 3) -> str:
     """Evidence rendered verbatim from the finding's own dict — the reason this
-    module needs no numeral-gate pass of its own."""
-    return "; ".join(f"{k}: {format_evidence_value(v)}" for k, v in list(finding.evidence.items())[:limit])
+    module needs no numeral-gate pass of its own.
+
+    Numeric evidence comes first: a sentence that leads with `rule:
+    dormant_entity` reads like a stack trace, while the same finding leading
+    with its figures reads like an analyst. Nothing is reworded or recomputed —
+    only ordered and filtered.
+    """
+    items = [(k, v) for k, v in finding.evidence.items() if k not in _PROSE_SKIP_KEYS]
+    numeric = [(k, v) for k, v in items if isinstance(v, (int, float))]
+    chosen = (numeric or items)[:limit]
+    if not chosen:
+        return "tidak ada rincian angka tambahan"
+    return "; ".join(f"{_humanize_key(k)} {format_evidence_value(v)}" for k, v in chosen)
 
 
 def headline_for(finding: Finding) -> str:
@@ -503,5 +527,13 @@ def instant_s6_draft(findings: list[Finding], confidence_tier: Confidence) -> S6
 def instant_s1_draft(accepted_headlines: list[str]) -> S1Draft:
     """S1 introduces no claim and no number of its own — it concatenates
     headlines that already passed a gate. Identical rule to the agent path
-    (PRD §5.6), so the deck cover cannot say more than the deck proves."""
-    return deterministic_s1_draft(accepted_headlines)
+    (PRD §5.6), so the deck cover cannot say more than the deck proves.
+
+    Duplicates are dropped first. One finding can be the top-ranked material
+    for more than one section (`section_affinity` is a list), and the summary
+    repeating the same sentence three times reads as a bug to a client even
+    though every sentence in it is true.
+    """
+    seen: set[str] = set()
+    deduped = [h for h in accepted_headlines if not (h in seen or seen.add(h))]
+    return deterministic_s1_draft(deduped)

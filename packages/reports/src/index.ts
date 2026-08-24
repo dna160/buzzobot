@@ -75,6 +75,9 @@ export type {
   SectionFallback,
   Light,
 } from './deck/model.js';
+export { buildDeckModel, type BuildDeckInput } from './deck/build.js';
+export { renderDeckHtml, SLIDE_WIDTH_MM, SLIDE_HEIGHT_MM } from './deck/render.js';
+export { DECK_COPY, metricLabel, objectiveLabel, tierBadge } from './deck/copy.js';
 export { light, rowLight, deltaDirection } from './deck/lights.js';
 export { solveKpiGrid, type GridSolution } from './deck/grid.js';
 export {

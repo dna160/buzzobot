@@ -45,7 +45,20 @@ const FOOTER =
   '<span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>' +
   '</div>';
 
-export async function htmlToPdf(html: string): Promise<Buffer> {
+/**
+ * `a4` is the portrait report pipeline, unchanged: A4 pages with a Chromium-drawn
+ * page-number footer.
+ *
+ * `deck` is the Brief Deck (PRD §6): 16:9 landscape, zero margin, and
+ * `preferCSSPageSize` so the document's own `@page { size: 338.67mm 190.5mm }`
+ * is authoritative — one slide is one page, and the geometry lives with the
+ * design rather than being asserted twice. No Chromium header/footer either:
+ * the deck draws its own provenance footer inside each slide, and a second
+ * footer over a full-bleed cover would print across the artwork.
+ */
+export type PdfMode = 'a4' | 'deck';
+
+export async function htmlToPdf(html: string, mode: PdfMode = 'a4'): Promise<Buffer> {
   const executablePath = resolveChromiumPath();
   const browser = await chromium.launch({
     executablePath,
@@ -53,15 +66,25 @@ export async function htmlToPdf(html: string): Promise<Buffer> {
   });
   try {
     const page = await browser.newPage();
+    // The deck embeds every asset, so there is nothing to wait for on the
+    // network — but `networkidle` is harmless and keeps one code path.
     await page.setContent(html, { waitUntil: 'networkidle' });
-    const pdf = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      displayHeaderFooter: true,
-      headerTemplate: '<span></span>',
-      footerTemplate: FOOTER,
-      margin: { top: '10mm', bottom: '14mm', left: '0mm', right: '0mm' },
-    });
+    const pdf =
+      mode === 'deck'
+        ? await page.pdf({
+            preferCSSPageSize: true,
+            printBackground: true,
+            landscape: true,
+            margin: { top: '0mm', bottom: '0mm', left: '0mm', right: '0mm' },
+          })
+        : await page.pdf({
+            format: 'A4',
+            printBackground: true,
+            displayHeaderFooter: true,
+            headerTemplate: '<span></span>',
+            footerTemplate: FOOTER,
+            margin: { top: '10mm', bottom: '14mm', left: '0mm', right: '0mm' },
+          });
     return Buffer.from(pdf);
   } finally {
     await browser.close();

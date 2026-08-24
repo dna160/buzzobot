@@ -135,6 +135,43 @@ a browser caller must satisfy **both** the key and the origin allowlist, so a
 leaked key cannot be used from another site. An unset `REPORT_API_KEYS` fails
 closed — external access is refused rather than opened.
 
+### Brief Deck (`/api/reports/:slug/brief/:objective`)
+
+The client-facing deliverable: a landscape **16:9 deck** where every analytical
+claim is a `Finding` from the Tempo Intelligence Engine (`tempo-engine/`), and
+every number comes from the same day-grain rollup the dashboard reads.
+
+```
+GET /api/reports/cimory/brief/awareness                  → PDF (16:9, default)
+GET /api/reports/cimory/brief/gmv?format=json            → the DeckModel, for portal UI
+GET /api/reports/cimory/brief/install?format=html        → raw HTML preview
+GET /api/reports/cimory/brief/gmv?tier=full&days=14      → full agentic run
+```
+
+`tier` picks how the prose is written, never what the numbers say:
+
+| Tier | Path | Copy source | Target |
+| --- | --- | --- | --- |
+| `instant` (default) | generators → materiality, **zero model calls** | deterministic `claim_frame` templates | ≤ 10 s |
+| `full` | + probe loop → narrator → critic → synthesist | agents | ≤ 6 min |
+
+The cover badge and the footer on every slide state which tier produced the
+deck, along with the run id — so any deck can be traced back to
+`tempo-engine`'s own `/ui/briefs/{run_id}` review page in one step.
+
+Which metrics a client's deck shows is a per-client `ReportSpec` (`report_specs`),
+validated against the objective: an awareness spec containing `roas` is rejected
+with a 422 rather than quietly rendering a number that objective should not show.
+Absent a stored spec, the objective preset is used. See
+[`docs/architecture/PRD_tempo_brief_deck.md`](docs/architecture/PRD_tempo_brief_deck.md)
+and [`docs/phases/brief-deck/`](docs/phases/brief-deck/README.md).
+
+To see a deck without a database or an engine running:
+
+```bash
+pnpm --filter @tempo/reports try:deck deck.html gmv   # renders the checked-in fixture
+```
+
 ### How the hourly grain works
 
 The export's `h00..h24` columns are cumulative-since-midnight; `d00..d23` are
