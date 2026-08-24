@@ -12,6 +12,13 @@ without re-reading the entire codebase and without re-deriving decisions.
 | 1.5   | Client PDF reports           | ✅ Complete | [PHASE_1_5_PDF_REPORTS.md](./PHASE_1_5_PDF_REPORTS.md) |
 | 2     | Multi-tenant SaaS & live sync | ⏭ Planned  | (TBD)                                 |
 
+Work that spans both this repo and `tempo-engine/` is tracked as its own program rather
+than a numbered phase:
+
+| Program | Scope | Plan |
+| ------- | ----- | ---- |
+| Brief Deck | One 16:9 client deck replacing the daily/hourly/A4 reports, every claim a `Finding` | [brief-deck/](./brief-deck/README.md) |
+
 ## How to read a handover
 
 Each handover answers four questions:

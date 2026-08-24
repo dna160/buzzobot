@@ -1,10 +1,11 @@
 """The review API (PRD §1.1, B6's minimal review surface — living inside
 tempo-engine, not apps/web, since touching Tempo's repo is out of scope).
 
-    POST /v1/briefs                {client_slug, brief_type, window_days}  -> run_id, status
+    POST /v1/briefs                {client_slug, brief_type, window_days, tier}  -> run_id, status
     GET  /v1/briefs/{run_id}                                               -> status | brief content
     POST /v1/briefs/{run_id}/review {decision, notes}                      -> resumes the graph
-    POST /v1/briefs/sync           {client_slug, brief_type, window_days}  -> finished, auto-approved brief
+    POST /v1/briefs/sync           {client_slug, brief_type, window_days, tier}  -> finished, auto-approved brief
+    GET  /healthz                                                          -> liveness + last-run stats
     GET  /ui/briefs/{run_id}                                               -> human-readable review page
 
 `tenant_id` is bound the moment a run starts (from the resolved client) and
@@ -16,6 +17,11 @@ LM's brief buttons) — it runs the same graph, including the real
 `interrupt()`, and supplies an "approved" decision automatically rather
 than skipping the review step. `/v1/briefs` + `/v1/briefs/{run_id}/review`
 remain the two-step interface for a real human reviewer.
+
+`tier` (Brief Deck PRD §5) defaults to `full` here, not to the portal's own
+default of `instant`: an existing caller that never heard of tiers keeps
+getting exactly the brief it got before, and the surface states its choice
+explicitly rather than inheriting one from this file.
 """
 
 from __future__ import annotations
@@ -31,9 +37,11 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from pydantic import BaseModel
 
 from engine.api.dispatcher import BriefNotFoundError, ClientNotEligibleError, get_brief_status, resume_brief_review, run_brief_sync, start_brief_run
+from engine.contracts.content import Tier
 from engine.graphs.brief import build_brief_graph
-from engine.graphs.persistence import ensure_schema, insight_checkpointer_conninfo
+from engine.graphs.persistence import brief_stats, ensure_schema, insight_checkpointer_conninfo
 from engine.ports.tempo_read import connect
+from engine.version import ENGINE_VERSION
 
 # Windows' event loop (psycopg's async mode needs a selector-based loop;
 # uvicorn's own default hard-codes ProactorEventLoop on win32) is NOT fixed
@@ -68,6 +76,7 @@ class CreateBriefRequest(BaseModel):
     client_slug: str
     brief_type: Literal["gmv", "awareness", "install"] = "gmv"
     window_days: int = 7
+    tier: Tier = "full"
 
 
 class ReviewRequest(BaseModel):
@@ -81,6 +90,7 @@ async def create_brief(req: CreateBriefRequest, request: Request) -> dict:
         return await start_brief_run(
             graph=request.app.state.graph, read_conn=request.app.state.read_conn,
             client_slug=req.client_slug, brief_type=req.brief_type, window_days=req.window_days,
+            tier=req.tier,
         )
     except ClientNotEligibleError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -92,9 +102,36 @@ async def create_brief_sync(req: CreateBriefRequest, request: Request) -> dict:
         return await run_brief_sync(
             graph=request.app.state.graph, read_conn=request.app.state.read_conn,
             client_slug=req.client_slug, brief_type=req.brief_type, window_days=req.window_days,
+            tier=req.tier,
         )
     except ClientNotEligibleError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/healthz")
+async def healthz(request: Request) -> dict:
+    """Liveness plus the two facts the surface's engine health card needs
+    (Brief Deck PRD §7, K6): can the engine still read its own database, and
+    what happened on the last run. Never raises — an unreachable database is
+    reported as `db: false` with a 200, because a health endpoint that 500s
+    tells the card nothing it can render."""
+    db_ok = True
+    stats: dict = {"briefs_total": 0, "last_run": None}
+    try:
+        stats = await brief_stats(request.app.state.read_conn)
+    except Exception as exc:  # noqa: BLE001 - reported, never raised
+        db_ok = False
+        stats = {"briefs_total": 0, "last_run": None, "error": str(exc)[:200]}
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "engine_version": ENGINE_VERSION,
+        "content_version": 2,
+        "tiers": ["instant", "full"],
+        "probe_loop_enabled": os.environ.get("PROBE_LOOP_ENABLED", "true").strip().lower()
+        not in ("false", "0", ""),
+        "db": db_ok,
+        **stats,
+    }
 
 
 @app.get("/v1/briefs/{run_id}")

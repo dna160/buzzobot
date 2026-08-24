@@ -35,18 +35,23 @@ _CLAIM_LABELS: dict[str, str] = {
 }
 
 
-def _label_for(claim_frame: str) -> str:
+def label_for(claim_frame: str) -> str:
+    """Public since B-deck M0: the instant-tier template table (engine/copy/
+    templates.py) labels its risk rows with the same vocabulary, and two
+    drifting label maps would show up as two different words for one claim."""
     return _CLAIM_LABELS.get(claim_frame, "Temuan")
 
 
-def _format_evidence_value(value: float | int | str) -> str:
+def format_evidence_value(value: float | int | str) -> str:
+    """Public for the same reason as `label_for` — the instant tier formats
+    evidence values identically or the two paths disagree on a decimal comma."""
     if isinstance(value, float):
         return f"{value:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
     return str(value)
 
 
 def _mechanism_sentence(finding: Finding) -> str:
-    parts = [f"{k}: {_format_evidence_value(v)}" for k, v in list(finding.evidence.items())[:4]]
+    parts = [f"{k}: {format_evidence_value(v)}" for k, v in list(finding.evidence.items())[:4]]
     return f"{finding.entity.display_name} — " + "; ".join(parts) + "."
 
 
@@ -60,7 +65,7 @@ def deterministic_section_draft(findings: list[Finding], confidence_tier: Confid
         action = "Tinjau kembali pada periode pelaporan berikutnya setelah data tambahan tersedia."
     else:
         top = findings[0]
-        label = _label_for(top.claim_frame)
+        label = label_for(top.claim_frame)
         headline = f"{label}: {top.entity.display_name}."
         mechanism = " ".join(_mechanism_sentence(f) for f in findings[:3])
         evidence_refs = [f.id for f in findings[:5]]
@@ -123,7 +128,7 @@ def deterministic_s6_draft(findings: list[Finding]) -> S6Draft:
 
     risks = [
         RiskItem(
-            risk=f"{_label_for(f.claim_frame)}: {f.entity.display_name}.",
+            risk=f"{label_for(f.claim_frame)}: {f.entity.display_name}.",
             severity=_severity_for(f),
             action=f"Tinjau {f.entity.display_name} bersama tim terkait dan tentukan tindak lanjut.",
             owner="Media Buying",

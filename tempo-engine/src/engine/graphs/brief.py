@@ -6,6 +6,15 @@ tuning pass once there's a latency budget to tune against, not a B5 concern)
 agents/narrator.py, agents/critic.py) -> synthesist (S6 then S1) ->
 interrupt() -> insight.brief.
 
+Generation tiers (Brief Deck PRD §5): `tier` in the initial state picks the
+path. `full` (the default, and what every caller got before tiers existed)
+runs the graph above unchanged. `instant` routes generator_fanout ->
+materiality_router -> instant_copy -> review_gate: no probe loop, no
+narrators, no critic, no synthesist, and therefore **zero model calls**, with
+prose written from the closed `claim_frame` template table in engine/copy/.
+Both tiers pass through the same `interrupt()` review gate and produce the
+same content shape — a tier is a copy source, not a different document.
+
 Probe loop kill switch (PRD §11 risk #1, Hard Rule): `PROBE_LOOP_ENABLED`
 env var, default "true" — B7's own live exit-gate test is the evidence the
 measured yield clears the ≥0.4 bar; set to "false"/"0" to force pre-B7
@@ -37,11 +46,14 @@ from engine.agents.critic import critique_section
 from engine.agents.narrator import narrate_section
 from engine.agents.synthesist import synthesize_s1, synthesize_s6
 from engine.contracts import Finding, MetricFrame, ObjectiveContract, SectionId, SectionPayload
+from engine.copy import instant_s1_draft, instant_s6_draft, instant_section_draft
+from engine.generators.base import CoverageGap
 from engine.generators.awareness import AWARENESS_GENERATORS
 from engine.generators.base import Generator, GeneratorContext
 from engine.generators.gmv import GMV_GENERATORS
 from engine.generators.install import INSTALL_GENERATORS
 from engine.generators.shared import SHARED_GENERATORS, assess_confidence_tier
+from engine.graphs.coverage import build_coverage_audit
 from engine.llm.client import LmStudioClient
 from engine.llm.schemas import json_schema_for
 from engine.materiality import route_all_sections, score_findings
@@ -70,10 +82,13 @@ class BriefState(TypedDict, total=False):
     tenant_id: str
     brief_type: str
     run_id: str
+    tier: str  # "instant" | "full"; absent means "full" (pre-tier behaviour)
     metric_frame: dict
     objective_contract: dict
     findings: list[dict]
-    rankings: dict[str, dict]  # {"2": {"selected_ids": [...]}, ...}
+    coverage_gaps: list[dict]  # CoverageGap dumps from generators that skipped
+    coverage: dict  # CoverageAudit dump — exported at the boundary (deck PRD §3.1)
+    rankings: dict[str, dict]  # {"2": {"selected_ids": [...], "below_cut": [...]}, ...}
     section_drafts: dict[str, dict]  # {"2": {"draft": {...}, "source": "llm", ...}, ...}
     s6_result: dict
     s1_result: dict
@@ -97,8 +112,14 @@ async def generator_fanout_node(state: BriefState) -> dict[str, Any]:
     contract = ObjectiveContract.model_validate(state["objective_contract"])
     ctx = GeneratorContext(metric_frame=frame, objective_contract=contract)
     generators = GENERATORS_BY_BRIEF_TYPE[state["brief_type"]]
-    findings = [f for gen in generators for f in gen.run(ctx).findings]
-    return {"findings": [f.model_dump(mode="json") for f in findings]}
+    results = [gen.run(ctx) for gen in generators]
+    findings = [f for r in results for f in r.findings]
+    # A generator that skipped for a missing metric is evidence, not noise —
+    # it is the denominator behind "4 dari 6 sinyal tersedia" (deck PRD §4).
+    # Discarding it here is what made the old boundary unable to tell a thin
+    # period from a complete one.
+    gaps = [r.coverage_gap.model_dump(mode="json") for r in results if r.coverage_gap is not None]
+    return {"findings": [f.model_dump(mode="json") for f in findings], "coverage_gaps": gaps}
 
 
 async def probe_loop_node(state: BriefState) -> dict[str, Any]:
@@ -138,8 +159,28 @@ async def materiality_router_node(state: BriefState) -> dict[str, Any]:
     findings = [Finding.model_validate(f) for f in state["findings"]]
     scored = score_findings(findings, state["brief_type"])
     rankings = route_all_sections(scored)
-    rankings_serialized = {str(int(sid)): {"selected_ids": [f.id for f in r.selected]} for sid, r in rankings.items()}
-    return {"findings": [f.model_dump(mode="json") for f in scored], "rankings": rankings_serialized}
+    # `selected_ids` is what this graph reads back (see `_selected_findings`);
+    # `below_cut` is carried for the boundary only — PRD §6.5's "everything
+    # below the cut is the only signal that tells us the presets are wrong",
+    # which Lampiran C renders and nothing else consumes.
+    rankings_serialized = {
+        str(int(sid)): {
+            "selected_ids": [f.id for f in r.selected],
+            "below_cut": [
+                {"id": entry.finding.id, "materiality": entry.finding.materiality}
+                for entry in r.ranked
+                if not entry.included
+            ],
+        }
+        for sid, r in rankings.items()
+    }
+    gaps = [CoverageGap.model_validate(g) for g in state.get("coverage_gaps", [])]
+    coverage = build_coverage_audit(scored, gaps)
+    return {
+        "findings": [f.model_dump(mode="json") for f in scored],
+        "rankings": rankings_serialized,
+        "coverage": coverage.model_dump(mode="json"),
+    }
 
 
 def _selected_findings(state: BriefState, section_id: SectionId, findings_by_id: dict[str, Finding]) -> list[Finding]:
@@ -178,6 +219,68 @@ async def narrate_and_critique_node(state: BriefState) -> dict[str, Any]:
         }
 
     return {"section_drafts": section_drafts}
+
+
+INSTANT_SOURCE = "template"
+
+
+async def instant_copy_node(state: BriefState) -> dict[str, Any]:
+    """The instant tier's whole copy layer (PRD §5). Same section slots, same
+    S6/S1 ordering (S1 last, from accepted headlines only), same content shape
+    — written from the `claim_frame` template table instead of the narrators.
+
+    No LM Studio client is constructed here. That is the tier's contract, and
+    `tests/test_instant_tier.py` asserts it by failing the test if the client
+    is instantiated at all.
+    """
+    findings = [Finding.model_validate(f) for f in state["findings"]]
+    findings_by_id = {f.id: f for f in findings}
+    confidence_tier = assess_confidence_tier(MetricFrame.model_validate(state["metric_frame"]))
+
+    section_drafts: dict[str, dict] = {}
+    accepted_headlines: list[str] = []
+    for section_id in NARRATOR_SECTIONS:
+        selected = _selected_findings(state, section_id, findings_by_id)
+        draft = instant_section_draft(selected, confidence_tier)
+        section_drafts[str(int(section_id))] = {
+            "draft": draft.model_dump(mode="json"),
+            "narration_source": INSTANT_SOURCE,
+            "narration_attempts": 0,
+            "critic_ok": None,
+            "critic_approved": None,
+            "critic_notes": None,
+        }
+        accepted_headlines.append(draft.headline)
+
+    s6_findings = _selected_findings(state, SectionId.S6_RISK_ACTIONS_OUTLOOK, findings_by_id)
+    s6_draft = instant_s6_draft(s6_findings, confidence_tier)
+    if s6_draft.risks:
+        accepted_headlines.append(s6_draft.risks[0].risk)
+    s1_draft = instant_s1_draft(accepted_headlines)
+
+    return {
+        "section_drafts": section_drafts,
+        "s6_result": {
+            "draft": s6_draft.model_dump(mode="json"),
+            "source": INSTANT_SOURCE,
+            "attempts": 0,
+            "fallback_reason": None,
+        },
+        "s1_result": {
+            "draft": s1_draft.model_dump(mode="json"),
+            "source": INSTANT_SOURCE,
+            "attempts": 0,
+            "fallback_reason": None,
+        },
+        # The probe loop never ran; say so explicitly rather than leaving the
+        # keys absent, so the deck's provenance footer reads "0 probes" and
+        # not "unknown".
+        "probe_loop_enabled": False,
+        "probes_executed": 0,
+        "probe_yield_rate": 0.0,
+        "probe_rounds_used": 0,
+        "probe_log": [],
+    }
 
 
 async def synthesist_node(state: BriefState) -> dict[str, Any]:
@@ -236,6 +339,20 @@ async def review_gate_node(state: BriefState) -> dict[str, Any]:
     return {"review_decision": decision}
 
 
+def _is_instant(state: BriefState) -> bool:
+    return state.get("tier", "full") == "instant"
+
+
+def _route_after_generators(state: BriefState) -> str:
+    """The probe loop is an agent loop — it is the first thing the instant
+    tier skips, before materiality, so an instant run never opens a socket."""
+    return "materiality_router" if _is_instant(state) else "probe_loop"
+
+
+def _route_after_materiality(state: BriefState) -> str:
+    return "instant_copy" if _is_instant(state) else "narrate_and_critique"
+
+
 def build_brief_graph(checkpointer: object):
     graph: StateGraph[BriefState] = StateGraph(BriefState)
     graph.add_node("data_steward", data_steward_node)
@@ -243,16 +360,26 @@ def build_brief_graph(checkpointer: object):
     graph.add_node("probe_loop", probe_loop_node)
     graph.add_node("materiality_router", materiality_router_node)
     graph.add_node("narrate_and_critique", narrate_and_critique_node)
+    graph.add_node("instant_copy", instant_copy_node)
     graph.add_node("synthesist", synthesist_node)
     graph.add_node("review_gate", review_gate_node)
 
     graph.add_edge(START, "data_steward")
     graph.add_edge("data_steward", "generator_fanout")
-    graph.add_edge("generator_fanout", "probe_loop")
+    graph.add_conditional_edges(
+        "generator_fanout",
+        _route_after_generators,
+        {"probe_loop": "probe_loop", "materiality_router": "materiality_router"},
+    )
     graph.add_edge("probe_loop", "materiality_router")
-    graph.add_edge("materiality_router", "narrate_and_critique")
+    graph.add_conditional_edges(
+        "materiality_router",
+        _route_after_materiality,
+        {"narrate_and_critique": "narrate_and_critique", "instant_copy": "instant_copy"},
+    )
     graph.add_edge("narrate_and_critique", "synthesist")
     graph.add_edge("synthesist", "review_gate")
+    graph.add_edge("instant_copy", "review_gate")
     graph.add_edge("review_gate", END)
 
     return graph.compile(checkpointer=checkpointer)

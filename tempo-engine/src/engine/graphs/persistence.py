@@ -75,3 +75,27 @@ async def upsert_brief(
 async def fetch_brief(conn: asyncpg.Connection, run_id: str) -> dict | None:
     row = await conn.fetchrow("SELECT * FROM insight.brief WHERE run_id = $1", run_id)
     return dict(row) if row else None
+
+
+async def brief_stats(conn: asyncpg.Connection) -> dict:
+    """Last-run summary for `GET /healthz` (Brief Deck PRD §7, K6). The engine
+    health card that replaces the LM Studio settings UI needs to answer "is it
+    up, and did the last run finish?" — both from data the engine already
+    owns, without a second endpoint or a live LM Studio round-trip."""
+    row = await conn.fetchrow(
+        """
+        SELECT run_id, brief_type, status, content->>'tier' AS tier, updated_at
+        FROM insight.brief ORDER BY updated_at DESC LIMIT 1
+        """
+    )
+    total = await conn.fetchval("SELECT count(*) FROM insight.brief")
+    last = None
+    if row is not None:
+        last = {
+            "run_id": row["run_id"],
+            "brief_type": row["brief_type"],
+            "status": row["status"],
+            "tier": row["tier"],
+            "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+        }
+    return {"briefs_total": int(total or 0), "last_run": last}

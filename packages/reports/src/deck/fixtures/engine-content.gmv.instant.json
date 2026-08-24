@@ -1,0 +1,707 @@
+{
+  "brief_type": "gmv",
+  "content_version": 2,
+  "coverage": {
+    "active_day_coverage_pct": 57.1,
+    "assessed_confidence": "low",
+    "current_active_days": 4,
+    "generator_gaps": [
+      {
+        "generator": "G05",
+        "missing_metrics": [],
+        "reason": "no paired entity's marginal return fell outside the scale-up/scale-down band"
+      },
+      {
+        "generator": "G06",
+        "missing_metrics": [],
+        "reason": "no dimension had two value-groups with >=2 scoreable entities each"
+      },
+      {
+        "generator": "M02",
+        "missing_metrics": [],
+        "reason": "fewer than 2 products have both current- and prior-period gmv/orders"
+      },
+      {
+        "generator": "M03",
+        "missing_metrics": [
+          "gmv",
+          "roi"
+        ],
+        "reason": "fewer than 3 creator-level records with gmv and roi"
+      }
+    ],
+    "missing_preferred_metrics": [],
+    "missing_required_metrics": [],
+    "recency_lag_days": 49,
+    "signals": {
+      "2": {
+        "available": 2,
+        "total": 6
+      },
+      "3": {
+        "available": 4,
+        "total": 8
+      },
+      "4": {
+        "available": 2,
+        "total": 6
+      },
+      "5": {
+        "available": 1,
+        "total": 5
+      },
+      "6": {
+        "available": 4,
+        "total": 8
+      }
+    }
+  },
+  "engine_version": "0.1.0",
+  "findings": [
+    {
+      "actionability": "low",
+      "brief_type": "gmv",
+      "caveats": [
+        "nominal delta reads negative but the per-active-day rate is actually higher than the prior period \u2014 the sign difference is caused by active-day count alone"
+      ],
+      "claim_frame": "comparability_artifact",
+      "comparison": {
+        "baseline_value": 642010558.0,
+        "basis": "prior_period",
+        "current_value": 506058865.0,
+        "delta_abs": -135951693.0,
+        "delta_pct": -0.2117592791986452,
+        "label": "4 active days vs 7"
+      },
+      "confidence": "high",
+      "direction": "neutral",
+      "entity": {
+        "display_name": "Sovella",
+        "id": "sovella"
+      },
+      "evidence": {
+        "current_active_days": 4,
+        "current_per_day": 126514716.25,
+        "nominal_delta_pct": -21.18,
+        "outcome_metric": "gmv",
+        "per_active_day_delta_pct": 37.94,
+        "prior_active_days": 7,
+        "prior_per_day": 91715794.0
+      },
+      "generator": "G07",
+      "id": "g07_comparability_artifact",
+      "level": "account",
+      "magnitude_pct": 1.0,
+      "materiality": 0.4,
+      "origin": "generator",
+      "provenance": [
+        "account:sovella:current+prior"
+      ],
+      "section_affinity": [
+        2,
+        6
+      ],
+      "tenant_id": "sovella"
+    },
+    {
+      "actionability": "medium",
+      "brief_type": "gmv",
+      "caveats": [
+        "current period has 4 active day(s) vs 7 in the prior period \u2014 see G07 before reading this delta at face value"
+      ],
+      "claim_frame": "identity_decomposition",
+      "comparison": {
+        "baseline_value": 642010558.0,
+        "basis": "prior_period",
+        "current_value": 506058865.0,
+        "delta_abs": -135951693.0,
+        "delta_pct": -0.2117592791986452,
+        "label": null
+      },
+      "confidence": "medium",
+      "direction": "negative",
+      "entity": {
+        "display_name": "Sovella",
+        "id": "sovella"
+      },
+      "evidence": {
+        "aov_contribution": -247020272.23364872,
+        "aov_current": 172598.52148703957,
+        "aov_prior": 265953.0066280033,
+        "ctr_contribution": 49713192.325279675,
+        "ctr_current": 0.011999999427009375,
+        "ctr_prior": 0.01099999969925635,
+        "current_value": 506058865.0,
+        "cvr_contribution": 33624724.848368764,
+        "cvr_current": 0.03500017905957909,
+        "cvr_prior": 0.03299978127734033,
+        "delta": -135951693.0,
+        "impressions_contribution": 27730662.05999943,
+        "impressions_current": 6980917.0,
+        "impressions_prior": 6650182.0,
+        "primary_outcome": "gmv",
+        "prior_value": 642010558.0
+      },
+      "generator": "G01",
+      "id": "g01_identity_decomposition",
+      "level": "account",
+      "magnitude_pct": 1.0,
+      "materiality": 0.525,
+      "origin": "generator",
+      "provenance": [
+        "account:sovella:current+prior"
+      ],
+      "section_affinity": [
+        2
+      ],
+      "tenant_id": "sovella"
+    },
+    {
+      "actionability": "high",
+      "brief_type": "gmv",
+      "caveats": [],
+      "claim_frame": "efficiency_outlier_positive",
+      "comparison": {
+        "baseline_value": 8.825,
+        "basis": "cohort_median",
+        "current_value": 27.34,
+        "delta_abs": 18.515,
+        "delta_pct": 2.098016997167139,
+        "label": null
+      },
+      "confidence": "high",
+      "direction": "positive",
+      "entity": {
+        "display_name": "Promo Special Payday Sale #2",
+        "id": "live_03"
+      },
+      "evidence": {
+        "cohort_level": "session",
+        "cohort_median": 8.825,
+        "cohort_size": 8,
+        "metric": "roi",
+        "value": 27.34,
+        "z_score": 6.714
+      },
+      "generator": "G02",
+      "id": "g02_live_03",
+      "level": "session",
+      "magnitude_pct": 0.03963418458543042,
+      "materiality": 0.199083,
+      "origin": "generator",
+      "provenance": [
+        "session:live_03:current"
+      ],
+      "section_affinity": [
+        3,
+        4
+      ],
+      "tenant_id": "sovella"
+    },
+    {
+      "actionability": "medium",
+      "brief_type": "gmv",
+      "caveats": [
+        "only 3 entities in this cohort"
+      ],
+      "claim_frame": "concentration_dependency",
+      "comparison": null,
+      "confidence": "medium",
+      "direction": "neutral",
+      "entity": {
+        "display_name": "SOVELLA Lennon",
+        "id": "sku_lennon"
+      },
+      "evidence": {
+        "cohort_level": "product",
+        "cohort_size": 3,
+        "gini": 0.0308,
+        "hhi": 0.3346,
+        "metric": "gmv",
+        "top1_share": 0.3509,
+        "top1_value": 60059187.0,
+        "total": 171177081.0
+      },
+      "generator": "G03",
+      "id": "g03_product",
+      "level": "product",
+      "magnitude_pct": 0.3509,
+      "materiality": 0.310993,
+      "origin": "generator",
+      "provenance": [
+        "product:sku_lennon:current",
+        "product:sku_alexa:current",
+        "product:sku_marsha:current"
+      ],
+      "section_affinity": [
+        3,
+        6
+      ],
+      "tenant_id": "sovella"
+    },
+    {
+      "actionability": "medium",
+      "brief_type": "gmv",
+      "caveats": [],
+      "claim_frame": "concentration_dependency",
+      "comparison": null,
+      "confidence": "high",
+      "direction": "neutral",
+      "entity": {
+        "display_name": "Iklan 19951234",
+        "id": "ad_19951234"
+      },
+      "evidence": {
+        "cohort_level": "adgroup",
+        "cohort_size": 8,
+        "gini": 0.7121,
+        "hhi": 0.3942,
+        "metric": "cost",
+        "top1_share": 0.5013,
+        "top1_value": 235351.0,
+        "total": 469472.0
+      },
+      "generator": "G03",
+      "id": "g03_adgroup",
+      "level": "adgroup",
+      "magnitude_pct": 0.5013,
+      "materiality": 0.495618,
+      "origin": "generator",
+      "provenance": [
+        "adgroup:ad_19951234:current",
+        "adgroup:ad_19139345:current",
+        "adgroup:ad_49777826:current",
+        "adgroup:ad_19951250:current",
+        "adgroup:ad_69723634:current",
+        "adgroup:ad_79645698:current",
+        "adgroup:ad_46259698:current",
+        "adgroup:ad_19949954:current"
+      ],
+      "section_affinity": [
+        3,
+        6
+      ],
+      "tenant_id": "sovella"
+    },
+    {
+      "actionability": "high",
+      "brief_type": "gmv",
+      "caveats": [],
+      "claim_frame": "zero_yield_spend",
+      "comparison": null,
+      "confidence": "high",
+      "direction": "negative",
+      "entity": {
+        "display_name": "5 adgroup entities",
+        "id": "g04_dormant_entity_adgroup"
+      },
+      "evidence": {
+        "count_metric": "orders",
+        "entity_count": 5,
+        "rule": "dormant_entity",
+        "total_cost": 0.0
+      },
+      "generator": "G04",
+      "id": "g04_dormant_entity_adgroup",
+      "level": "adgroup",
+      "magnitude_pct": 0.625,
+      "materiality": 0.790569,
+      "origin": "generator",
+      "provenance": [
+        "adgroup:ad_19951250:current",
+        "adgroup:ad_69723634:current",
+        "adgroup:ad_79645698:current",
+        "adgroup:ad_46259698:current",
+        "adgroup:ad_19949954:current"
+      ],
+      "section_affinity": [
+        3,
+        4,
+        6
+      ],
+      "tenant_id": "sovella"
+    },
+    {
+      "actionability": "low",
+      "brief_type": "gmv",
+      "caveats": [],
+      "claim_frame": "data_coverage_gap",
+      "comparison": null,
+      "confidence": "low",
+      "direction": "neutral",
+      "entity": {
+        "display_name": "Sovella",
+        "id": "sovella"
+      },
+      "evidence": {
+        "active_day_coverage_pct": 57.1,
+        "assessed_confidence": "low",
+        "current_active_days": 4,
+        "missing_preferred_metrics": "none",
+        "missing_required_metrics": "none",
+        "recency_lag_days": 49
+      },
+      "generator": "G08",
+      "id": "g08_coverage_audit",
+      "level": "account",
+      "magnitude_pct": 1.0,
+      "materiality": 0.2,
+      "origin": "generator",
+      "provenance": [
+        "account:sovella:current"
+      ],
+      "section_affinity": [
+        6
+      ],
+      "tenant_id": "sovella"
+    },
+    {
+      "actionability": "high",
+      "brief_type": "gmv",
+      "caveats": [
+        "session duration is not available in the source data \u2014 this ranks ROI and views->orders efficiency only"
+      ],
+      "claim_frame": "session_efficiency_leader",
+      "comparison": {
+        "baseline_value": 8.825,
+        "basis": "cohort_median",
+        "current_value": 27.34,
+        "delta_abs": 18.515,
+        "delta_pct": 2.098016997167139,
+        "label": null
+      },
+      "confidence": "medium",
+      "direction": "positive",
+      "entity": {
+        "display_name": "Promo Special Payday Sale #2",
+        "id": "live_03"
+      },
+      "evidence": {
+        "cohort_median_roi": 8.825,
+        "orders_per_1000_views": 9.89,
+        "roi": 27.34
+      },
+      "generator": "M01",
+      "id": "m01_session_efficiency_leader_live_03",
+      "level": "session",
+      "magnitude_pct": 0.05,
+      "materiality": 0.167705,
+      "origin": "generator",
+      "provenance": [
+        "session:live_03:current"
+      ],
+      "section_affinity": [
+        3
+      ],
+      "tenant_id": "sovella"
+    },
+    {
+      "actionability": "high",
+      "brief_type": "gmv",
+      "caveats": [
+        "session duration is not available in the source data \u2014 this ranks ROI and views->orders efficiency only"
+      ],
+      "claim_frame": "session_efficiency_laggard",
+      "comparison": {
+        "baseline_value": 8.825,
+        "basis": "cohort_median",
+        "current_value": 5.99,
+        "delta_abs": -2.834999999999999,
+        "delta_pct": -0.32124645892351267,
+        "label": null
+      },
+      "confidence": "medium",
+      "direction": "negative",
+      "entity": {
+        "display_name": "Harga Special Hanya Di Live #2",
+        "id": "live_04"
+      },
+      "evidence": {
+        "cohort_median_roi": 8.825,
+        "orders_per_1000_views": 7.9,
+        "roi": 5.99
+      },
+      "generator": "M01",
+      "id": "m01_session_efficiency_laggard_live_04",
+      "level": "session",
+      "magnitude_pct": 0.05,
+      "materiality": 0.167705,
+      "origin": "generator",
+      "provenance": [
+        "session:live_04:current"
+      ],
+      "section_affinity": [
+        3
+      ],
+      "tenant_id": "sovella"
+    },
+    {
+      "actionability": "medium",
+      "brief_type": "gmv",
+      "caveats": [
+        "computed from current-period GMV share only \u2014 no SKU launch-date data exists to compute a true new-vs-mature lifecycle split"
+      ],
+      "claim_frame": "sku_lifecycle_contribution",
+      "comparison": {
+        "baseline_value": 57059027.0,
+        "basis": "account_baseline",
+        "current_value": 60059187.0,
+        "delta_abs": 3000160.0,
+        "delta_pct": null,
+        "label": "vs. even split across products"
+      },
+      "confidence": "medium",
+      "direction": "neutral",
+      "entity": {
+        "display_name": "SOVELLA Lennon",
+        "id": "sku_lennon"
+      },
+      "evidence": {
+        "gmv": 60059187.0,
+        "gmv_share": 0.3509,
+        "product_count": 3,
+        "roi": 7.93,
+        "total_gmv": 171177081.0
+      },
+      "generator": "M04",
+      "id": "m04_contribution_sku_lennon",
+      "level": "product",
+      "magnitude_pct": 0.3509,
+      "materiality": 0.310993,
+      "origin": "generator",
+      "provenance": [
+        "product:sku_lennon:current"
+      ],
+      "section_affinity": [
+        5
+      ],
+      "tenant_id": "sovella"
+    },
+    {
+      "actionability": "medium",
+      "brief_type": "gmv",
+      "caveats": [],
+      "claim_frame": "sku_lifecycle_contribution",
+      "comparison": null,
+      "confidence": "medium",
+      "direction": "positive",
+      "entity": {
+        "display_name": "SOVELLA Marsha",
+        "id": "sku_marsha"
+      },
+      "evidence": {
+        "gmv": 52157191.0,
+        "roi": 8.83
+      },
+      "generator": "M04",
+      "id": "m04_efficiency_sku_marsha",
+      "level": "product",
+      "magnitude_pct": 0.3046972801224482,
+      "materiality": 0.289797,
+      "origin": "generator",
+      "provenance": [
+        "product:sku_marsha:current"
+      ],
+      "section_affinity": [
+        5
+      ],
+      "tenant_id": "sovella"
+    }
+  ],
+  "probe_loop": {
+    "enabled": false,
+    "log": [],
+    "probes_executed": 0,
+    "rounds_used": 0,
+    "yield_rate": 0.0
+  },
+  "rankings": {
+    "2": {
+      "below_cut": [],
+      "selected": [
+        "g01_identity_decomposition",
+        "g07_comparability_artifact"
+      ]
+    },
+    "3": {
+      "below_cut": [
+        {
+          "id": "m01_session_efficiency_laggard_live_04",
+          "materiality": 0.167705
+        }
+      ],
+      "selected": [
+        "g04_dormant_entity_adgroup",
+        "g03_adgroup",
+        "g03_product",
+        "g02_live_03",
+        "m01_session_efficiency_leader_live_03"
+      ]
+    },
+    "4": {
+      "below_cut": [],
+      "selected": [
+        "g04_dormant_entity_adgroup",
+        "g02_live_03"
+      ]
+    },
+    "5": {
+      "below_cut": [],
+      "selected": [
+        "m04_contribution_sku_lennon",
+        "m04_efficiency_sku_marsha"
+      ]
+    },
+    "6": {
+      "below_cut": [],
+      "selected": [
+        "g04_dormant_entity_adgroup",
+        "g03_adgroup",
+        "g07_comparability_artifact",
+        "g03_product",
+        "g08_coverage_audit"
+      ]
+    }
+  },
+  "s1": {
+    "attempts": 0,
+    "draft": {
+      "headline": "Perubahan pada Sovella berasal dari komponen yang berbeda bobotnya.",
+      "summary": "Perubahan pada Sovella berasal dari komponen yang berbeda bobotnya. Belanja pada 5 adgroup entities belum menghasilkan keluaran yang tercatat. Belanja pada 5 adgroup entities belum menghasilkan keluaran yang tercatat. SOVELLA Lennon menempati porsi penting dalam hasil penjualan. Belanja tanpa hasil: Belanja pada 5 adgroup entities belum menghasilkan keluaran yang tercatat."
+    },
+    "fallback_reason": null,
+    "source": "template"
+  },
+  "s6": {
+    "attempts": 0,
+    "draft": {
+      "confidence": "low",
+      "outlook": [
+        "Proyeksi disusun dari temuan periode ini saja, tanpa asumsi tambahan di luar data."
+      ],
+      "risks": [
+        {
+          "action": "Hentikan 5 adgroup entities sementara sampai penyebab nol hasil ditemukan.",
+          "evidence_refs": [
+            "g04_dormant_entity_adgroup"
+          ],
+          "owner": "Media Buying",
+          "risk": "Belanja tanpa hasil: Belanja pada 5 adgroup entities belum menghasilkan keluaran yang tercatat.",
+          "severity": "high"
+        },
+        {
+          "action": "Siapkan cadangan di luar Iklan 19951234 agar hasil tidak bergantung pada satu sumber.",
+          "evidence_refs": [
+            "g03_adgroup"
+          ],
+          "owner": "Media Buying",
+          "risk": "Konsentrasi/ketergantungan: Hasil periode ini bertumpu pada Iklan 19951234.",
+          "severity": "high"
+        },
+        {
+          "action": "Samakan rentang hari aktif sebelum membandingkan Sovella antar periode.",
+          "evidence_refs": [
+            "g07_comparability_artifact"
+          ],
+          "owner": "Media Buying",
+          "risk": "Perbandingan periode perlu konteks: Panjang periode aktif Sovella tidak sama antar periode.",
+          "severity": "high"
+        },
+        {
+          "action": "Uji satu kampanye pendamping agar beban tidak seluruhnya di SOVELLA Lennon.",
+          "evidence_refs": [
+            "g03_product"
+          ],
+          "owner": "Media Buying",
+          "risk": "Konsentrasi/ketergantungan: Ketergantungan pada SOVELLA Lennon tinggi periode ini.",
+          "severity": "medium"
+        },
+        {
+          "action": "Pastikan sinkronisasi data berjalan penuh sebelum periode berikutnya.",
+          "evidence_refs": [
+            "g08_coverage_audit"
+          ],
+          "owner": "Media Buying",
+          "risk": "Cakupan data: Cakupan data periode ini membatasi sebagian analisis Sovella.",
+          "severity": "high"
+        }
+      ]
+    },
+    "fallback_reason": null,
+    "source": "template"
+  },
+  "sections": {
+    "2": {
+      "critic_approved": null,
+      "critic_notes": null,
+      "critic_ok": null,
+      "draft": {
+        "action": "Fokuskan pengungkit pada komponen dengan kontribusi terbesar di Sovella.",
+        "confidence": "low",
+        "evidence_refs": [
+          "g01_identity_decomposition",
+          "g07_comparability_artifact"
+        ],
+        "headline": "Perubahan pada Sovella berasal dari komponen yang berbeda bobotnya.",
+        "mechanism": "Pada Sovella tercatat primary_outcome: gmv; current_value: 506.058.865,00; prior_value: 642.010.558,00; delta: -135.951.693,00. Pada Sovella tercatat outcome_metric: gmv; current_active_days: 4; prior_active_days: 7; nominal_delta_pct: -21,18."
+      },
+      "narration_attempts": 0,
+      "narration_source": "template"
+    },
+    "3": {
+      "critic_approved": null,
+      "critic_notes": null,
+      "critic_ok": null,
+      "draft": {
+        "action": "Hentikan 5 adgroup entities sementara sampai penyebab nol hasil ditemukan.",
+        "confidence": "low",
+        "evidence_refs": [
+          "g04_dormant_entity_adgroup",
+          "g03_adgroup",
+          "g03_product",
+          "g02_live_03",
+          "m01_session_efficiency_leader_live_03"
+        ],
+        "headline": "Belanja pada 5 adgroup entities belum menghasilkan keluaran yang tercatat.",
+        "mechanism": "Pada 5 adgroup entities tercatat rule: dormant_entity; count_metric: orders; entity_count: 5; total_cost: 0,00. Iklan 19951234 \u2014 metric: cost; cohort_level: adgroup; cohort_size: 8; hhi: 0,39. Pada SOVELLA Lennon tercatat metric: gmv; cohort_level: product; cohort_size: 3; hhi: 0,33."
+      },
+      "narration_attempts": 0,
+      "narration_source": "template"
+    },
+    "4": {
+      "critic_approved": null,
+      "critic_notes": null,
+      "critic_ok": null,
+      "draft": {
+        "action": "Hentikan 5 adgroup entities sementara sampai penyebab nol hasil ditemukan.",
+        "confidence": "low",
+        "evidence_refs": [
+          "g04_dormant_entity_adgroup",
+          "g02_live_03"
+        ],
+        "headline": "Belanja pada 5 adgroup entities belum menghasilkan keluaran yang tercatat.",
+        "mechanism": "Pada 5 adgroup entities tercatat rule: dormant_entity; count_metric: orders; entity_count: 5; total_cost: 0,00. Angka periode ini untuk Promo Special Payday Sale #2: metric: roi; value: 27,34; cohort_median: 8,82; z_score: 6,71."
+      },
+      "narration_attempts": 0,
+      "narration_source": "template"
+    },
+    "5": {
+      "critic_approved": null,
+      "critic_notes": null,
+      "critic_ok": null,
+      "draft": {
+        "action": "Dorong SOVELLA Lennon pada materi iklan periode berikutnya.",
+        "confidence": "low",
+        "evidence_refs": [
+          "m04_contribution_sku_lennon",
+          "m04_efficiency_sku_marsha"
+        ],
+        "headline": "SOVELLA Lennon menempati porsi penting dalam hasil penjualan.",
+        "mechanism": "SOVELLA Lennon \u2014 gmv: 60.059.187,00; gmv_share: 0,35; product_count: 3; total_gmv: 171.177.081,00. Angka periode ini untuk SOVELLA Marsha: gmv: 52.157.191,00; roi: 8,83."
+      },
+      "narration_attempts": 0,
+      "narration_source": "template"
+    }
+  },
+  "tier": "instant"
+}

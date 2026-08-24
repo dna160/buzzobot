@@ -1,6 +1,12 @@
 """Brief lifecycle: start a run through the graph up to the review
 interrupt, resume it with a human decision. PRD §1.1's interface, minus
 onboarding/trace (not built — B12/probe-trace territory).
+
+Content v2 (Brief Deck PRD §3.1): `_content_from_state` exports the run's
+whole analytical state — findings, rankings including everything below the
+cut, the coverage audit, the probe log — not the four narrated keys v1
+exported. The projection into slides is `buildDeckModel`'s job on the
+TypeScript side; this boundary chooses nothing.
 """
 
 from __future__ import annotations
@@ -12,9 +18,11 @@ import asyncpg
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 
+from engine.contracts.content import BriefContentV2, CoverageAudit, ProbeLoopExport, SectionEntry, SectionRankingExport, SynthesisEntry, Tier
 from engine.contracts.presets import OBJECTIVE_CONTRACTS
 from engine.graphs.persistence import fetch_brief, upsert_brief
 from engine.ports.tempo_read import build_awareness_metric_frame, build_gmv_metric_frame, build_install_metric_frame
+from engine.version import ENGINE_VERSION
 
 # One live-Tempo adapter per brief type — mirrors GENERATORS_BY_BRIEF_TYPE
 # in graphs/brief.py, same reasoning: every brief type is a peer, none is
@@ -36,18 +44,46 @@ class ClientNotEligibleError(Exception):
 
 
 def _content_from_state(state: dict) -> dict:
-    return {
-        "s1": state.get("s1_result"),
-        "sections": state.get("section_drafts"),
-        "s6": state.get("s6_result"),
-        "probe_loop": {
-            "enabled": state.get("probe_loop_enabled"),
-            "probes_executed": state.get("probes_executed"),
-            "yield_rate": state.get("probe_yield_rate"),
-            "rounds_used": state.get("probe_rounds_used"),
-            "log": state.get("probe_log"),
-        },
+    """Widened in Brief Deck M0. Every v1 key keeps its name and shape, so a
+    caller reading `content["s1"]` is unaffected; `content_version` is how a
+    caller knows the rest is there.
+
+    `tier` and `brief_type` are read back out of the graph state rather than
+    passed in, so a resumed run reports the tier it actually ran under even
+    though the resume call carries only a decision.
+    """
+    tier: Tier = "instant" if state.get("tier") == "instant" else "full"
+    brief_type = str(state.get("brief_type", ""))
+    rankings = {
+        section_id: SectionRankingExport(
+            selected=entry.get("selected_ids", []),
+            below_cut=entry.get("below_cut", []),
+        )
+        for section_id, entry in (state.get("rankings") or {}).items()
     }
+    coverage_dump = state.get("coverage")
+    content = BriefContentV2(
+        tier=tier,
+        engine_version=ENGINE_VERSION,
+        brief_type=brief_type,
+        s1=SynthesisEntry.model_validate(state["s1_result"]) if state.get("s1_result") else None,
+        sections={
+            section_id: SectionEntry.model_validate(entry)
+            for section_id, entry in (state.get("section_drafts") or {}).items()
+        },
+        s6=SynthesisEntry.model_validate(state["s6_result"]) if state.get("s6_result") else None,
+        findings=state.get("findings") or [],
+        rankings=rankings,
+        coverage=CoverageAudit.model_validate(coverage_dump) if coverage_dump else None,
+        probe_loop=ProbeLoopExport(
+            enabled=bool(state.get("probe_loop_enabled", False)),
+            probes_executed=int(state.get("probes_executed", 0) or 0),
+            yield_rate=float(state.get("probe_yield_rate", 0.0) or 0.0),
+            rounds_used=int(state.get("probe_rounds_used", 0) or 0),
+            log=state.get("probe_log") or [],
+        ),
+    )
+    return content.model_dump(mode="json")
 
 
 async def start_brief_run(
@@ -58,6 +94,7 @@ async def start_brief_run(
     brief_type: str,
     window_days: int = 7,
     end_date: date | None = None,
+    tier: Tier = "full",
 ) -> dict:
     build_frame = _FRAME_BUILDERS.get(brief_type)
     if build_frame is None:
@@ -77,6 +114,7 @@ async def start_brief_run(
         "run_id": run_id,
         "metric_frame": frame.model_dump(mode="json"),
         "objective_contract": OBJECTIVE_CONTRACTS[brief_type].model_dump(mode="json"),
+        "tier": tier,
     }
     result = await graph.ainvoke(initial_state, config=config)
 
@@ -84,7 +122,7 @@ async def start_brief_run(
         read_conn, run_id=run_id, tenant_id=frame.tenant_id, brief_type=brief_type,
         status="pending_review", content=_content_from_state(result),
     )
-    return {"run_id": run_id, "tenant_id": frame.tenant_id, "status": "pending_review"}
+    return {"run_id": run_id, "tenant_id": frame.tenant_id, "status": "pending_review", "tier": tier}
 
 
 async def run_brief_sync(
@@ -95,6 +133,7 @@ async def run_brief_sync(
     brief_type: str,
     window_days: int = 7,
     end_date: date | None = None,
+    tier: Tier = "full",
 ) -> dict:
     """`start_brief_run` followed immediately by an auto-approve `resume_
     brief_review` — for callers (Tempo LM's brief buttons) that want a
@@ -107,7 +146,7 @@ async def run_brief_sync(
     """
     started = await start_brief_run(
         graph=graph, read_conn=read_conn, client_slug=client_slug,
-        brief_type=brief_type, window_days=window_days, end_date=end_date,
+        brief_type=brief_type, window_days=window_days, end_date=end_date, tier=tier,
     )
     await resume_brief_review(
         graph=graph, read_conn=read_conn, run_id=started["run_id"],
