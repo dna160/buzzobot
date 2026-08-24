@@ -47,6 +47,7 @@ export const DECK_COPY = {
   },
   tables: {
     campaignHeaders: ['Kampanye', 'Biaya', 'Impresi', 'Klik', 'CTR', 'Status'],
+    funnelHeaders: ['Tahap', 'Jumlah', 'Rasio dari tahap sebelumnya'],
     dayHeader: 'Tanggal',
     emptyCampaigns: 'Tidak ada kampanye yang berjalan pada periode ini.',
     emptyDays: 'Tidak ada hari dengan data pada periode ini.',
@@ -64,6 +65,9 @@ export const DECK_COPY = {
     suggested: 'disarankan',
     noMaterialFindings: 'Tidak ada temuan material periode ini.',
     notReported: '—',
+    reachCaveat:
+      'Jangkauan tingkat akun adalah penjumlahan jangkauan kampanye, sehingga merupakan ' +
+      'batas atas — audiens yang beririsan antar kampanye belum dikurangi.',
   },
   footer: {
     engine: 'Mesin analitik',
@@ -129,6 +133,95 @@ export function lightAction(light: Light): string | undefined {
     default:
       return undefined;
   }
+}
+
+/**
+ * Bahasa labels for evidence-dict keys (M3).
+ *
+ * `MetricDef.labelId` covers the catalog, but a finding's `evidence` keys are
+ * the engine's own vocabulary — `aov_contribution`, `top1_share` — and a chip
+ * labelled in English on an Indonesian deck breaks §3.4's rule just as surely
+ * as printing a `MetricKey` would. Unknown keys fall back to a humanized form
+ * rather than blocking a card: a slightly technical label is recoverable, a
+ * missing card is not.
+ */
+const EVIDENCE_LABELS: Record<string, string> = {
+  active_day_coverage_pct: 'Cakupan hari aktif',
+  assessed_confidence: 'Tingkat keyakinan',
+  cohort_median: 'Median kohort',
+  cohort_median_roi: 'ROI median kohort',
+  cohort_size: 'Ukuran kohort',
+  current_active_days: 'Hari aktif periode ini',
+  current_per_day: 'Rata-rata per hari',
+  current_value: 'Nilai periode ini',
+  delta: 'Selisih',
+  entity_count: 'Jumlah entitas',
+  gini: 'Ketimpangan (Gini)',
+  gmv_share: 'Porsi omzet',
+  hhi: 'Konsentrasi (HHI)',
+  metric: 'Metrik',
+  missing_preferred_metrics: 'Metrik pendukung yang hilang',
+  missing_required_metrics: 'Metrik wajib yang hilang',
+  nominal_delta_pct: 'Selisih nominal',
+  orders_per_1000_views: 'Pesanan per 1.000 tontonan',
+  outcome_metric: 'Metrik hasil',
+  per_active_day_delta_pct: 'Selisih per hari aktif',
+  primary_outcome: 'Hasil utama',
+  prior_active_days: 'Hari aktif periode lalu',
+  prior_per_day: 'Rata-rata per hari (lalu)',
+  prior_value: 'Nilai periode lalu',
+  product_count: 'Jumlah produk',
+  recency_lag_days: 'Jeda data (hari)',
+  top1_share: 'Porsi kontributor teratas',
+  top1_value: 'Nilai kontributor teratas',
+  total: 'Total',
+  total_cost: 'Total biaya',
+  total_gmv: 'Total omzet',
+  z_score: 'Skor z',
+};
+
+/** Stems that compose with the `_current` / `_prior` / `_contribution` suffixes. */
+const EVIDENCE_TERMS: Record<string, string> = {
+  aov: 'Nilai pesanan',
+  clicks: 'Klik',
+  cost: 'Biaya',
+  ctr: 'CTR',
+  cvr: 'CVR',
+  frequency: 'Frekuensi',
+  gmv: 'Omzet',
+  impressions: 'Impresi',
+  installs: 'Instal',
+  orders: 'Pesanan',
+  reach: 'Jangkauan',
+  roi: 'ROI',
+  value: 'Nilai',
+  vtr6s: 'VTR 6 detik',
+  vtr15s: 'VTR 15 detik',
+};
+
+const SUFFIXES: Array<[string, (term: string) => string]> = [
+  ['_contribution', (term) => `Kontribusi ${term.toLowerCase()}`],
+  ['_current', (term) => `${term} periode ini`],
+  ['_prior', (term) => `${term} periode lalu`],
+  ['_share', (term) => `Porsi ${term.toLowerCase()}`],
+];
+
+/** The label a chip prints for an evidence key. */
+export function evidenceLabel(key: string): string {
+  const direct = EVIDENCE_LABELS[key];
+  if (direct) return direct;
+
+  for (const [suffix, compose] of SUFFIXES) {
+    if (!key.endsWith(suffix)) continue;
+    const term = EVIDENCE_TERMS[key.slice(0, -suffix.length)];
+    if (term) return compose(term);
+  }
+
+  const term = EVIDENCE_TERMS[key];
+  if (term) return term;
+
+  const spaced = key.replace(/_/g, ' ').trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
 /** "4 dari 6 sinyal tersedia" — the counted denominator, wired at M3. */

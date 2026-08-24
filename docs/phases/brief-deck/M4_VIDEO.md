@@ -26,6 +26,10 @@ Chromium print, and the full KOL/video appendix.
 From M1: `light()` for per-video grading, `MetricDef.labelId` for column headers.
 From M2: `videoGrid` is already in the `Block` union and the renderer's switch — M4
 fills it, it does not widen the contract.
+From M3: the card machinery is done. `sectionCards(content, 5, …)` already routes S5
+findings, `buildFindingCard` already builds them, and the per-slide card budget already
+covers the slide. What M4 adds is the *data*: `listWindowVideos`, the thumbnail cache,
+and the `videoGrid` renderer — not new card plumbing.
 
 ## 4. Exit criteria (PRD §9)
 

@@ -48,7 +48,7 @@ describe('renderDeckHtml', () => {
   it('renders one page-breaking section per slide', () => {
     const doc = html();
     const sections = doc.match(/<section class="slide/g) ?? [];
-    expect(sections).toHaveLength(6);
+    expect(sections).toHaveLength(7);
     expect(doc).toContain('break-after: page');
     expect(doc).toContain('break-inside: avoid');
   });
@@ -68,7 +68,7 @@ describe('renderDeckHtml', () => {
   it('carries the tier badge on the cover and the provenance footer on every slide', () => {
     const doc = html();
     expect(doc).toContain('Ringkas');
-    expect((doc.match(/class="footer"/g) ?? []).length).toBe(5); // every slide but the cover
+    expect((doc.match(/class="footer"/g) ?? []).length).toBe(6); // every slide but the cover
     expect(doc).toContain('run_fixture_gmv_instant');
     expect(doc).toContain('Mesin analitik 0.1.0');
   });
@@ -87,6 +87,8 @@ describe('renderDeckHtml', () => {
   it('escapes content that reaches it from the engine', () => {
     const parsed = parseEngineContent(RAW);
     const injected = structuredClone(parsed.content);
+    // Both prose paths that actually render: the narrated section draft (which
+    // only renders when an agent wrote it) and the per-finding card copy.
     injected.sections['2'] = {
       draft: {
         headline: '<script>alert(1)</script>',
@@ -95,8 +97,14 @@ describe('renderDeckHtml', () => {
         action: 'x',
         confidence: 'low',
       },
-      narration_source: 'template',
-      narration_attempts: 0,
+      narration_source: 'llm',
+      narration_attempts: 1,
+    };
+    const firstFindingId = injected.findings[0]!.id;
+    injected.card_copy[firstFindingId] = {
+      headline: '<script>alert(2)</script>',
+      mechanism: 'c & d',
+      action: '<b>e</b>',
     };
     const doc = renderDeckHtml(
       buildDeckModel({
@@ -112,6 +120,8 @@ describe('renderDeckHtml', () => {
       }),
     );
     expect(doc).not.toContain('<script>alert(1)</script>');
+    expect(doc).not.toContain('<script>alert(2)</script>');
+    expect(doc).not.toContain('<b>e</b>');
     expect(doc).toContain('&lt;script&gt;');
     expect(doc).toContain('a &amp; b');
   });

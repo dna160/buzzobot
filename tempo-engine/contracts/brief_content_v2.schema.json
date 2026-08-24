@@ -10,6 +10,30 @@
       "title": "Actionability",
       "type": "string"
     },
+    "CardCopy": {
+      "description": "Per-finding prose for a deck card (Brief Deck PRD \u00a73.2's `FindingCard`).\n\nThe agents narrate *sections*, not findings \u2014 one draft per section \u2014 so a\ndeck that wants one card per finding has nowhere to get the words. This is\nthat source: the same closed `claim_frame` template table the instant tier\nwrites from, rendered for every finding, in both tiers.\n\nDeliberately deterministic even on the full tier. A card is evidence-first\n(its numbers are chips straight out of `evidence`), and the narrated\nanalysis stays where the agents actually wrote it \u2014 the section prose above\nthe cards. Mixing agent prose into some cards and templates into others\nwould make \"who wrote this sentence\" unanswerable from the deck.",
+      "properties": {
+        "action": {
+          "title": "Action",
+          "type": "string"
+        },
+        "headline": {
+          "title": "Headline",
+          "type": "string"
+        },
+        "mechanism": {
+          "title": "Mechanism",
+          "type": "string"
+        }
+      },
+      "required": [
+        "headline",
+        "mechanism",
+        "action"
+      ],
+      "title": "CardCopy",
+      "type": "object"
+    },
     "Comparison": {
       "properties": {
         "baseline_value": {
@@ -566,6 +590,13 @@
     "brief_type": {
       "title": "Brief Type",
       "type": "string"
+    },
+    "card_copy": {
+      "additionalProperties": {
+        "$ref": "#/$defs/CardCopy"
+      },
+      "title": "Card Copy",
+      "type": "object"
     },
     "content_version": {
       "const": 2,

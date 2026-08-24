@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
   EngineBriefContentV2Schema,
+  EngineCardCopySchema,
   EngineCoverageAuditSchema,
   EngineFindingSchema,
   EngineGeneratorGapSchema,
@@ -50,6 +51,7 @@ const schemaKeys = (s: JsonSchemaObject): string[] => Object.keys(s.properties ?
 const MIRRORED: Array<[string, z.ZodObject<z.ZodRawShape>, JsonSchemaObject | undefined]> = [
   ['BriefContentV2', EngineBriefContentV2Schema, schema],
   ['Finding', EngineFindingSchema, defs.Finding],
+  ['CardCopy', EngineCardCopySchema, defs.CardCopy],
   ['CoverageAudit', EngineCoverageAuditSchema, defs.CoverageAudit],
   ['SectionSignals', EngineSectionSignalsSchema, defs.SectionSignals],
   ['GeneratorGap', EngineGeneratorGapSchema, defs.GeneratorGap],
@@ -95,6 +97,7 @@ describe('parseEngineContent', () => {
     sections: {},
     s6: null,
     findings: [],
+    card_copy: {},
     rankings: {},
     coverage: null,
     probe_loop: { enabled: false, probes_executed: 0, yield_rate: 0, rounds_used: 0, log: [] },

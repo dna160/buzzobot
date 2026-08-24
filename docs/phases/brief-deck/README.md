@@ -20,7 +20,7 @@ numbered phases in [`../README.md`](../README.md):
 | M0 | Engine boundary — content v2, tiers, `/healthz` | ✅ Complete | [M0_ENGINE_BOUNDARY.md](./M0_ENGINE_BOUNDARY.md) |
 | M1 | Contracts — catalog, `DeckModel`, `ReportSpec`, lights, grid | ✅ Complete | [M1_CONTRACTS.md](./M1_CONTRACTS.md) |
 | M2 | Renderer — S0–S3, S6, Lampiran A, 16:9 pipeline | ✅ Complete | [M2_RENDERER.md](./M2_RENDERER.md) |
-| M3 | Finding cards everywhere, S4 per objective (**K4 dies**) | ⏭ Planned | [M3_FINDING_CARDS.md](./M3_FINDING_CARDS.md) |
+| M3 | Finding cards everywhere, S4 per objective (**K4 dead**) | ✅ Complete | [M3_FINDING_CARDS.md](./M3_FINDING_CARDS.md) |
 | M4 | S5 video slide, Lampiran B, thumbnail caching | ⏭ Planned | [M4_VIDEO.md](./M4_VIDEO.md) |
 | M5 | Tiers end-to-end, `report_runs` + cron (**K6 dies**) | ⏭ Planned | [M5_TIERS_E2E.md](./M5_TIERS_E2E.md) |
 | M6 | Spec editor for AMs | ⏭ Planned | [M6_SPEC_EDITOR.md](./M6_SPEC_EDITOR.md) |

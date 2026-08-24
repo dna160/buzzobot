@@ -1,7 +1,13 @@
 import { BriefObjective, type Currency, type MetricKey } from '@tempo/core';
 import type { CampaignWindowRow, DailyBriefDashboardData, Totals } from '@tempo/db';
-import { DECK_COPY, lightAction, metricLabel } from './copy.js';
-import type { EngineBriefContentV2, EngineRisk } from './engine-content.js';
+import { buildFindingCard, namedRowAction } from './cards.js';
+import { DECK_COPY, coverageLine, lightAction, metricLabel } from './copy.js';
+import {
+  selectedFindings,
+  type EngineBriefContentV2,
+  type EngineFinding,
+  type EngineRisk,
+} from './engine-content.js';
 import { solveKpiGrid } from './grid.js';
 import { deltaDirection, light } from './lights.js';
 import { formatMetric, formatMetricDelta, metricDelta, metricValue } from './metric-values.js';
@@ -55,6 +61,16 @@ const PAID_COLOR = '#2A78D6';
 const OUTCOME_COLOR = '#1BAF7A';
 const MAX_CAMPAIGN_ROWS = 12;
 const MAX_RANK_ROWS = 8;
+/**
+ * How many cards each slide can hold *and still fit its page*.
+ *
+ * PRD §4 caps S2 at three. The others are lower because their data blocks are
+ * bigger: S3 carries a rank chart and a campaign table, S4 a funnel or a reach
+ * table. A slide is a fixed page with no reflow, so this budget is what keeps
+ * the deck honest — the alternative is a card clipped mid-sentence, which
+ * looks like a bug and reads like one.
+ */
+const MAX_CARDS = { s2: 3, s3: 2, s4: 2 } as const;
 
 /** Which metric a campaign row is graded and ranked on, per objective. */
 const OUTCOME_METRIC: Record<BriefObjective, MetricKey> = {
@@ -175,6 +191,7 @@ function buildCampaignTable(
   spec: ReportSpec,
   objective: BriefObjective,
   currency: Currency,
+  findingIndex: Map<string, EngineFinding>,
 ): TableSpec {
   const outcome = OUTCOME_METRIC[objective];
   const rows: TableRow[] = campaigns.slice(0, MAX_CAMPAIGN_ROWS).map((campaign) => {
@@ -188,6 +205,13 @@ function buildCampaignTable(
       objective,
       target: spec.targets?.[outcome],
     });
+    // A G04/G05 finding that names this campaign upgrades the generic action
+    // to a named one — "Matikan: total cost Rp N" — with figures straight from
+    // that finding's evidence, so the numeral gate already covers them.
+    const named = namedRowAction(
+      findingIndex.get(campaign.id) ?? findingIndex.get(campaign.name),
+      currency,
+    );
     return {
       cells: [
         { text: campaign.name },
@@ -198,7 +222,7 @@ function buildCampaignTable(
         { text: formatMetric(outcome, value, currency), numeric: true },
       ],
       light: rowGrade,
-      action: lightAction(rowGrade),
+      action: named ?? lightAction(rowGrade),
     };
   });
 
@@ -231,6 +255,76 @@ function buildRankChart(campaigns: CampaignWindowRow[], objective: BriefObjectiv
       },
     ],
   };
+}
+
+/**
+ * Cards for one section, in the engine's own ranked order.
+ *
+ * Prose comes from `card_copy` (per finding, deterministic in both tiers). An
+ * engine that predates M3 sends none, so the top card falls back to the
+ * section draft rather than the slide losing its cards entirely — the deck
+ * always renders.
+ */
+function sectionCards(
+  content: EngineBriefContentV2,
+  sectionId: number,
+  currency: Currency,
+  max: number,
+): Block[] {
+  const draft = content.sections[String(sectionId)]?.draft;
+  return selectedFindings(content, sectionId)
+    .slice(0, max)
+    .map((finding, index) => {
+      const copy = content.card_copy[finding.id];
+      const headline = copy?.headline ?? (index === 0 ? draft?.headline : undefined);
+      const mechanism = copy?.mechanism ?? (index === 0 ? draft?.mechanism : undefined);
+      if (!headline || !mechanism) return null;
+      return {
+        kind: 'findingCard' as const,
+        card: buildFindingCard(
+          finding,
+          {
+            headline,
+            mechanism,
+            action: copy?.action ?? (index === 0 ? draft?.action : undefined),
+            implication: index === 0 ? draft?.implication : undefined,
+          },
+          currency,
+        ),
+      };
+    })
+    .filter((block): block is Extract<Block, { kind: 'findingCard' }> => block !== null);
+}
+
+/**
+ * "4 dari 6 sinyal tersedia" — PRD §4: coverage gaps render as counted
+ * denominators, not silence, so thinness reads as honesty.
+ *
+ * Printed only when something is actually missing. A section with full
+ * coverage does not need to announce it, and a line on every slide would
+ * quickly stop being read at all.
+ */
+function coverageBlocks(content: EngineBriefContentV2, sectionId: number): Block[] {
+  const signal = content.coverage?.signals[String(sectionId)];
+  if (!signal || signal.total <= signal.available) return [];
+  return [{ kind: 'coverageNote', text: coverageLine(signal.available, signal.total) }];
+}
+
+/**
+ * Findings that name a specific campaign, indexed for the row-action upgrade.
+ * Matched on entity id *or* display name: the engine reads campaigns straight
+ * from Tempo's Postgres, but which identifier reaches a `Finding` depends on
+ * the generator, so a name match is the reliable fallback rather than a guess.
+ */
+function findingsByEntity(content: EngineBriefContentV2): Map<string, EngineFinding> {
+  const byEntity = new Map<string, EngineFinding>();
+  for (const finding of content.findings) {
+    for (const key of [finding.entity.id, finding.entity.display_name]) {
+      const current = byEntity.get(key);
+      if (!current || finding.materiality > current.materiality) byEntity.set(key, finding);
+    }
+  }
+  return byEntity;
 }
 
 /** P0/P1/P2 = f(severity, magnitude) — PRD §4 S6. */
@@ -291,6 +385,161 @@ function buildRoadmap(content: EngineBriefContentV2, objective: BriefObjective):
   });
 }
 
+/**
+ * S4 — the one slide that is genuinely different per objective (PRD §4).
+ *
+ * Every figure below is read from `Totals`, which `daily-brief.ts` already
+ * derived from summed numerators and denominators. Nothing is averaged across
+ * days and nothing is summed across levels — the two arithmetic traps the
+ * engine PRD §3.1 binds every generator to, applying equally here.
+ */
+function buildS4Blocks(
+  dashboard: DailyBriefDashboardData,
+  objective: BriefObjective,
+  currency: Currency,
+): Block[] {
+  if (objective === BriefObjective.Awareness) return buildReachBlocks(dashboard, objective, currency);
+  return buildFunnelBlocks(dashboard, objective, currency);
+}
+
+/** Awareness: frequency and effective reach — the one place reach non-additivity is the signal. */
+function buildReachBlocks(
+  dashboard: DailyBriefDashboardData,
+  objective: BriefObjective,
+  currency: Currency,
+): Block[] {
+  const blocks: Block[] = [];
+
+  if (dashboard.days.length > 0) {
+    const reachValues = dashboard.days.map((d) => d.totals.reach);
+    const frequencyValues = dashboard.days.map((d) => d.totals.frequency);
+    blocks.push({
+      kind: 'chart',
+      spec: {
+        kind: 'combo',
+        title: `${metricLabel('reach', objective)} & ${metricLabel('frequency', objective)} per hari`,
+        labels: dashboard.days.map((d) => shortDate(d.date)),
+        series: [
+          { label: metricLabel('reach', objective), color: PAID_COLOR, kind: 'bar', values: reachValues, metric: 'reach' },
+          {
+            label: metricLabel('frequency', objective),
+            color: OUTCOME_COLOR,
+            kind: 'line',
+            values: frequencyValues,
+            metric: 'frequency',
+          },
+        ],
+      },
+    });
+  }
+
+  const rows: TableRow[] = [...dashboard.campaigns]
+    .sort((a, b) => b.totals.reach - a.totals.reach)
+    .slice(0, MAX_CAMPAIGN_ROWS)
+    .map((campaign) => ({
+      cells: [
+        { text: campaign.name },
+        { text: formatMetric('reach', campaign.totals.reach, currency), numeric: true },
+        { text: formatMetric('impressions', campaign.totals.impressions, currency), numeric: true },
+        { text: formatMetric('frequency', campaign.totals.frequency, currency), numeric: true },
+        { text: formatMetric('vtr6s', campaign.totals.vtr6s, currency), numeric: true },
+        { text: formatMetric('cpm', campaign.totals.cpm, currency), numeric: true },
+      ],
+    }));
+
+  blocks.push({
+    kind: 'table',
+    spec: {
+      title: DECK_COPY.slideTitles.s4.awareness,
+      headers: [
+        DECK_COPY.tables.campaignHeaders[0]!,
+        metricLabel('reach', objective),
+        metricLabel('impressions', objective),
+        metricLabel('frequency', objective),
+        metricLabel('vtr6s', objective),
+        metricLabel('cpm', objective),
+      ],
+      rows,
+      emptyNote: DECK_COPY.tables.emptyCampaigns,
+    },
+  });
+
+  // Campaign-level reach is deduped by TikTok; account-level reach here is a
+  // sum across campaigns and therefore an overlap-inflated upper bound (the
+  // engine's AWARENESS contract says so in its own additivity_trap). Saying it
+  // on the slide is cheaper than a client discovering it later.
+  blocks.push({ kind: 'coverageNote', text: DECK_COPY.labels.reachCaveat });
+  return blocks;
+}
+
+/** GMV and Install: where the funnel leaks, stage by stage. */
+function buildFunnelBlocks(
+  dashboard: DailyBriefDashboardData,
+  objective: BriefObjective,
+  currency: Currency,
+): Block[] {
+  const totals = dashboard.windowTotals;
+  const outcomeLabel = metricLabel('conversions', objective);
+  const stages: Array<{ label: string; value: number | null; rate: string }> = [
+    { label: metricLabel('impressions', objective), value: totals.impressions, rate: DECK_COPY.labels.notReported },
+    {
+      label: metricLabel('clicks', objective),
+      value: totals.clicks,
+      rate: formatMetric('ctr', totals.ctr, currency),
+    },
+    {
+      label: outcomeLabel,
+      value: totals.conversions,
+      rate: formatMetric('conversionRate', totals.conversionRate, currency),
+    },
+  ];
+
+  if (objective === BriefObjective.Gmv) {
+    stages.push({
+      label: metricLabel('conversionValue', objective),
+      value: totals.conversionValue,
+      rate: formatMetric('roas', totals.roas, currency),
+    });
+  }
+
+  const rows: TableRow[] = stages.map((stage, index) => ({
+    cells: [
+      { text: stage.label },
+      {
+        text:
+          index === 3
+            ? formatMetric('conversionValue', stage.value, currency)
+            : formatMetric(index === 0 ? 'impressions' : index === 1 ? 'clicks' : 'conversions', stage.value, currency),
+        numeric: true,
+      },
+      { text: stage.rate, numeric: true },
+    ],
+  }));
+
+  const costRow: TableRow = {
+    cells: [
+      { text: metricLabel('cpa', objective) },
+      { text: formatMetric('cpa', totals.cpa, currency), numeric: true },
+      { text: DECK_COPY.labels.notReported, numeric: true },
+    ],
+  };
+
+  return [
+    {
+      kind: 'table',
+      spec: {
+        title:
+          objective === BriefObjective.Gmv
+            ? DECK_COPY.slideTitles.s4.gmv
+            : DECK_COPY.slideTitles.s4.install,
+        headers: [...DECK_COPY.tables.funnelHeaders],
+        rows: [...rows, costRow],
+        emptyNote: DECK_COPY.tables.emptyDays,
+      },
+    },
+  ];
+}
+
 function impactBasis(objective: BriefObjective): string {
   return objective === BriefObjective.Awareness ? 'dari impresi' : 'dari belanja';
 }
@@ -338,12 +587,20 @@ export function buildDeckModel(input: BuildDeckInput): DeckModel {
   const s2Blocks: Block[] = [];
   if (trend) s2Blocks.push({ kind: 'chart', spec: trend });
   const s2 = content.sections['2'];
-  if (s2) {
-    s2Blocks.push(...proseBlocks(sectionProse(s2.draft.headline, s2.draft.mechanism)));
-    noteDeterministic(fallbacks, 's2', s2.narration_source);
+  const s2Cards = sectionCards(content, 2, currency, MAX_CARDS.s2);
+  if (s2) noteDeterministic(fallbacks, 's2', s2.narration_source);
+  // The coverage line sits above the cards, not after them: it qualifies the
+  // analysis that follows, and a note placed last is the first thing a full
+  // slide clips — losing exactly the disclosure it exists to make.
+  s2Blocks.push(...coverageBlocks(content, 2));
+  s2Blocks.push(...narratedProseBlocks(s2));
+  if (s2Cards.length > 0) {
+    s2Blocks.push(...s2Cards);
   } else {
+    // Never an empty card and never a fabricated one (PRD §4): the data blocks
+    // still render, and the slide says plainly that nothing cleared the bar.
     s2Blocks.push({ kind: 'prose', text: DECK_COPY.labels.noMaterialFindings });
-    fallbacks.push({ slideId: 's2', reason: 'no_findings', detail: 'tidak ada bagian S2' });
+    fallbacks.push({ slideId: 's2', reason: 'no_findings', detail: 'tidak ada temuan material' });
   }
 
   // --- S3 Kinerja Kampanye -------------------------------------------------
@@ -352,15 +609,38 @@ export function buildDeckModel(input: BuildDeckInput): DeckModel {
   if (rank) s3Blocks.push({ kind: 'chart', spec: rank });
   s3Blocks.push({
     kind: 'table',
-    spec: buildCampaignTable(dashboard.campaigns, spec, objective, currency),
+    spec: buildCampaignTable(dashboard.campaigns, spec, objective, currency, findingsByEntity(content)),
   });
   const s3 = content.sections['3'];
-  if (s3) {
-    s3Blocks.push(...proseBlocks(sectionProse(s3.draft.headline, s3.draft.mechanism)));
-    noteDeterministic(fallbacks, 's3', s3.narration_source);
+  const s3Cards = sectionCards(content, 3, currency, MAX_CARDS.s3);
+  if (s3) noteDeterministic(fallbacks, 's3', s3.narration_source);
+  // The coverage line sits above the cards, not after them: it qualifies the
+  // analysis that follows, and a note placed last is the first thing a full
+  // slide clips — losing exactly the disclosure it exists to make.
+  s3Blocks.push(...coverageBlocks(content, 3));
+  s3Blocks.push(...narratedProseBlocks(s3));
+  if (s3Cards.length > 0) {
+    s3Blocks.push(...s3Cards);
   } else {
     s3Blocks.push({ kind: 'prose', text: DECK_COPY.labels.noMaterialFindings });
-    fallbacks.push({ slideId: 's3', reason: 'no_findings', detail: 'tidak ada bagian S3' });
+    fallbacks.push({ slideId: 's3', reason: 'no_findings', detail: 'tidak ada temuan material' });
+  }
+
+  // --- S4 — the objective-specific slide ----------------------------------
+  const s4Blocks: Block[] = buildS4Blocks(dashboard, objective, currency);
+  const s4 = content.sections['4'];
+  const s4Cards = sectionCards(content, 4, currency, MAX_CARDS.s4);
+  if (s4) noteDeterministic(fallbacks, 's4', s4.narration_source);
+  // The coverage line sits above the cards, not after them: it qualifies the
+  // analysis that follows, and a note placed last is the first thing a full
+  // slide clips — losing exactly the disclosure it exists to make.
+  s4Blocks.push(...coverageBlocks(content, 4));
+  s4Blocks.push(...narratedProseBlocks(s4));
+  if (s4Cards.length > 0) {
+    s4Blocks.push(...s4Cards);
+  } else {
+    s4Blocks.push({ kind: 'prose', text: DECK_COPY.labels.noMaterialFindings });
+    fallbacks.push({ slideId: 's4', reason: 'no_findings', detail: 'tidak ada temuan material' });
   }
 
   // --- S6 Risiko & Rencana Aksi -------------------------------------------
@@ -377,6 +657,7 @@ export function buildDeckModel(input: BuildDeckInput): DeckModel {
     { id: 's1', title: DECK_COPY.slideTitles.s1, variant: 'content', blocks: s1Blocks },
     { id: 's2', title: DECK_COPY.slideTitles.s2, variant: 'content', blocks: s2Blocks },
     { id: 's3', title: DECK_COPY.slideTitles.s3, variant: 'content', blocks: s3Blocks },
+    { id: 's4', title: DECK_COPY.slideTitles.s4[objective], variant: 'content', blocks: s4Blocks },
     { id: 's6', title: DECK_COPY.slideTitles.s6, variant: 'content', blocks: s6Blocks },
   ];
 
@@ -410,8 +691,18 @@ export function buildDeckModel(input: BuildDeckInput): DeckModel {
   return { meta, slides };
 }
 
-function sectionProse(headline: string, mechanism: string): string {
-  return `${headline} ${mechanism}`.trim();
+/**
+ * The narrated section prose, above the cards — but only when an agent
+ * actually wrote it.
+ *
+ * At the instant tier the section draft *is* the top finding's template copy,
+ * so printing it here would say the same sentence twice on one slide. When the
+ * narrators ran, their reading is genuinely additional to the per-finding
+ * cards, and it leads the slide.
+ */
+function narratedProseBlocks(entry: { draft: { headline: string; mechanism: string }; narration_source: string } | undefined): Block[] {
+  if (!entry || entry.narration_source !== 'llm') return [];
+  return proseBlocks(`${entry.draft.headline} ${entry.draft.mechanism}`.trim());
 }
 
 /**

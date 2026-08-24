@@ -18,7 +18,7 @@ import asyncpg
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 
-from engine.contracts.content import BriefContentV2, CoverageAudit, ProbeLoopExport, SectionEntry, SectionRankingExport, SynthesisEntry, Tier
+from engine.contracts.content import BriefContentV2, CardCopy, CoverageAudit, ProbeLoopExport, SectionEntry, SectionRankingExport, SynthesisEntry, Tier
 from engine.contracts.presets import OBJECTIVE_CONTRACTS
 from engine.graphs.persistence import fetch_brief, upsert_brief
 from engine.ports.tempo_read import build_awareness_metric_frame, build_gmv_metric_frame, build_install_metric_frame
@@ -73,6 +73,10 @@ def _content_from_state(state: dict) -> dict:
         },
         s6=SynthesisEntry.model_validate(state["s6_result"]) if state.get("s6_result") else None,
         findings=state.get("findings") or [],
+        card_copy={
+            finding_id: CardCopy.model_validate(copy)
+            for finding_id, copy in (state.get("card_copy") or {}).items()
+        },
         rankings=rankings,
         coverage=CoverageAudit.model_validate(coverage_dump) if coverage_dump else None,
         probe_loop=ProbeLoopExport(

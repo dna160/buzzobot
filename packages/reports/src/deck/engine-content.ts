@@ -88,6 +88,17 @@ export const EngineFindingSchema = z.object({
   origin: EngineOriginSchema.default('generator'),
 });
 
+/**
+ * Per-finding card prose, from the engine's closed template table (M3).
+ * Deterministic in both tiers — the narrated analysis lives in the section
+ * draft above the cards, so "who wrote this sentence" stays answerable.
+ */
+export const EngineCardCopySchema = z.object({
+  headline: z.string(),
+  mechanism: z.string(),
+  action: z.string(),
+});
+
 export const EngineRankedEntrySchema = z.object({
   id: z.string(),
   materiality: z.number(),
@@ -195,6 +206,9 @@ export const EngineBriefContentV2Schema = z.object({
   sections: z.record(EngineSectionEntrySchema).default({}),
   s6: EngineS6EntrySchema.nullable().optional(),
   findings: z.array(EngineFindingSchema).default([]),
+  // Additive since M3: an engine that predates it sends nothing, and the deck
+  // falls back to the section draft for the top card rather than showing none.
+  card_copy: z.record(EngineCardCopySchema).default({}),
   rankings: z.record(EngineSectionRankingSchema).default({}),
   coverage: EngineCoverageAuditSchema.nullable().optional(),
   probe_loop: EngineProbeLoopSchema.default({
@@ -228,6 +242,7 @@ export const EngineBriefContentV1Schema = z.object({
 });
 
 export type EngineFinding = z.infer<typeof EngineFindingSchema>;
+export type EngineCardCopy = z.infer<typeof EngineCardCopySchema>;
 export type EngineCoverageAudit = z.infer<typeof EngineCoverageAuditSchema>;
 export type EngineSectionRanking = z.infer<typeof EngineSectionRankingSchema>;
 export type EngineSectionEntry = z.infer<typeof EngineSectionEntrySchema>;
@@ -279,6 +294,7 @@ export function parseEngineContent(raw: unknown): ParsedEngineContent {
       sections: v1.sections ?? {},
       s6: v1.s6 ?? null,
       findings: [],
+      card_copy: {},
       rankings: {},
       coverage: null,
       probe_loop: {

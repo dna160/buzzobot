@@ -163,3 +163,41 @@ async def test_coverage_signals_never_claim_more_than_the_battery_ran() -> None:
     for section, signal in coverage["signals"].items():
         assert signal["available"] <= signal["total"], section
         assert signal["total"] >= 0
+
+
+async def test_card_copy_is_exported_for_every_finding() -> None:
+    """M3: the agents narrate sections, not findings, so a deck that shows one
+    card per finding needs per-finding prose from the template table."""
+    result = await _run_instant("instant_card_copy")
+    content = _content_from_state(result)
+
+    finding_ids = {f["id"] for f in content["findings"]}
+    assert finding_ids
+    assert set(content["card_copy"]) == finding_ids
+
+    for finding_id, copy in content["card_copy"].items():
+        assert copy["headline"].strip(), finding_id
+        assert copy["mechanism"].strip(), finding_id
+        assert copy["action"].strip(), finding_id
+
+
+async def test_card_copy_is_deterministic() -> None:
+    first = _content_from_state(await _run_instant("instant_card_copy_a"))
+    second = _content_from_state(await _run_instant("instant_card_copy_b"))
+    assert first["card_copy"] == second["card_copy"]
+
+
+async def test_card_copy_headlines_state_no_figure_of_their_own() -> None:
+    """Numbers live in the evidence chips the deck builds from `evidence`; a
+    headline that stated one too could end up disagreeing with its own card.
+
+    An entity's *name* may contain digits ("Payday Sale #2") and that is the
+    entity, not a claim — so the check removes the display name first and
+    asserts the template contributed no figure.
+    """
+    content = _content_from_state(await _run_instant("instant_card_headlines"))
+    names = {f["id"]: f["entity"]["display_name"] for f in content["findings"]}
+
+    for finding_id, copy in content["card_copy"].items():
+        template_text = copy["headline"].replace(names[finding_id], "")
+        assert not any(ch.isdigit() for ch in template_text), (finding_id, copy["headline"])

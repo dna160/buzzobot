@@ -1,5 +1,62 @@
 {
   "brief_type": "gmv",
+  "card_copy": {
+    "g01_identity_decomposition": {
+      "action": "Fokuskan pengungkit pada komponen dengan kontribusi terbesar di Sovella.",
+      "headline": "Perubahan pada Sovella berasal dari komponen yang berbeda bobotnya.",
+      "mechanism": "Perubahan periode ini terurai menjadi beberapa komponen dengan bobot berbeda; komponen terbesar yang menentukan arah pergerakan Sovella."
+    },
+    "g02_live_03": {
+      "action": "Perluas struktur yang dipakai Promo Special Payday Sale #2 ke kampanye sejenis.",
+      "headline": "Efisiensi Promo Special Payday Sale #2 berada di atas pembanding periode ini.",
+      "mechanism": "Dibandingkan rata-rata akun pada periode yang sama, Promo Special Payday Sale #2 menghasilkan keluaran lebih besar untuk setiap rupiah yang dibelanjakan."
+    },
+    "g03_adgroup": {
+      "action": "Siapkan cadangan di luar Iklan 19951234 agar hasil tidak bergantung pada satu sumber.",
+      "headline": "Hasil periode ini bertumpu pada Iklan 19951234.",
+      "mechanism": "Sebagian besar hasil periode ini berasal dari satu sumber, sehingga performa akun bergerak mengikuti Iklan 19951234 \u2014 termasuk ketika sumber itu melemah."
+    },
+    "g03_product": {
+      "action": "Uji satu kampanye pendamping agar beban tidak seluruhnya di SOVELLA Lennon.",
+      "headline": "Ketergantungan pada SOVELLA Lennon tinggi periode ini.",
+      "mechanism": "Sebagian besar hasil periode ini berasal dari satu sumber, sehingga performa akun bergerak mengikuti SOVELLA Lennon \u2014 termasuk ketika sumber itu melemah."
+    },
+    "g04_dormant_entity_adgroup": {
+      "action": "Hentikan 5 adgroup entities sementara sampai penyebab nol hasil ditemukan.",
+      "headline": "Belanja pada 5 adgroup entities belum menghasilkan keluaran yang tercatat.",
+      "mechanism": "Anggaran pada 5 adgroup entities terus terserap sementara keluaran yang tercatat pada periode ini nol, sehingga setiap rupiah tambahan tidak menghasilkan apa pun."
+    },
+    "g07_comparability_artifact": {
+      "action": "Samakan rentang hari aktif sebelum membandingkan Sovella antar periode.",
+      "headline": "Panjang periode aktif Sovella tidak sama antar periode.",
+      "mechanism": "Jumlah hari aktif kedua periode berbeda, sehingga selisih nominal pada Sovella sebagian mencerminkan panjang periode, bukan perubahan performa."
+    },
+    "g08_coverage_audit": {
+      "action": "Pastikan sinkronisasi data berjalan penuh sebelum periode berikutnya.",
+      "headline": "Cakupan data periode ini membatasi sebagian analisis Sovella.",
+      "mechanism": "Sebagian metrik yang dibutuhkan analisis tidak tersedia pada periode ini, sehingga sebagian sinyal untuk Sovella tidak dapat dihitung."
+    },
+    "m01_session_efficiency_laggard_live_04": {
+      "action": "Evaluasi jadwal dan susunan sesi Harga Special Hanya Di Live #2 sebelum ditayangkan ulang.",
+      "headline": "Sesi live Harga Special Hanya Di Live #2 paling lemah efisiensinya periode ini.",
+      "mechanism": "Untuk setiap jam tayang, sesi Harga Special Hanya Di Live #2 menghasilkan keluaran lebih kecil dibanding sesi lain pada periode yang sama."
+    },
+    "m01_session_efficiency_leader_live_03": {
+      "action": "Jadikan Promo Special Payday Sale #2 acuan jadwal dan susunan sesi berikutnya.",
+      "headline": "Promo Special Payday Sale #2 memimpin efisiensi sesi live.",
+      "mechanism": "Untuk setiap jam tayang, sesi Promo Special Payday Sale #2 menghasilkan keluaran lebih besar dibanding sesi lain pada periode yang sama."
+    },
+    "m04_contribution_sku_lennon": {
+      "action": "Dorong SOVELLA Lennon pada materi iklan periode berikutnya.",
+      "headline": "SOVELLA Lennon menempati porsi penting dalam hasil penjualan.",
+      "mechanism": "Porsi hasil yang berasal dari SOVELLA Lennon cukup besar sehingga ketersediaan dan harga produk ini ikut menentukan hasil periode berikutnya."
+    },
+    "m04_efficiency_sku_marsha": {
+      "action": "Jaga ketersediaan stok SOVELLA Marsha sebelum menambah anggaran.",
+      "headline": "Kontribusi produk SOVELLA Marsha menonjol periode ini.",
+      "mechanism": "Porsi hasil yang berasal dari SOVELLA Marsha cukup besar sehingga ketersediaan dan harga produk ini ikut menentukan hasil periode berikutnya."
+    }
+  },
   "content_version": 2,
   "coverage": {
     "active_day_coverage_pct": 57.1,
@@ -567,7 +624,7 @@
     "attempts": 0,
     "draft": {
       "headline": "Perubahan pada Sovella berasal dari komponen yang berbeda bobotnya.",
-      "summary": "Perubahan pada Sovella berasal dari komponen yang berbeda bobotnya. Belanja pada 5 adgroup entities belum menghasilkan keluaran yang tercatat. SOVELLA Lennon menempati porsi penting dalam hasil penjualan. Belanja tanpa hasil: Belanja pada 5 adgroup entities belum menghasilkan keluaran yang tercatat."
+      "summary": "Perubahan pada Sovella berasal dari komponen yang berbeda bobotnya. Belanja pada 5 adgroup entities belum menghasilkan keluaran yang tercatat. SOVELLA Lennon menempati porsi penting dalam hasil penjualan."
     },
     "fallback_reason": null,
     "source": "template"

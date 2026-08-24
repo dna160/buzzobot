@@ -95,9 +95,3 @@ export {
   type ReportSpec,
   type ReportSpecPreset,
 } from './deck/spec.js';
-export {
-  renderEngineBriefHtml,
-  type EngineBriefContent,
-  type EngineSectionDraft,
-  type EngineRisk,
-} from './engine-brief/render.js';

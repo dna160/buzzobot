@@ -7,6 +7,7 @@ import type {
   ChartSpec,
   DeckMeta,
   DeckModel,
+  FindingCard,
   KpiTile,
   RoadmapRow,
   Slide,
@@ -41,6 +42,16 @@ const esc = (s: string): string =>
 /** 16:9 at 96dpi-equivalent print geometry: 1280×720pt → mm. */
 export const SLIDE_WIDTH_MM = 338.67;
 export const SLIDE_HEIGHT_MM = 190.5;
+
+/**
+ * Chart geometry, chosen for a 16:9 slide column rather than the A4 report the
+ * generators were written for. The SVGs scale to the column width, so these
+ * numbers set the *ratio* — and therefore how much vertical space a chart
+ * takes once it lands on the page.
+ */
+const COMBO_CHART_WIDTH = 1100;
+const COMBO_CHART_HEIGHT = 230;
+const RANK_CHART_WIDTH = 2000;
 
 const LIGHT_COLORS = {
   green: '#1BAF7A',
@@ -96,6 +107,11 @@ function styles(brand: string): string {
     .slide__body {
       flex: 1; display: flex; flex-direction: column; gap: 4mm;
       min-height: 0; padding-bottom: 8mm;
+      /* One slide is one page: content that does not fit is clipped here,
+         cleanly above the footer, rather than printing across it. The block
+         budget in build.ts is what keeps a slide inside its page in the
+         first place — this is the backstop, not the plan. */
+      overflow: hidden;
     }
     /* A block may never straddle a page — one slide is one page, so anything
        that would overflow is clipped visibly rather than silently reflowed. */
@@ -129,13 +145,16 @@ function styles(brand: string): string {
 
     .chart {
       border: 1px solid var(--hairline); border-radius: 3mm; padding: 4mm;
-      background: var(--surface);
-      flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+      background: var(--surface); overflow: hidden;
+      /* Natural size, not a flex slot. An SVG told to fill a short, wide box
+         preserves its own ratio and letterboxes — the chart ends up a postage
+         stamp floating in the middle of it. Charts are drawn at a ratio chosen
+         for this page instead (see renderChart), and the per-slide card budget
+         in build.ts is what guarantees the slide still fits. */
+      flex: 0 0 auto;
     }
     .chart__title { font-size: 9pt; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2mm; }
-    /* viewBox plus a percentage height lets the SVG scale down inside whatever
-       space is left instead of overflowing at its intrinsic height. */
-    .chart svg { width: 100%; height: 100%; flex: 1; min-height: 0; display: block; }
+    .chart svg { width: 100%; height: auto; display: block; }
 
     table { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
     th, td { padding: 1.8mm 2.5mm; text-align: left; border-bottom: 1px solid var(--hairline); }
@@ -145,6 +164,32 @@ function styles(brand: string): string {
     tr.row--yellow td:first-child { box-shadow: inset 2mm 0 0 -1.3mm var(--yellow); }
     tr.row--red td:first-child { box-shadow: inset 2mm 0 0 -1.3mm var(--red); }
     td.action { color: var(--muted); font-weight: 600; }
+
+    /* The card grammar (PRD §4): light chip -> headline -> evidence chips ->
+       mechanism -> action. Numbers live in the chips, prose carries mechanism —
+       which is both how the reference audit format earns trust and what the
+       numeral gate wants. */
+    .cards { display: flex; flex-direction: column; gap: 2.5mm; }
+    .card {
+      border: 1px solid var(--hairline); border-left-width: 1.4mm; border-radius: 2.5mm;
+      padding: 2.8mm 3.5mm; background: var(--surface);
+    }
+    .card--green { border-left-color: var(--green); }
+    .card--yellow { border-left-color: var(--yellow); }
+    .card--red { border-left-color: var(--red); }
+    .card--none { border-left-color: var(--hairline); }
+    .card__headline { font-size: 10.5pt; font-weight: 700; line-height: 1.25; margin: 0 0 1.6mm; }
+    .card__chips { display: flex; flex-wrap: wrap; gap: 1.8mm; margin-bottom: 1.6mm; }
+    .chip {
+      display: inline-flex; gap: 1.5mm; align-items: baseline;
+      background: var(--surface-alt); border: 1px solid var(--hairline);
+      border-radius: 1.5mm; padding: 1mm 2.5mm; font-size: 8pt;
+    }
+    .chip__label { color: var(--muted); }
+    .chip__value { font-weight: 700; font-variant-numeric: tabular-nums; }
+    .card__mechanism { font-size: 8.8pt; line-height: 1.4; margin: 0 0 1.2mm; }
+    .card__action { font-size: 9pt; font-weight: 600; margin: 0; }
+    .card__footer { font-size: 7pt; color: var(--muted); margin-top: 1.6mm; }
 
     .prose { font-size: 10pt; line-height: 1.5; color: var(--ink); margin: 0; }
     .coverage { font-size: 8.5pt; color: var(--muted); font-style: italic; }
@@ -174,7 +219,11 @@ function renderChart(spec: ChartSpec, currency: Currency): string {
     const series = spec.series[0];
     if (!series) return '';
     const rows = spec.labels.map((l, i) => ({ label: l, value: series.values[i] ?? 0 }));
+    // A wide nominal width keeps the rendered height low once the SVG is
+    // scaled to the slide's column: the generator sizes rows in absolute
+    // units, so ratio is the only lever over how tall it lands.
     return rankChart(rows, {
+      width: RANK_CHART_WIDTH,
       barColor: series.color,
       format: (v) => formatMetric(series.metric, v, currency),
     });
@@ -189,7 +238,8 @@ function renderChart(spec: ChartSpec, currency: Currency): string {
     line: line?.values[i] ?? 0,
   }));
   return comboChart(points, {
-    height: 200,
+    width: COMBO_CHART_WIDTH,
+    height: COMBO_CHART_HEIGHT,
     barColor: bar.color,
     lineColor: line?.color ?? '#1BAF7A',
     formatBar: (v) => formatMetric(bar.metric, v, currency),
@@ -241,6 +291,30 @@ function renderTable(spec: TableSpec, appendix = false): string {
   return `<div class="block${appendix ? ' appendix' : ''}"><table><thead><tr>${head}${actionHead}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
+function renderCard(card: FindingCard): string {
+  const chips = card.evidenceChips
+    .map(
+      (chip) =>
+        `<span class="chip"><span class="chip__label">${esc(chip.label)}</span>` +
+        `<span class="chip__value">${esc(chip.value)}</span></span>`,
+    )
+    .join('');
+  const action = card.action ? `<p class="card__action">${esc(card.action)}</p>` : '';
+  const implication = card.implication
+    ? `<p class="card__mechanism">${esc(card.implication)}</p>`
+    : '';
+  return `<div class="block card card--${card.light}">
+    <p class="card__headline">${esc(card.headline)}</p>
+    ${chips ? `<div class="card__chips">${chips}</div>` : ''}
+    <p class="card__mechanism">${esc(card.mechanism)}</p>
+    ${implication}
+    ${action}
+    <div class="card__footer">${esc(card.footer.level)} · ${esc(
+      card.footer.confidence,
+    )} · ${esc(card.footer.source)} · ${esc(card.findingId)}</div>
+  </div>`;
+}
+
 function renderRoadmap(rows: RoadmapRow[]): string {
   if (rows.length === 0) {
     return `<div class="block"><p class="empty">${esc(DECK_COPY.roadmap.empty)}</p></div>`;
@@ -277,10 +351,11 @@ function renderBlock(block: Block, appendix: boolean, currency: Currency): strin
     case 'coverageNote':
       return `<div class="block"><p class="coverage">${esc(block.text)}</p></div>`;
     case 'findingCard':
+      return renderCard(block.card);
     case 'videoGrid':
-      // Block kinds land in the union at M1 and are filled at M3/M4. Rendering
-      // nothing is correct until then — a placeholder would be a stub, and a
-      // stub is not a state this system keeps (PRD §1).
+      // Filled at M4 with the video slide. Rendering nothing is correct until
+      // then — a placeholder would be a stub, and a stub is not a state this
+      // system keeps (PRD §1).
       return '';
     default:
       return '';

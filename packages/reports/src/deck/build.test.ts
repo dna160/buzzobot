@@ -49,8 +49,16 @@ describe('buildDeckModel', () => {
     expect(build()).toEqual(build());
   });
 
-  it('builds the M2 slide frame in order', () => {
-    expect(build().slides.map((s) => s.id)).toEqual(['s0', 's1', 's2', 's3', 's6', 'appendix-a']);
+  it('builds the slide frame in order', () => {
+    expect(build().slides.map((s) => s.id)).toEqual([
+      's0',
+      's1',
+      's2',
+      's3',
+      's4',
+      's6',
+      'appendix-a',
+    ]);
   });
 
   it('carries provenance the footer can print', () => {
@@ -172,6 +180,42 @@ describe('buildDeckModel', () => {
     });
   });
 
+  describe('S4 — the objective-specific slide', () => {
+    const s4Blocks = (objective: BriefObjective) =>
+      blocksOf(build({ spec: defaultReportSpec(objective), objective }), 's4');
+
+    it('gives GMV a funnel with a rate against the previous stage', () => {
+      const table = firstOfKind(s4Blocks(BriefObjective.Gmv), 'table')!.spec;
+      expect(table.rows.map((r) => r.cells[0]!.text)).toEqual([
+        'Impresi',
+        'Klik',
+        'Pesanan',
+        'Omzet (GMV)',
+        'Biaya per Pesanan',
+      ]);
+      // The rate column is derived from summed totals, never averaged.
+      expect(table.rows[1]!.cells[2]!.text).toMatch(/%$/);
+    });
+
+    it('names the install funnel in install vocabulary', () => {
+      const table = firstOfKind(s4Blocks(BriefObjective.Install), 'table')!.spec;
+      const stages = table.rows.map((r) => r.cells[0]!.text);
+      expect(stages).toContain('Instal');
+      expect(stages).toContain('Biaya per Instal (CPI)');
+      // No revenue stage: Tempo has no install revenue column to stand behind.
+      expect(stages).not.toContain('Omzet (GMV)');
+    });
+
+    it('gives awareness reach and frequency, with the non-additivity caveat', () => {
+      const blocks = s4Blocks(BriefObjective.Awareness);
+      const chart = firstOfKind(blocks, 'chart')!.spec;
+      expect(chart.series.map((x) => x.metric)).toEqual(['reach', 'frequency']);
+
+      const note = blocks.find((b) => b.kind === 'coverageNote');
+      expect(note && 'text' in note ? note.text : '').toMatch(/batas atas/);
+    });
+  });
+
   describe('honest empty states', () => {
     it('renders a deck with no ingested days rather than throwing', () => {
       const model = build({ dashboard: buildEmptyDashboardFixture() });
@@ -180,6 +224,20 @@ describe('buildDeckModel', () => {
       const table = firstOfKind(blocksOf(model, 's3'), 'table')!.spec;
       expect(table.rows).toEqual([]);
       expect(table.emptyNote).toBeTruthy();
+    });
+
+    it('renders the honest empty state when a section has no findings above the cut', () => {
+      const parsed = parseEngineContent(RAW_CONTENT);
+      const stripped = structuredClone(parsed.content);
+      stripped.rankings = {};
+      const blocks = blocksOf(build({ content: stripped }), 's2');
+
+      // Data blocks still render; the slide says plainly that nothing cleared
+      // the bar — never an empty card, never a fabricated one.
+      expect(blocks.some((b) => b.kind === 'chart')).toBe(true);
+      expect(blocks.some((b) => b.kind === 'findingCard')).toBe(false);
+      const prose = blocks.find((b) => b.kind === 'prose');
+      expect(prose && 'text' in prose ? prose.text : '').toMatch(/Tidak ada temuan material/);
     });
 
     it('records a fallback note when a section is written from templates', () => {

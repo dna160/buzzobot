@@ -105,6 +105,28 @@ class ProbeLoopExport(BaseModel):
     log: list[dict] = Field(default_factory=list)
 
 
+class CardCopy(BaseModel):
+    """Per-finding prose for a deck card (Brief Deck PRD §3.2's `FindingCard`).
+
+    The agents narrate *sections*, not findings — one draft per section — so a
+    deck that wants one card per finding has nowhere to get the words. This is
+    that source: the same closed `claim_frame` template table the instant tier
+    writes from, rendered for every finding, in both tiers.
+
+    Deliberately deterministic even on the full tier. A card is evidence-first
+    (its numbers are chips straight out of `evidence`), and the narrated
+    analysis stays where the agents actually wrote it — the section prose above
+    the cards. Mixing agent prose into some cards and templates into others
+    would make "who wrote this sentence" unanswerable from the deck.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    headline: str
+    mechanism: str
+    action: str
+
+
 class SectionEntry(BaseModel):
     """One narrated section. `draft` is a `SectionDraftFull` or
     `SectionDraftLow` (Hard Rule 8: the low tier has no `implication` field at
@@ -149,6 +171,11 @@ class BriefContentV2(BaseModel):
     sections: dict[str, SectionEntry] = Field(default_factory=dict)
     s6: SynthesisEntry | None = None
     findings: list[Finding] = Field(default_factory=list)
+    # Keyed by finding id. Additive since M3: an older consumer ignores it, and
+    # a newer consumer facing an engine that predates it falls back to the
+    # section draft. `content_version` stays 2 — the drift check, not the
+    # version number, is what protects consumers from an additive field.
+    card_copy: dict[str, CardCopy] = Field(default_factory=dict)
     rankings: dict[str, SectionRankingExport] = Field(default_factory=dict)
     coverage: CoverageAudit | None = None
     probe_loop: ProbeLoopExport = Field(default_factory=ProbeLoopExport)

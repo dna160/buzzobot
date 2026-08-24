@@ -46,7 +46,7 @@ from engine.agents.critic import critique_section
 from engine.agents.narrator import narrate_section
 from engine.agents.synthesist import synthesize_s1, synthesize_s6
 from engine.contracts import Finding, MetricFrame, ObjectiveContract, SectionId, SectionPayload
-from engine.copy import instant_s1_draft, instant_s6_draft, instant_section_draft
+from engine.copy import card_copy_for, instant_s1_draft, instant_s6_draft, instant_section_draft
 from engine.generators.base import CoverageGap
 from engine.generators.awareness import AWARENESS_GENERATORS
 from engine.generators.base import Generator, GeneratorContext
@@ -87,6 +87,7 @@ class BriefState(TypedDict, total=False):
     objective_contract: dict
     findings: list[dict]
     coverage_gaps: list[dict]  # CoverageGap dumps from generators that skipped
+    card_copy: dict[str, dict]  # finding id -> deck card prose (deterministic, both tiers)
     coverage: dict  # CoverageAudit dump — exported at the boundary (deck PRD §3.1)
     rankings: dict[str, dict]  # {"2": {"selected_ids": [...], "below_cut": [...]}, ...}
     section_drafts: dict[str, dict]  # {"2": {"draft": {...}, "source": "llm", ...}, ...}
@@ -176,10 +177,16 @@ async def materiality_router_node(state: BriefState) -> dict[str, Any]:
     }
     gaps = [CoverageGap.model_validate(g) for g in state.get("coverage_gaps", [])]
     coverage = build_coverage_audit(scored, gaps)
+    # Card prose for every finding, not only the selected ones: Lampiran C
+    # renders the below-the-cut list too, and a finding that lost one section
+    # can still win another. Deterministic, so it costs nothing to compute here
+    # rather than deciding later which findings will be shown.
+    card_copy = {f.id: card_copy_for(f) for f in scored}
     return {
         "findings": [f.model_dump(mode="json") for f in scored],
         "rankings": rankings_serialized,
         "coverage": coverage.model_dump(mode="json"),
+        "card_copy": card_copy,
     }
 
 
@@ -254,8 +261,11 @@ async def instant_copy_node(state: BriefState) -> dict[str, Any]:
 
     s6_findings = _selected_findings(state, SectionId.S6_RISK_ACTIONS_OUTLOOK, findings_by_id)
     s6_draft = instant_s6_draft(s6_findings, confidence_tier)
-    if s6_draft.risks:
-        accepted_headlines.append(s6_draft.risks[0].risk)
+    # S1 is built from the section headlines only. On this path an S6 risk is
+    # the *same* finding restated with a claim label in front of it, so adding
+    # it would make the summary say one thing twice — visible to a client as a
+    # stutter on the first content slide. The agent path (synthesist_node) does
+    # include S6, because there the risk register is genuinely new prose.
     s1_draft = instant_s1_draft(accepted_headlines)
 
     return {

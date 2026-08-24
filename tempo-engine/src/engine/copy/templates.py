@@ -363,6 +363,137 @@ FRAME_COPY: dict[str, FrameCopy] = {
     ),
 }
 
+# One mechanism sentence per claim frame, carrying *why* rather than *what*.
+#
+# PRD §11 R4's mitigation, literally: "evidence chips carry the specificity so
+# templates only carry mechanism." A deck card puts the figures in chips, so a
+# mechanism sentence that restated them would print every number twice and
+# still say nothing about the mechanism. `{entity}` is the only interpolation;
+# a frame with no line here falls back to the evidence sentence, which is
+# plainer but never wrong.
+_FRAME_MECHANISMS: dict[str, str] = {
+    "identity_decomposition": (
+        "Perubahan periode ini terurai menjadi beberapa komponen dengan bobot berbeda; "
+        "komponen terbesar yang menentukan arah pergerakan {entity}."
+    ),
+    "efficiency_outlier_positive": (
+        "Dibandingkan rata-rata akun pada periode yang sama, {entity} menghasilkan keluaran "
+        "lebih besar untuk setiap rupiah yang dibelanjakan."
+    ),
+    "efficiency_outlier_negative": (
+        "Dibandingkan rata-rata akun pada periode yang sama, {entity} membutuhkan belanja "
+        "lebih besar untuk keluaran yang setara."
+    ),
+    "concentration_dependency": (
+        "Sebagian besar hasil periode ini berasal dari satu sumber, sehingga performa akun "
+        "bergerak mengikuti {entity} — termasuk ketika sumber itu melemah."
+    ),
+    "zero_yield_spend": (
+        "Anggaran pada {entity} terus terserap sementara keluaran yang tercatat pada periode "
+        "ini nol, sehingga setiap rupiah tambahan tidak menghasilkan apa pun."
+    ),
+    "marginal_return_scaling": (
+        "Pada rentang anggaran periode ini, penambahan belanja di {entity} masih diikuti "
+        "penambahan hasil dengan efisiensi yang bertahan."
+    ),
+    "marginal_return_declining": (
+        "Penambahan belanja terakhir di {entity} tidak lagi diikuti penambahan hasil yang "
+        "sebanding — tanda anggaran mendekati titik jenuhnya."
+    ),
+    "attribute_performance_correlation": (
+        "Perbedaan performa pada {entity} mengikuti satu atribut yang sama, bukan tersebar "
+        "acak antar entitas."
+    ),
+    "comparability_artifact": (
+        "Jumlah hari aktif kedua periode berbeda, sehingga selisih nominal pada {entity} "
+        "sebagian mencerminkan panjang periode, bukan perubahan performa."
+    ),
+    "data_coverage_gap": (
+        "Sebagian metrik yang dibutuhkan analisis tidak tersedia pada periode ini, sehingga "
+        "sebagian sinyal untuk {entity} tidak dapat dihitung."
+    ),
+    "session_efficiency_leader": (
+        "Untuk setiap jam tayang, sesi {entity} menghasilkan keluaran lebih besar dibanding "
+        "sesi lain pada periode yang sama."
+    ),
+    "session_efficiency_laggard": (
+        "Untuk setiap jam tayang, sesi {entity} menghasilkan keluaran lebih kecil dibanding "
+        "sesi lain pada periode yang sama."
+    ),
+    "aov_mix_shift": (
+        "Nilai pesanan rata-rata bergerak karena komposisi produk yang terjual berubah, "
+        "bukan karena jumlah pesanan {entity} semata."
+    ),
+    "creator_ladder_leader": (
+        "Kontribusi {entity} terhadap hasil periode ini lebih besar dibanding kreator lain "
+        "dengan tingkat aktivitas serupa."
+    ),
+    "creator_ladder_laggard": (
+        "Kontribusi {entity} terhadap hasil periode ini lebih kecil dibanding kreator lain "
+        "dengan tingkat aktivitas serupa."
+    ),
+    "sku_lifecycle_contribution": (
+        "Porsi hasil yang berasal dari {entity} cukup besar sehingga ketersediaan dan harga "
+        "produk ini ikut menentukan hasil periode berikutnya."
+    ),
+    "cohort_slice_summary": (
+        "Irisan data ini dipisahkan karena polanya berbeda dari rata-rata akun, sehingga "
+        "{entity} layak dibaca terpisah."
+    ),
+    "frequency_over_exposed": (
+        "Jumlah tayangan per orang pada {entity} sudah melewati titik ketika tayangan "
+        "tambahan lebih banyak menimbulkan kejenuhan daripada perhatian baru."
+    ),
+    "frequency_under_saturated": (
+        "Jumlah tayangan per orang pada {entity} masih di bawah titik ketika sebuah pesan "
+        "mulai diingat, sehingga jangkauan yang sudah dibayar belum bekerja penuh."
+    ),
+    "retention_hook_without_hold": (
+        "Pembuka materi {entity} berhasil menghentikan guliran layar, tetapi penonton "
+        "berhenti sebelum pesan utama tersampaikan."
+    ),
+    "retention_strong_hold": (
+        "Materi {entity} mempertahankan penonton melewati detik-detik awal, sehingga pesan "
+        "utamanya benar-benar tersampaikan."
+    ),
+    "incremental_reach_efficient": (
+        "Belanja tambahan pada {entity} masih menjangkau orang yang belum pernah melihat "
+        "materi ini, bukan mengulang audiens yang sama."
+    ),
+    "incremental_reach_saturating": (
+        "Belanja tambahan pada {entity} semakin banyak mengulang audiens yang sama alih-alih "
+        "menjangkau orang baru."
+    ),
+    "adgroup_reach_overlap": (
+        "Beberapa grup iklan menayangkan ke audiens yang sama, sehingga jangkauan {entity} "
+        "sebagian dihitung berulang dan anggarannya saling berebut orang yang sama."
+    ),
+    "funnel_leak_click_to_install": (
+        "Penurunan terbesar pada {entity} terjadi antara klik dan instal — masalahnya setelah "
+        "iklan, bukan pada iklannya."
+    ),
+    "cohort_quality_risk": (
+        "Biaya instal {entity} rendah, tetapi proporsi instal yang berlanjut juga rendah, "
+        "sehingga biaya murah belum tentu berarti hasil murah."
+    ),
+    "cohort_quality_strong": (
+        "Proporsi instal {entity} yang berlanjut cukup tinggi untuk membenarkan biaya "
+        "instalnya."
+    ),
+    "cpi_efficiency_scaling": (
+        "Biaya per instal {entity} bertahan meski anggarannya naik, tanda audiensnya belum "
+        "habis pada level belanja ini."
+    ),
+    "cpi_efficiency_saturating": (
+        "Biaya per instal {entity} naik seiring anggaran, tanda audiens yang terjangkau pada "
+        "level belanja ini mulai habis."
+    ),
+    "install_rate_anomaly": (
+        "Tingkat instal {entity} menyimpang jauh dari pola periode sebelumnya — dilaporkan "
+        "sebagai anomali, belum sebagai sebab."
+    ),
+}
+
 _MECHANISM_SCAFFOLDS = (
     "{entity} — {evidence}.",
     "Angka periode ini untuk {entity}: {evidence}.",
@@ -448,6 +579,26 @@ def mechanism_for(finding: Finding) -> str:
     return _variant(_MECHANISM_SCAFFOLDS, finding.id).format(
         entity=finding.entity.display_name, evidence=_evidence_phrase(finding)
     )
+
+
+def card_copy_for(finding: Finding) -> dict[str, str]:
+    """The three sentences a deck card needs, for one finding (PRD §3.2).
+
+    Same table, same deterministic variant choice as the section drafts, so a
+    card and the section prose above it cannot describe one finding two ways.
+    """
+    frame_mechanism = _FRAME_MECHANISMS.get(finding.claim_frame)
+    return {
+        "headline": headline_for(finding),
+        # The frame's mechanism sentence when there is one; the evidence
+        # sentence otherwise — plainer, but never wrong.
+        "mechanism": (
+            frame_mechanism.format(entity=finding.entity.display_name)
+            if frame_mechanism
+            else mechanism_for(finding)
+        ),
+        "action": action_for(finding),
+    }
 
 
 def instant_section_draft(findings: list[Finding], confidence_tier: Confidence) -> SectionDraft:
