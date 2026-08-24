@@ -43,6 +43,13 @@
       "when": 1787540777295,
       "tag": "0005_youthful_master_chief",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787559887912,
+      "tag": "0006_fixed_albert_cleary",
+      "breakpoints": true
     }
   ]
 }

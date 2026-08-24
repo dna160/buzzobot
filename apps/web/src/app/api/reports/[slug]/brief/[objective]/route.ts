@@ -1,5 +1,11 @@
 import { OBJECTIVE_NORTH_STAR, isBriefObjective, type BriefObjective } from '@tempo/core';
-import { getClientBySlug, getDailyBriefDashboard, getDb, getReportSpec } from '@tempo/db';
+import {
+  getClientBySlug,
+  getDailyBriefDashboard,
+  getDb,
+  getReportSpec,
+  listWindowVideos,
+} from '@tempo/db';
 import {
   buildDeckModel,
   parseEngineContent,
@@ -179,6 +185,22 @@ export async function GET(
     console.error(`[reports] stored report_spec for ${slug}/${objective} rejected:`, err),
   );
 
+  // Videos for S5 and Lampiran B. Read after the window is known (its dates
+  // come from the dashboard rollup, not recomputed here) and never fatal: a
+  // client with no organic account, or a read that fails, simply has no video
+  // slide rather than no deck.
+  const windowStart = dashboard.days[0]?.date;
+  const windowEnd = dashboard.days[dashboard.days.length - 1]?.date;
+  const videos =
+    spec.appendix.allVideos && windowStart && windowEnd
+      ? await listWindowVideos(db, client, { startDate: windowStart, endDate: windowEnd }).catch(
+          (err) => {
+            console.error(`[reports] window videos for ${slug} failed:`, err);
+            return [];
+          },
+        )
+      : [];
+
   const model = buildDeckModel({
     content: parsed.content,
     contentVersion: parsed.version,
@@ -189,6 +211,7 @@ export async function GET(
     tier: parsed.content.tier ?? tier,
     generatedAt: new Date().toISOString(),
     windowDays,
+    videos,
   });
 
   // Every response carries the run id, so a deck someone is arguing about can

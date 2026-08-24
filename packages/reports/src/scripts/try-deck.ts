@@ -16,6 +16,7 @@ import { BriefObjective, isBriefObjective } from '@tempo/core';
 import { buildDeckModel } from '../deck/build.js';
 import { parseEngineContent } from '../deck/engine-content.js';
 import { buildDashboardFixture } from '../deck/fixtures/dashboard.js';
+import { buildVideoFixture } from '../deck/fixtures/videos.js';
 import { renderDeckHtml } from '../deck/render.js';
 import { defaultReportSpec } from '../deck/spec.js';
 
@@ -41,6 +42,7 @@ const model = buildDeckModel({
   tier: parsed.content.tier,
   generatedAt: new Date().toISOString(),
   windowDays: 7,
+  videos: buildVideoFixture(),
 });
 
 writeFileSync(out, renderDeckHtml(model), 'utf8');

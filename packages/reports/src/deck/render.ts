@@ -12,6 +12,7 @@ import type {
   RoadmapRow,
   Slide,
   TableSpec,
+  VideoCell,
 } from './model.js';
 
 /**
@@ -191,6 +192,33 @@ function styles(brand: string): string {
     .card__action { font-size: 9pt; font-weight: 600; margin: 0; }
     .card__footer { font-size: 7pt; color: var(--muted); margin-top: 1.6mm; }
 
+    /* S5: thumbnail + permalink + metrics. The whole cell is the anchor, so a
+       reader clicking anywhere on a video in the PDF lands on TikTok. */
+    .videos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3.5mm; }
+    .video {
+      border: 1px solid var(--hairline); border-radius: 2.5mm; overflow: hidden;
+      background: var(--surface); text-decoration: none; color: inherit; display: block;
+    }
+    .video__frame {
+      /* 9:16 is the shape TikTok posts in; a thumbnail letterboxed into a
+         landscape box would be mostly empty space. */
+      aspect-ratio: 16 / 10; background: var(--surface-alt);
+      display: flex; align-items: center; justify-content: center; overflow: hidden;
+    }
+    .video__frame img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .video__placeholder {
+      width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+      background: var(--brand); color: #FFF; opacity: 0.9;
+      font-size: 7.5pt; font-weight: 600; text-align: center; padding: 2mm;
+    }
+    .video__body { padding: 2.5mm 3mm; }
+    .video__caption {
+      font-size: 8pt; font-weight: 600; line-height: 1.3; margin: 0 0 1.5mm;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .video__metrics { display: flex; gap: 3mm; font-size: 7.5pt; color: var(--muted); }
+    .video__metric strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+
     .prose { font-size: 10pt; line-height: 1.5; color: var(--ink); margin: 0; }
     .coverage { font-size: 8.5pt; color: var(--muted); font-style: italic; }
     .empty { font-size: 9pt; color: var(--muted); font-style: italic; }
@@ -315,6 +343,38 @@ function renderCard(card: FindingCard): string {
   </div>`;
 }
 
+function renderVideoGrid(videos: VideoCell[]): string {
+  const cells = videos
+    .map((video) => {
+      const frame = video.thumbnailSrc
+        ? `<img src="${esc(video.thumbnailSrc)}" alt="" />`
+        : // Never a broken image: a miss is a branded placeholder (PRD §6).
+          `<div class="video__placeholder">${esc(DECK_COPY.labels.noThumbnail)}</div>`;
+      const metrics = video.metrics
+        .map(
+          (metric) =>
+            `<span class="video__metric">${esc(metric.label)} <strong>${esc(
+              metric.value,
+            )}</strong></span>`,
+        )
+        .join('');
+      const body = `<div class="video__frame">${frame}</div>
+        <div class="video__body">
+          <p class="video__caption">${esc(video.caption)}</p>
+          <div class="video__metrics">${metrics}</div>
+        </div>`;
+
+      // An `<a>` survives Chromium print as a real link annotation, so the
+      // thumbnail is clickable inside the PDF. A video with no permalink
+      // renders as a plain cell rather than a link that goes nowhere.
+      return video.href
+        ? `<a class="video" href="${esc(video.href)}">${body}</a>`
+        : `<div class="video">${body}</div>`;
+    })
+    .join('');
+  return `<div class="block videos">${cells}</div>`;
+}
+
 function renderRoadmap(rows: RoadmapRow[]): string {
   if (rows.length === 0) {
     return `<div class="block"><p class="empty">${esc(DECK_COPY.roadmap.empty)}</p></div>`;
@@ -353,10 +413,7 @@ function renderBlock(block: Block, appendix: boolean, currency: Currency): strin
     case 'findingCard':
       return renderCard(block.card);
     case 'videoGrid':
-      // Filled at M4 with the video slide. Rendering nothing is correct until
-      // then — a placeholder would be a stub, and a stub is not a state this
-      // system keeps (PRD §1).
-      return '';
+      return renderVideoGrid(block.videos);
     default:
       return '';
   }

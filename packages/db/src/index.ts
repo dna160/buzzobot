@@ -63,6 +63,10 @@ export type {
   DailyBriefComparison,
 } from './repositories/daily-brief.js';
 
+export { listWindowVideos } from './repositories/window-videos.js';
+export type { WindowVideoRow, WindowVideosOptions } from './repositories/window-videos.js';
+export { cacheThumbnail, readThumbnailDataUri, mediaDir } from './ingest/thumbnails.js';
+
 export {
   getReportSpec,
   listReportSpecs,

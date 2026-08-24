@@ -1,5 +1,16 @@
-import { BriefObjective, type Currency, type MetricKey } from '@tempo/core';
-import type { CampaignWindowRow, DailyBriefDashboardData, Totals } from '@tempo/db';
+import {
+  BriefObjective,
+  formatNumberCompact,
+  formatPercent,
+  type Currency,
+  type MetricKey,
+} from '@tempo/core';
+import type {
+  CampaignWindowRow,
+  DailyBriefDashboardData,
+  Totals,
+  WindowVideoRow,
+} from '@tempo/db';
 import { buildFindingCard, namedRowAction } from './cards.js';
 import { DECK_COPY, coverageLine, lightAction, metricLabel } from './copy.js';
 import {
@@ -23,6 +34,7 @@ import type {
   Slide,
   TableRow,
   TableSpec,
+  VideoCell,
 } from './model.js';
 import type { ReportSpec } from './spec.js';
 
@@ -54,6 +66,12 @@ export interface BuildDeckInput {
   /** ISO-8601, supplied by the caller — this function never reads a clock. */
   generatedAt: string;
   windowDays: number;
+  /**
+   * Videos with organic activity in the window (M4). Optional: a client with
+   * no organic account simply has no S5 slide, which is the honest rendering —
+   * not an empty grid.
+   */
+  videos?: WindowVideoRow[];
 }
 
 const DEFAULT_BRAND = '#2A78D6';
@@ -70,7 +88,16 @@ const MAX_RANK_ROWS = 8;
  * the deck honest — the alternative is a card clipped mid-sentence, which
  * looks like a bug and reads like one.
  */
-const MAX_CARDS = { s2: 3, s3: 2, s4: 2 } as const;
+const MAX_CARDS = { s2: 3, s3: 2, s4: 2, s5: 1 } as const;
+/**
+ * One row of three.
+ *
+ * A second row fits only by shrinking the thumbnails to the point where they
+ * stop being the reason the slide exists, and it pushes the creative findings
+ * and the R7 note off the page. "Video Terbaik" is the top few by design —
+ * Lampiran B carries every video in the window.
+ */
+const MAX_VIDEO_CELLS = 3;
 
 /** Which metric a campaign row is graded and ranked on, per objective. */
 const OUTCOME_METRIC: Record<BriefObjective, MetricKey> = {
@@ -540,6 +567,65 @@ function buildFunnelBlocks(
   ];
 }
 
+/**
+ * S5 — the top videos, as a clickable grid (PRD §4, §6).
+ *
+ * `href` is the row's own `shareUrl`, never a URL this function assembles: a
+ * constructed permalink that 404s inside a client's PDF is worse than no link,
+ * and the link-integrity test asserts the equality.
+ */
+function buildVideoGrid(videos: WindowVideoRow[], objective: BriefObjective): Block[] {
+  const cells: VideoCell[] = videos
+    .filter((video) => video.views > 0)
+    .slice(0, MAX_VIDEO_CELLS)
+    .map((video) => ({
+      videoId: video.id,
+      caption: video.caption,
+      href: video.shareUrl ?? '',
+      thumbnailSrc: video.thumbnailDataUri ?? undefined,
+      metrics: [
+        { label: metricLabel('views', objective), value: formatNumberCompact(video.views) },
+        {
+          label: metricLabel('engagementRate', objective),
+          value: video.engagementRate === null ? DECK_COPY.labels.notReported : formatPercent(video.engagementRate),
+        },
+      ],
+      // Per-video grading has no threshold anyone has committed to, and
+      // `light()` returns `none` rather than guessing — so the cells carry
+      // their figures without a colour that would imply a standard.
+      light: 'none' as const,
+    }));
+
+  if (cells.length === 0) return [];
+  return [{ kind: 'videoGrid', videos: cells }];
+}
+
+/** Lampiran B — every video in the window, organic metrics only (R7). */
+function buildVideoTable(videos: WindowVideoRow[]): TableSpec {
+  return {
+    title: DECK_COPY.slideTitles.appendixB,
+    headers: [...DECK_COPY.tables.videoHeaders],
+    rows: videos.map((video) => ({
+      cells: [
+        { text: video.caption || video.externalId },
+        { text: video.publishedAt },
+        { text: formatNumberCompact(video.views), numeric: true },
+        { text: formatNumberCompact(video.likes), numeric: true },
+        { text: formatNumberCompact(video.comments), numeric: true },
+        { text: formatNumberCompact(video.shares), numeric: true },
+        {
+          text:
+            video.engagementRate === null
+              ? DECK_COPY.labels.notReported
+              : formatPercent(video.engagementRate),
+          numeric: true,
+        },
+      ],
+    })),
+    emptyNote: DECK_COPY.tables.emptyVideos,
+  };
+}
+
 function impactBasis(objective: BriefObjective): string {
   return objective === BriefObjective.Awareness ? 'dari impresi' : 'dari belanja';
 }
@@ -652,12 +738,36 @@ export function buildDeckModel(input: BuildDeckInput): DeckModel {
     fallbacks.push({ slideId: 's6', reason: 'no_findings', detail: DECK_COPY.roadmap.empty });
   }
 
+  // --- S5 Video Terbaik ----------------------------------------------------
+  const videos = input.videos ?? [];
+  const videoGrid = buildVideoGrid(videos, objective);
+  const s5Blocks: Block[] = [...videoGrid];
+  if (videoGrid.length > 0) {
+    const s5 = content.sections['5'];
+    if (s5) noteDeterministic(fallbacks, 's5', s5.narration_source);
+    // Both disclosures sit directly under the grid, for the same reason the
+    // coverage line does elsewhere: a note placed last is the first thing a
+    // full slide clips, and R7's "no revenue per video" is exactly the sentence
+    // that must not go missing.
+    s5Blocks.push(...coverageBlocks(content, 5));
+    s5Blocks.push({ kind: 'coverageNote', text: DECK_COPY.labels.organicOnly });
+    s5Blocks.push(...narratedProseBlocks(s5));
+    s5Blocks.push(...sectionCards(content, 5, currency, MAX_CARDS.s5));
+  }
+
+  // Built in reading order rather than assembled and spliced: S5 is optional
+  // (a client with no organic account has no video slide at all — an empty
+  // grid saying "no videos" is a slide that exists to say nothing), and a
+  // positional insert would silently move if a slide were ever added above it.
   const slides: Slide[] = [
     { id: 's0', title: dashboard.client.name, variant: 'cover', blocks: [] },
     { id: 's1', title: DECK_COPY.slideTitles.s1, variant: 'content', blocks: s1Blocks },
     { id: 's2', title: DECK_COPY.slideTitles.s2, variant: 'content', blocks: s2Blocks },
     { id: 's3', title: DECK_COPY.slideTitles.s3, variant: 'content', blocks: s3Blocks },
     { id: 's4', title: DECK_COPY.slideTitles.s4[objective], variant: 'content', blocks: s4Blocks },
+    ...(s5Blocks.length > 0
+      ? [{ id: 's5', title: DECK_COPY.slideTitles.s5, variant: 'content' as const, blocks: s5Blocks }]
+      : []),
     { id: 's6', title: DECK_COPY.slideTitles.s6, variant: 'content', blocks: s6Blocks },
   ];
 
@@ -667,6 +777,18 @@ export function buildDeckModel(input: BuildDeckInput): DeckModel {
       title: DECK_COPY.slideTitles.appendixA,
       variant: 'appendix',
       blocks: [{ kind: 'table', spec: buildDayTable(dashboard, spec, objective, currency) }],
+    });
+  }
+
+  if (spec.appendix.allVideos && videos.length > 0) {
+    slides.push({
+      id: 'appendix-b',
+      title: DECK_COPY.slideTitles.appendixB,
+      variant: 'appendix',
+      blocks: [
+        { kind: 'table', spec: buildVideoTable(videos) },
+        { kind: 'coverageNote', text: DECK_COPY.labels.organicOnly },
+      ],
     });
   }
 

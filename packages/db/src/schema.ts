@@ -111,6 +111,17 @@ export const videos = pgTable(
     externalId: text('external_id').notNull(),
     caption: text('caption').notNull().default(''),
     thumbnailUrl: text('thumbnail_url'),
+    /**
+     * Where the thumbnail's bytes were cached at ingestion (Brief Deck PRD §6).
+     *
+     * TikTok's CDN URLs expire, so `thumbnail_url` is not something a report
+     * generated next week can still resolve — and fetching N images while
+     * rendering would blow the instant tier's ten-second budget even when the
+     * URLs are live. The bytes are fetched once, on ingest, and the deck reads
+     * them from here. Null means "not cached", which renders as a branded
+     * placeholder, never a broken image.
+     */
+    thumbnailCachedPath: text('thumbnail_cached_path'),
     shareUrl: text('share_url'),
     durationSec: doublePrecision('duration_sec').notNull().default(0),
     publishedAt: timestamp('published_at', { withTimezone: true }).notNull(),

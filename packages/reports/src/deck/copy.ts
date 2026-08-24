@@ -48,6 +48,8 @@ export const DECK_COPY = {
   tables: {
     campaignHeaders: ['Kampanye', 'Biaya', 'Impresi', 'Klik', 'CTR', 'Status'],
     funnelHeaders: ['Tahap', 'Jumlah', 'Rasio dari tahap sebelumnya'],
+    videoHeaders: ['Video', 'Tayang', 'Tontonan', 'Suka', 'Komentar', 'Dibagikan', 'Interaksi'],
+    emptyVideos: 'Tidak ada video dengan aktivitas organik pada periode ini.',
     dayHeader: 'Tanggal',
     emptyCampaigns: 'Tidak ada kampanye yang berjalan pada periode ini.',
     emptyDays: 'Tidak ada hari dengan data pada periode ini.',
@@ -65,6 +67,10 @@ export const DECK_COPY = {
     suggested: 'disarankan',
     noMaterialFindings: 'Tidak ada temuan material periode ini.',
     notReported: '—',
+    organicOnly:
+      'Metrik per video bersumber dari data organik. Omzet per video belum tersedia — ' +
+      'kontrak data TikTok Shop untuk tingkat video belum terdefinisi.',
+    noThumbnail: 'Pratinjau tidak tersedia',
     reachCaveat:
       'Jangkauan tingkat akun adalah penjumlahan jangkauan kampanye, sehingga merupakan ' +
       'batas atas — audiens yang beririsan antar kampanye belum dikurangi.',

@@ -53,12 +53,21 @@ describe('renderDeckHtml', () => {
     expect(doc).toContain('break-inside: avoid');
   });
 
-  it('is self-contained: no network request at render time', () => {
+  it('is self-contained: nothing in it is fetched at render or view time', () => {
     const doc = html();
     expect(doc).not.toMatch(/<script/i);
-    expect(doc).not.toMatch(/https?:\/\//);
     expect(doc).not.toMatch(/<link\b/i);
-    expect(doc).not.toMatch(/<img\b/i);
+    // Images are embedded as data URIs (see videos.test.ts for the S5 grid);
+    // an external `src` would be a blank box in a PDF rendered without network.
+    for (const src of [...doc.matchAll(/<img[^>]+src="([^"]*)"/g)].map((m) => m[1]!)) {
+      expect(src.startsWith('data:')).toBe(true);
+    }
+    // A URL may appear only as a link target — never as something the document
+    // has to load in order to render correctly.
+    for (const match of doc.matchAll(/https?:\/\/[^\s"']+/g)) {
+      const before = doc.slice(Math.max(0, match.index! - 120), match.index!);
+      expect(before, `unexpected URL: ${match[0]}`).toMatch(/href="$|href="[^"]*$/);
+    }
   });
 
   it('draws charts as inline SVG', () => {

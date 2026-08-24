@@ -8,6 +8,7 @@ import type {
   VideoDTO,
 } from '@tempo/tiktok';
 import type { Database } from '../client.js';
+import { cacheThumbnail } from '../ingest/thumbnails.js';
 import {
   adgroups,
   campaigns,
@@ -143,14 +144,33 @@ export async function upsertPaidHourlyMetrics(
   return written;
 }
 
-/** Upsert videos for an account; returns externalId → internal id. */
+/**
+ * Upsert videos for an account; returns externalId → internal id.
+ *
+ * Also caches each thumbnail's bytes (Brief Deck PRD §6): TikTok CDN URLs
+ * expire, and the deck renders with no network access, so the fetch has to
+ * happen here or never. A failed cache is not a failed ingest — the path stays
+ * null and the deck draws a placeholder.
+ *
+ * Set `cacheThumbnails: false` to skip the network entirely (tests, backfills
+ * of metrics where the images are already cached).
+ */
 export async function upsertVideos(
   db: Database,
   accountId: string,
   rows: readonly VideoDTO[],
+  options: { cacheThumbnails?: boolean } = {},
 ): Promise<Map<string, string>> {
+  const shouldCache = options.cacheThumbnails ?? true;
   const map = new Map<string, string>();
   for (const v of rows) {
+    const cached = shouldCache
+      ? await cacheThumbnail(v.externalId, v.thumbnailUrl)
+      : { path: null, outcome: 'skipped' as const };
+    if (cached.outcome === 'failed') {
+      console.warn(`[ingest] thumbnail cache failed for ${v.externalId}: ${cached.reason}`);
+    }
+
     const [row] = await db
       .insert(videos)
       .values({
@@ -158,13 +178,21 @@ export async function upsertVideos(
         externalId: v.externalId,
         caption: v.caption,
         thumbnailUrl: v.thumbnailUrl,
+        thumbnailCachedPath: cached.path,
         shareUrl: v.shareUrl,
         durationSec: v.durationSec,
         publishedAt: v.publishedAt,
       })
       .onConflictDoUpdate({
         target: [videos.accountId, videos.externalId],
-        set: { caption: v.caption, thumbnailUrl: v.thumbnailUrl, shareUrl: v.shareUrl },
+        // A failed fetch must not erase a path cached on an earlier run, so the
+        // column is only written when this run actually produced one.
+        set: {
+          caption: v.caption,
+          thumbnailUrl: v.thumbnailUrl,
+          shareUrl: v.shareUrl,
+          ...(cached.path ? { thumbnailCachedPath: cached.path } : {}),
+        },
       })
       .returning({ id: videos.id });
     if (row) map.set(v.externalId, row.id);
