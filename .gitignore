@@ -21,6 +21,11 @@ next-env.d.ts
 
 # Local databases / PGlite
 .pglite/
+.tempo-pglite/
+# Brief Deck local media: cached video thumbnails and rendered deck artifacts.
+# Both are regenerable and neither belongs in git (see TEMPO_MEDIA_DIR /
+# TEMPO_ARTIFACT_DIR in .env.example).
+.tempo-media/
 *.sqlite
 *.db
 

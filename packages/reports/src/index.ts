@@ -81,6 +81,19 @@ export { DECK_COPY, metricLabel, objectiveLabel, tierBadge } from './deck/copy.j
 export { light, rowLight, deltaDirection } from './deck/lights.js';
 export { solveKpiGrid, type GridSolution } from './deck/grid.js';
 export {
+  paletteFor,
+  previewSpec,
+  replaceMetric,
+  addMetric,
+  removeMetric,
+  moveMetric,
+  setTarget,
+  CATEGORY_LABELS,
+  type PaletteEntry,
+  type PaletteGroup,
+  type SpecPreview,
+} from './deck/spec-editor.js';
+export {
   ReportSpecSchema,
   MetricKeySchema,
   OBJECTIVE_METRICS,
@@ -92,6 +105,8 @@ export {
   resolveReportSpec,
   presetMetricsFor,
   disallowedMetrics,
+  MIN_SPEC_METRICS,
+  MAX_SPEC_METRICS,
   type ReportSpec,
   type ReportSpecPreset,
 } from './deck/spec.js';

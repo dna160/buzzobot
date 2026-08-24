@@ -7,6 +7,10 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./spec-editor": {
+      "types": "./src/deck/spec-editor.ts",
+      "default": "./src/deck/spec-editor.ts"
     }
   },
   "scripts": {

@@ -25,11 +25,19 @@ const METRIC_KEYS = Object.keys(METRICS) as [MetricKey, ...MetricKey[]];
 
 export const MetricKeySchema = z.enum(METRIC_KEYS);
 
+/**
+ * The grid has no honest layout below three tiles, and a spec past twenty
+ * metrics is an appendix pretending to be a deck. Named here so the schema and
+ * the editor enforce the same two numbers rather than each carrying a literal.
+ */
+export const MIN_SPEC_METRICS = 3;
+export const MAX_SPEC_METRICS = 20;
+
 export const ReportSpecSchema = z.object({
   version: z.literal(1),
   preset: z.enum(['views', 'jualan', 'install', 'custom']),
   /** Ordered = priority; the first 3–6 tile, the rest reach Lampiran A. */
-  metrics: z.array(MetricKeySchema).min(3).max(20),
+  metrics: z.array(MetricKeySchema).min(MIN_SPEC_METRICS).max(MAX_SPEC_METRICS),
   appendix: z
     .object({
       rawTable: z.boolean().default(true),

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useParams } from 'next/navigation';
-import { BarChart3, LayoutDashboard, Radio, Settings, Sparkles, Video } from 'lucide-react';
+import { BarChart3, LayoutDashboard, Radio, Settings, SlidersHorizontal, Sparkles, Video } from 'lucide-react';
 import { cn } from '@tempo/ui';
 import { trpc } from '@/trpc/client';
 import { ClientSwitcher } from './ClientSwitcher';
@@ -24,6 +24,8 @@ function DataSourceBadge() {
 
 const NAV = [
   { label: 'Overview', icon: LayoutDashboard, href: (slug: string) => `/clients/${slug}` },
+  // Per client × objective, so it lives under the client rather than Settings.
+  { label: 'Deck config', icon: SlidersHorizontal, href: (slug: string) => `/clients/${slug}/deck` },
   { label: 'Paid Campaigns', icon: BarChart3, href: (slug: string) => `/clients/${slug}#paid`, soon: true },
   { label: 'Organic Content', icon: Video, href: (slug: string) => `/clients/${slug}#organic`, soon: true },
   { label: 'Live Signals', icon: Radio, href: () => '#', soon: true },
