@@ -9,15 +9,15 @@ without re-reading the entire codebase and without re-deriving decisions.
 | ----- | ---------------------------- | ----------- | ------------------------------------- |
 | 0     | Foundation & domain kernel   | ✅ Complete | [PHASE_0_FOUNDATION.md](./PHASE_0_FOUNDATION.md) |
 | 1     | Vertical slice — client dashboard | ✅ Complete | [PHASE_1_VERTICAL_SLICE.md](./PHASE_1_VERTICAL_SLICE.md) |
-| 1.5   | Client PDF reports           | ✅ Complete | [PHASE_1_5_PDF_REPORTS.md](./PHASE_1_5_PDF_REPORTS.md) |
+| 1.5   | Client PDF reports           | 🪦 Superseded | [PHASE_1_5_PDF_REPORTS.md](./PHASE_1_5_PDF_REPORTS.md) — its renderer was deleted by Brief Deck M7 (K2) |
 | 2     | Multi-tenant SaaS & live sync | ⏭ Planned  | (TBD)                                 |
 
 Work that spans both this repo and `tempo-engine/` is tracked as its own program rather
 than a numbered phase:
 
-| Program | Scope | Plan |
-| ------- | ----- | ---- |
-| Brief Deck | One 16:9 client deck replacing the daily/hourly/A4 reports, every claim a `Finding` | [brief-deck/](./brief-deck/README.md) |
+| Program | Scope | Status | Plan |
+| ------- | ----- | ------ | ---- |
+| Brief Deck | One 16:9 client deck replacing the daily/hourly/A4 reports, every claim a `Finding` | ✅ M0–M7 complete | [brief-deck/](./brief-deck/README.md) |
 
 ## How to read a handover
 

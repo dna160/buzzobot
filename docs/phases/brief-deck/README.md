@@ -24,7 +24,12 @@ numbered phases in [`../README.md`](../README.md):
 | M4 | S5 video slide, Lampiran B, thumbnail caching | ✅ Complete | [M4_VIDEO.md](./M4_VIDEO.md) |
 | M5 | Tiers end-to-end, `report_runs` + cron (**K6 dead**) | ✅ Complete | [M5_TIERS_E2E.md](./M5_TIERS_E2E.md) |
 | M6 | Spec editor for AMs | ✅ Complete | [M6_SPEC_EDITOR.md](./M6_SPEC_EDITOR.md) |
-| M7 | Kill list — **K1, K2, K3, K7 die**; K5 alias | ⏭ Planned | [M7_KILL_LIST.md](./M7_KILL_LIST.md) |
+| M7 | Kill list — **K1, K2, K3, K7 die**; K5 alias | ✅ Complete | [M7_KILL_LIST.md](./M7_KILL_LIST.md) |
+
+**The program is complete.** One item is scheduled rather than done: the K5 alias
+at `GET /api/reports/:slug` is removed one release from now, gated on its access
+log showing no caller left to migrate — see
+[M7_KILL_LIST.md §5](./M7_KILL_LIST.md#5-deferred--and-one-thing-that-is-owed).
 
 Ordering is not a preference. Nothing in the kill list (PRD §1) is deleted until the
 exit criterion that replaces it has passed on a real client, which is why every

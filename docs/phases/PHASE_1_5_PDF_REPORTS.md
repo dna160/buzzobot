@@ -1,6 +1,14 @@
 # Phase 1.5 — Client PDF Reports — HANDOVER
 
-**Status:** ✅ Complete · **Verified:** report renders end-to-end; `/api/reports/:slug`
+> **🪦 Superseded — this describes code that no longer exists.**
+> The Brief Deck replaced this report, and M7 deleted its renderer
+> (`packages/reports/src/{model,render,insights}.ts`, kill-list row K2).
+> `GET /api/reports/:slug` is now a deprecated 308 alias to
+> `/api/reports/:slug/brief/:objective`. Kept as the record of what was
+> built and why — see [brief-deck/](./brief-deck/README.md) for what
+> replaced it.
+
+**Status (as shipped):** ✅ Complete · **Verified:** report renders end-to-end; `/api/reports/:slug`
 returns a valid ~210 KB PDF; cover, KPIs, inline SVG charts, tables, and the
 auto-generated action plan all render correctly (screenshots in `docs/screenshots/`).
 
