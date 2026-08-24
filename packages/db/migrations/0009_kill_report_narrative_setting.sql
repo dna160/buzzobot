@@ -1,0 +1,12 @@
+-- Brief Deck M7 / K1: the report-narrative (LLM) stack is gone. Narration is
+-- tempo-engine's, with its own gates and its own deterministic fallback, and
+-- nothing reads this row any more.
+--
+-- Deleted rather than left in place: the row holds a model endpoint and model
+-- name for a feature that no longer exists, and stale configuration for a dead
+-- feature is the trap PRD §11 R6 names — the next operator to read it would
+-- reasonably conclude the surface still narrates its own reports.
+--
+-- `app_settings` itself stays. It is a generic operator-settings store and this
+-- was simply its only key.
+DELETE FROM "app_settings" WHERE "key" = 'report_narrative';

@@ -64,6 +64,13 @@
       "when": 1787563568294,
       "tag": "0008_complete_romulus",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787563568295,
+      "tag": "0009_kill_report_narrative_setting",
+      "breakpoints": true
     }
   ]
 }

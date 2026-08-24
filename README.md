@@ -78,38 +78,18 @@ Then `pnpm db:seed`. The seed reads the export's own date span, so re-running it
 with a wider export just backfills more days. `pnpm db:inspect` prints the
 parsed intraday model for a quick sanity check.
 
-### Report narrative (LLM)
+### Report narration
 
-The report's analysis prose is written by a language model, but the model never
-does arithmetic. The deterministic engine computes every figure first and hands
-the model a **fact sheet** containing only those figures, pre-formatted. After
-generation, three gates must pass before the narrative is accepted:
+The surface writes no prose. Every analytical claim on a deck is a `Finding`
+produced by `tempo-engine`, which computes the figures deterministically first
+and then puts three gates in front of anything a model wrote: it must validate
+against the content schema, every numeral it prints must appear verbatim in the
+finding's own evidence, and it may not name a metric the objective cannot
+support. A failure falls back to the engine's deterministic `claim_frame`
+templates and the deck says which tier produced it. The deck always renders.
 
-1. It validates against the narrative schema.
-2. Every number it cites appears in the fact sheet (`allowedNumbers`).
-3. It presents no value for a metric the export cannot support (ROAS, CPA,
-   conversions, organic).
-
-Any failure — unreachable model, malformed JSON, an invented figure — falls back
-to the deterministic writer, and the report says so in its footer. The report
-always renders.
-
-| `REPORT_NARRATIVE_PROVIDER` | Backend                                       |
-| --------------------------- | --------------------------------------------- |
-| `anthropic`                 | Claude API (needs `ANTHROPIC_API_KEY`)        |
-| `lmstudio`                  | Local LM Studio server                        |
-| `openai-compatible`         | Any OpenAI-shaped endpoint (Ollama, vLLM, …)  |
-| `off`                       | Deterministic prose only                      |
-
-Unset defaults to `anthropic` when `ANTHROPIC_API_KEY` is present, else `off`.
-For LM Studio: enable its server (Developer → Start Server), then set
-`REPORT_NARRATIVE_BASE_URL=http://localhost:1234/v1` and
-`REPORT_NARRATIVE_MODEL` to the loaded model's name.
-
-`pnpm --filter @tempo/reports check:local-llm` is the local-setup preflight: it
-checks the server is reachable, the model is loaded, and a JSON round-trip works
-— no database needed. Once it passes, `pnpm --filter @tempo/reports
-try:narrative` prints the generated narrative and which path produced it.
+Configuration for that model connection lives with the engine
+(`tempo-engine/.env.example`), not here.
 
 ### Report API (external callers)
 

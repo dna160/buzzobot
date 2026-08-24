@@ -8,11 +8,15 @@ import { appSettings } from '../schema.js';
  * package needs no dependency on the packages whose config it happens to hold.
  */
 
-/** Stable keys for the settings this app stores. */
-export const SETTINGS_KEYS = {
-  /** The report narrative (LLM) connection config, as a Partial<NarrativeConfig>. */
-  reportNarrative: 'report_narrative',
-} as const;
+/**
+ * Stable keys for the settings this app stores.
+ *
+ * Empty since Brief Deck M7: the only key was the report-narrative (LLM)
+ * connection, and narration moved to tempo-engine, which owns its own model
+ * configuration. The store itself is kept — it is generic, and an operator
+ * setting that needs a home will want it rather than a new table.
+ */
+export const SETTINGS_KEYS = {} as const;
 
 /** Read a setting, JSON-parsed. Returns null when absent or unparseable. */
 export async function getSetting<T = unknown>(db: Database, key: string): Promise<T | null> {

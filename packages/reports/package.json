@@ -18,12 +18,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "clean": "rm -rf dist .turbo",
-    "check:local-llm": "tsx --env-file-if-exists=../../.env src/scripts/check-local-llm.ts",
-    "try:narrative": "tsx --env-file-if-exists=../../.env src/scripts/try-narrative.ts",
     "try:deck": "tsx src/scripts/try-deck.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.112.4",
     "@tempo/core": "workspace:*",
     "@tempo/db": "workspace:*",
     "zod": "^3.25.76"
