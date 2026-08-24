@@ -11,19 +11,25 @@
     "build": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist .turbo"
+    "clean": "rm -rf dist .turbo",
+    "decks:cron": "tsx --env-file-if-exists=../../.env src/deck-cron.ts",
+    "decks:now": "tsx --env-file-if-exists=../../.env src/deck-cron.ts --once",
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@tempo/core": "workspace:*",
     "@tempo/db": "workspace:*",
-    "@tempo/tiktok": "workspace:*"
+    "@tempo/tiktok": "workspace:*",
+    "node-cron": "^3.0.3"
   },
   "devDependencies": {
     "@tempo/eslint-config": "workspace:*",
     "@tempo/tsconfig": "workspace:*",
     "@types/node": "^22.10.5",
+    "@types/node-cron": "^3.0.11",
     "eslint": "^9.18.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
   }
 }

@@ -50,6 +50,20 @@
       "when": 1787559887912,
       "tag": "0006_fixed_albert_cleary",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1787563043143,
+      "tag": "0007_romantic_ultimates",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1787563568294,
+      "tag": "0008_complete_romulus",
+      "breakpoints": true
     }
   ]
 }

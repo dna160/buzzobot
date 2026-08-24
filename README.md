@@ -159,6 +159,21 @@ The cover badge and the footer on every slide state which tier produced the
 deck, along with the run id — so any deck can be traced back to
 `tempo-engine`'s own `/ui/briefs/{run_id}` review page in one step.
 
+Because the full tier costs minutes, it is **pre-generated**: a weekly job
+(`pnpm --filter @tempo/ingestion decks:cron`, run by pm2) renders each client's
+full deck overnight and stores it, and the route serves that artifact while it
+is fresh. A portal that wants both can download the instant deck immediately and
+start a full run in parallel:
+
+```
+POST /api/reports/cimory/brief/gmv/full            → { runId }
+GET  /api/reports/cimory/brief/gmv/full?runId=…    → { status: 'ready', downloadUrl }
+```
+
+Every generation is recorded in `report_runs`, which is what the engine health
+card in Settings reads to answer "is the engine up, and did the last deck
+render".
+
 Which metrics a client's deck shows is a per-client `ReportSpec` (`report_specs`),
 validated against the objective: an awareness spec containing `roas` is rejected
 with a 422 rather than quietly rendering a number that objective should not show.

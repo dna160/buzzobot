@@ -63,6 +63,26 @@ export type {
   DailyBriefComparison,
 } from './repositories/daily-brief.js';
 
+export {
+  startReportRun,
+  completeReportRun,
+  failReportRun,
+  latestCompletedRun,
+  recentReportRuns,
+  getReportRun,
+  writeArtifact,
+  readArtifact,
+  artifactDir,
+  artifactMaxAgeHours,
+} from './repositories/report-run.js';
+export type {
+  ReportRunRow,
+  ReportRunKey,
+  ReportRunSeed,
+  ReportRunStatus,
+  ReportRunTier,
+} from './repositories/report-run.js';
+
 export { listWindowVideos } from './repositories/window-videos.js';
 export type { WindowVideoRow, WindowVideosOptions } from './repositories/window-videos.js';
 export { cacheThumbnail, readThumbnailDataUri, mediaDir } from './ingest/thumbnails.js';

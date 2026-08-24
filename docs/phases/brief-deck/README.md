@@ -22,7 +22,7 @@ numbered phases in [`../README.md`](../README.md):
 | M2 | Renderer — S0–S3, S6, Lampiran A, 16:9 pipeline | ✅ Complete | [M2_RENDERER.md](./M2_RENDERER.md) |
 | M3 | Finding cards everywhere, S4 per objective (**K4 dead**) | ✅ Complete | [M3_FINDING_CARDS.md](./M3_FINDING_CARDS.md) |
 | M4 | S5 video slide, Lampiran B, thumbnail caching | ✅ Complete | [M4_VIDEO.md](./M4_VIDEO.md) |
-| M5 | Tiers end-to-end, `report_runs` + cron (**K6 dies**) | ⏭ Planned | [M5_TIERS_E2E.md](./M5_TIERS_E2E.md) |
+| M5 | Tiers end-to-end, `report_runs` + cron (**K6 dead**) | ✅ Complete | [M5_TIERS_E2E.md](./M5_TIERS_E2E.md) |
 | M6 | Spec editor for AMs | ⏭ Planned | [M6_SPEC_EDITOR.md](./M6_SPEC_EDITOR.md) |
 | M7 | Kill list — **K1, K2, K3, K7 die**; K5 alias | ⏭ Planned | [M7_KILL_LIST.md](./M7_KILL_LIST.md) |
 

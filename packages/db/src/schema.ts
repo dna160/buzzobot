@@ -298,6 +298,56 @@ export const reportSpecs = pgTable(
   ],
 );
 
+/**
+ * One row per deck generation (Brief Deck PRD §5).
+ *
+ * Two jobs. It is the **pre-generation ledger**: the weekly cron renders a
+ * full-tier deck per client × objective ahead of Monday, and the route serves
+ * that artifact instead of spending minutes regenerating it while someone
+ * waits. And it is the **run history** the engine health card reads, so
+ * "did the last run work" is answerable from the surface's own data rather
+ * than only from inside tempo-engine.
+ *
+ * Keyed by (client, objective, window, tier) because those four determine what
+ * the deck says: a different window is a different deck, and an instant deck
+ * must never be served where a full one was asked for.
+ */
+export const reportRuns = pgTable(
+  'report_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    objective: text('objective').notNull(),
+    /**
+     * Inclusive window the deck covers. Null until it is known: an async
+     * full run is recorded the moment it starts, before the rollup that
+     * decides its window has been read. A row with a null window is a run in
+     * flight, never a servable artifact — `latestCompletedRun` matches on
+     * exact dates, so it cannot return one.
+     */
+    periodStart: date('period_start', { mode: 'string' }),
+    periodEnd: date('period_end', { mode: 'string' }),
+    /** 'instant' | 'full' — which path produced it. */
+    tier: text('tier').notNull(),
+    /** tempo-engine's run id, so a deck traces to /ui/briefs/{run_id}. */
+    runId: text('run_id'),
+    /** 'running' | 'completed' | 'failed'. */
+    status: text('status').notNull().default('running'),
+    /** Where the rendered PDF was stored; null until it completes. */
+    artifactPath: text('artifact_path'),
+    artifactBytes: integer('artifact_bytes'),
+    error: text('error'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('report_runs_lookup_idx').on(t.clientId, t.objective, t.periodEnd),
+    index('report_runs_status_idx').on(t.status),
+  ],
+);
+
 export const appSettings = pgTable('app_settings', {
   key: text('key').primaryKey(),
   value: text('value').notNull(),

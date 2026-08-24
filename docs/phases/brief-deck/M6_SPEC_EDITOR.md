@@ -23,6 +23,9 @@ brand self-service is explicitly v1.1.
 From M1: `ReportSpecSchema` (objective-constrained, 422 on a disallowed metric),
 `REPORT_SPEC_PRESETS`, `getReportSpec`/`upsertReportSpec`, `solveKpiGrid`, `light()`.
 The editor is a UI over these — it must not restate a validation rule in the client.
+From M5: `/settings` is now a real page with a card pattern to follow
+(`EngineHealthCard.tsx`), and `report_runs` gives the editor somewhere to show the effect
+of a saved spec — the next pre-generated deck uses it.
 
 ## 4. Exit criteria (PRD §9)
 

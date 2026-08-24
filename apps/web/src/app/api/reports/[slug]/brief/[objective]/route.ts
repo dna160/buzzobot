@@ -1,18 +1,17 @@
 import { OBJECTIVE_NORTH_STAR, isBriefObjective, type BriefObjective } from '@tempo/core';
 import {
+  completeReportRun,
+  failReportRun,
   getClientBySlug,
   getDailyBriefDashboard,
   getDb,
-  getReportSpec,
-  listWindowVideos,
+  latestCompletedRun,
+  readArtifact,
+  startReportRun,
+  writeArtifact,
 } from '@tempo/db';
-import {
-  buildDeckModel,
-  parseEngineContent,
-  renderDeckHtml,
-  resolveReportSpec,
-  type DeckTier,
-} from '@tempo/reports';
+import type { DeckTier } from '@tempo/reports';
+import { assembleDeck, NoDeckDataError } from '@/lib/deck-pipeline';
 import { htmlToPdf } from '@/lib/report-pdf';
 import { authenticate, corsHeaders, preflight } from '@/lib/api-auth';
 
@@ -38,9 +37,15 @@ import { authenticate, corsHeaders, preflight } from '@/lib/api-auth';
  * `tier` (PRD §5, D1) defaults to **instant**: generators and materiality with
  * zero model calls, prose from the engine's deterministic template table,
  * targeting ≤ 10 s. `tier=full` runs the agent path (minutes) and is what the
- * weekly cron will request. The cover badge and the footer always state which
- * one produced the deck — an instant deck must never be mistaken for the full
+ * weekly cron requests. The cover badge and the footer always state which one
+ * produced the deck — an instant deck must never be mistaken for the full
  * product (PRD §11 R1).
+ *
+ * A `tier=full` request is served from the **pre-generated artifact** when the
+ * weekly cron already rendered this exact client × objective × window and the
+ * file is still fresh (`DECK_ARTIFACT_MAX_AGE_HOURS`, default 24). That is what
+ * makes the routine Monday download instant *and* fully narrated. `?fresh=1`
+ * forces a regeneration.
  *
  * `objective` is one of:
  *   awareness — impressions, reach, VTR. Available for a 'vtr' north-star client.
@@ -118,8 +123,9 @@ export async function GET(
   const windowDays = Number.isInteger(daysParam) && daysParam > 0 ? daysParam : 7;
   const dateParam = url.searchParams.get('date');
   const endDate = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : undefined;
+  const forceFresh = url.searchParams.get('fresh') === '1';
 
-  const enginePromise = (async () => {
+  const callEngine = async (): Promise<Response | null> => {
     try {
       return await fetch(`${TEMPO_ENGINE_URL}/v1/briefs/sync`, {
         method: 'POST',
@@ -136,13 +142,55 @@ export async function GET(
       console.error('[reports] tempo-engine request failed:', err);
       return null;
     }
-  })();
+  };
 
-  const [engineResponse, dashboard, storedSpec] = await Promise.all([
-    enginePromise,
-    getDailyBriefDashboard(db, client, { endDate, windowDays }),
-    getReportSpec(db, client.id, objective),
-  ]);
+  // The instant tier keeps the parallel fetch the deck has always had: the
+  // numeric side never waits on the narrative side. The full tier starts its
+  // (minutes-long) call only after the artifact check below, because a cache
+  // hit makes the call unnecessary — and starting one we intend to throw away
+  // would burn an LM Studio run per download.
+  const eagerEngine = tier === 'instant' ? callEngine() : null;
+
+  const dashboard = await getDailyBriefDashboard(db, client, { endDate, windowDays });
+
+  if (!dashboard) {
+    return new Response(`No daily ad data ingested for "${slug}"`, { status: 404, headers: cors });
+  }
+
+  const periodStart = dashboard.days[0]?.date ?? '';
+  const periodEnd = dashboard.days[dashboard.days.length - 1]?.date ?? '';
+  const runKey = {
+    clientId: client.id,
+    objective,
+    periodStart,
+    periodEnd,
+    tier,
+  } as const;
+
+  // A pre-generated full-tier deck for this exact window, still fresh, is the
+  // whole point of the weekly cron: the Monday download is instant *and* fully
+  // narrated. Only for `pdf` — `json`/`html` callers want the live model.
+  if (tier === 'full' && format === 'pdf' && !forceFresh && periodStart && periodEnd) {
+    const cached = await latestCompletedRun(db, runKey);
+    const bytes = await readArtifact(cached?.artifactPath);
+    if (cached && bytes) {
+      return new Response(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, {
+        headers: {
+          ...cors,
+          'Content-Type': 'application/pdf',
+          'Content-Disposition': `attachment; filename="${client.slug}-tiktok-${objective}-deck-${cached.runId ?? cached.id}.pdf"`,
+          'Cache-Control': 'no-store',
+          'X-Engine-Run-Id': cached.runId ?? '',
+          // Says plainly that this is a stored render, and when it was made —
+          // a client asking "is this today's?" should not have to guess.
+          'X-Deck-Artifact': 'pregenerated',
+          'X-Deck-Generated-At': cached.startedAt.toISOString(),
+        },
+      });
+    }
+  }
+
+  const engineResponse = await (eagerEngine ?? callEngine());
 
   if (engineResponse === null) {
     return new Response('Brief generation service is unreachable', { status: 502, headers: cors });
@@ -156,20 +204,32 @@ export async function GET(
     console.error(`[reports] tempo-engine returned ${engineResponse.status}:`, detail);
     return new Response('Failed to generate brief', { status: 502, headers: cors });
   }
-  if (!dashboard) {
-    return new Response(`No daily ad data ingested for "${slug}"`, { status: 404, headers: cors });
-  }
-
   const result = (await engineResponse.json()) as {
     run_id: string;
     status: string;
     content: unknown;
   };
 
-  let parsed;
+  // One assembly path for both entry points (see lib/deck-pipeline.ts): a
+  // "full" deck that differed depending on which endpoint rendered it would
+  // make the tier badge a lie.
+  let deck;
   try {
-    parsed = parseEngineContent(result.content);
+    deck = await assembleDeck({
+      db,
+      client,
+      objective: objective as BriefObjective,
+      tier,
+      engineContent: result.content,
+      engineRunId: result.run_id,
+      windowDays,
+      endDate,
+      dashboard,
+    });
   } catch (err) {
+    if (err instanceof NoDeckDataError) {
+      return new Response(err.message, { status: 404, headers: cors });
+    }
     // A payload that does not match its own contract is a boundary failure we
     // report, not something to paper over with an empty deck.
     console.error('[reports] tempo-engine returned content that failed validation:', err);
@@ -178,41 +238,7 @@ export async function GET(
       headers: cors,
     });
   }
-
-  // A stored spec that no longer suits its objective falls back to the preset
-  // and is logged — the deck always renders (PRD §1's surviving doctrine).
-  const spec = resolveReportSpec(storedSpec?.spec ?? null, objective as BriefObjective, (err) =>
-    console.error(`[reports] stored report_spec for ${slug}/${objective} rejected:`, err),
-  );
-
-  // Videos for S5 and Lampiran B. Read after the window is known (its dates
-  // come from the dashboard rollup, not recomputed here) and never fatal: a
-  // client with no organic account, or a read that fails, simply has no video
-  // slide rather than no deck.
-  const windowStart = dashboard.days[0]?.date;
-  const windowEnd = dashboard.days[dashboard.days.length - 1]?.date;
-  const videos =
-    spec.appendix.allVideos && windowStart && windowEnd
-      ? await listWindowVideos(db, client, { startDate: windowStart, endDate: windowEnd }).catch(
-          (err) => {
-            console.error(`[reports] window videos for ${slug} failed:`, err);
-            return [];
-          },
-        )
-      : [];
-
-  const model = buildDeckModel({
-    content: parsed.content,
-    contentVersion: parsed.version,
-    dashboard,
-    spec,
-    objective: objective as BriefObjective,
-    runId: result.run_id,
-    tier: parsed.content.tier ?? tier,
-    generatedAt: new Date().toISOString(),
-    windowDays,
-    videos,
-  });
+  const model = deck.model;
 
   // Every response carries the run id, so a deck someone is arguing about can
   // be traced to /ui/briefs/{run_id} without re-deriving which run made it.
@@ -227,7 +253,7 @@ export async function GET(
     );
   }
 
-  const html = renderDeckHtml(model);
+  const html = deck.html;
 
   if (format === 'html') {
     return new Response(html, {
@@ -235,19 +261,46 @@ export async function GET(
     });
   }
 
+  // Every generation is recorded, so "did the last run work" is answerable
+  // from the surface's own data (the engine health card reads it) and not only
+  // from inside tempo-engine.
+  const runRowId = periodStart && periodEnd ? await startReportRun(db, runKey, result.run_id) : null;
+  const filename = `${client.slug}-tiktok-${objective}-deck-${result.run_id}.pdf`;
+
   try {
     const pdf = await htmlToPdf(html, 'deck');
-    const filename = `${client.slug}-tiktok-${objective}-deck-${result.run_id}.pdf`;
+
+    // Only full-tier decks are stored. An instant deck is cheap to regenerate
+    // and would be a new file on every download; a full one costs minutes and
+    // is exactly what the next caller wants.
+    let artifact: { path: string; bytes: number } | null = null;
+    if (tier === 'full') {
+      try {
+        artifact = await writeArtifact(filename, pdf);
+      } catch (err) {
+        // A deck the client can download beats a deck we managed to file.
+        console.error('[reports] storing the deck artifact failed:', err);
+      }
+    }
+    if (runRowId) {
+      await completeReportRun(db, runRowId, {
+        artifactPath: artifact?.path ?? null,
+        artifactBytes: artifact?.bytes ?? pdf.byteLength,
+      });
+    }
+
     const body = pdf.buffer.slice(pdf.byteOffset, pdf.byteOffset + pdf.byteLength) as ArrayBuffer;
     return new Response(body, {
       headers: {
         ...baseHeaders,
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${filename}"`,
+        'X-Deck-Artifact': artifact ? 'stored' : 'live',
       },
     });
   } catch (err) {
     console.error('[reports] deck PDF generation failed:', err);
+    if (runRowId) await failReportRun(db, runRowId, (err as Error).message);
     return new Response('Failed to generate PDF deck', { status: 500, headers: cors });
   }
 }
