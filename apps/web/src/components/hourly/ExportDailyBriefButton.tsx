@@ -13,23 +13,31 @@ const OBJECTIVE_LABEL = {
 export type BriefObjective = keyof typeof OBJECTIVE_LABEL;
 
 /**
- * Generates and downloads one of the three objective-specific daily briefs
- * (Awareness / GMV / Install) as a PDF, via `/api/reports/:slug/brief/:objective`
- * — the daily-grain, north-star-scored counterpart to `ExportHourlyReportButton`.
+ * Generates and downloads one of the three objective-specific Brief Decks
+ * (Awareness / GMV / Install) as a 16:9 PDF, via
+ * `/api/reports/:slug/brief/:objective`.
+ *
+ * Since M7 this is the only export on the intraday view: the hourly report
+ * document is gone (K3) and `/api/reports/:slug` is a deprecated alias that
+ * redirects here anyway (K5). `primary` marks the deck for the client's own
+ * north star — the one an AM actually sends.
  *
  * Defaults to a trailing 7-day window ending on the dashboard's currently
- * selected date, matching the hourly export's own default window.
+ * selected date.
  */
 export function ExportDailyBriefButton({
   slug,
   objective,
   lang,
   date,
+  primary = false,
 }: {
   slug: string;
   objective: BriefObjective;
   lang?: 'id' | 'en';
   date?: string;
+  /** The client's north-star deck, given visual weight over the others. */
+  primary?: boolean;
 }) {
   const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle');
 
@@ -65,7 +73,12 @@ export function ExportDailyBriefButton({
   };
 
   return (
-    <Button variant="secondary" size="sm" onClick={onClick} disabled={state === 'loading'}>
+    <Button
+      variant={primary ? 'primary' : 'secondary'}
+      size="sm"
+      onClick={onClick}
+      disabled={state === 'loading'}
+    >
       {state === 'loading' ? (
         <>
           <Loader2 size={14} className="animate-spin" />

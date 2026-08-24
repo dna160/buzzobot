@@ -113,20 +113,31 @@ try:narrative` prints the generated narrative and which path produced it.
 
 ### Report API (external callers)
 
-`GET /api/reports/:slug` serves the report to other systems — one call, one
-report.
+The Brief Deck (below) is the deliverable; `GET /api/reports/:slug/brief/:objective`
+is the endpoint to integrate against.
 
+`GET /api/reports/:slug` is a **deprecated alias**, kept for one release so no
+existing integration breaks on the day the old report was removed. It answers
+`308` to the deck for the client's own north star, carrying `format`, `date`,
+`days` and `lang` across unchanged — any client that follows redirects keeps
+working untouched:
+
+```bash
+curl -L -H "X-API-Key: $KEY" https://your-host/api/reports/cimory -o deck.pdf
+#   308 → /api/reports/cimory/brief/gmv     (north star: shop)
 ```
-GET /api/reports/cimory                     → PDF (default)
-GET /api/reports/cimory?format=json         → model + narrative as JSON
-GET /api/reports/cimory?format=html&lang=en → raw HTML
-```
+
+Every call to it is logged with the caller's identity — same-origin, or a
+truncated digest of the presented key, never the key itself — and the alias is
+removed once the log shows no caller left to migrate. Migrate by naming the
+objective in the URL.
 
 Requests from this app's own UI pass through. Every external caller must send a
 key as `X-API-Key` or `Authorization: Bearer <key>`:
 
 ```bash
-curl -H "X-API-Key: $KEY" https://your-host/api/reports/cimory -o report.pdf
+curl -H "X-API-Key: $KEY" \
+  https://your-host/api/reports/cimory/brief/gmv -o deck.pdf
 ```
 
 Set `REPORT_API_KEYS` (comma-separated, so keys can be revoked individually) and

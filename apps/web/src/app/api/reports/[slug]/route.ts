@@ -1,38 +1,45 @@
-import { getClientBySlug, getDb, getSetting, SETTINGS_KEYS } from '@tempo/db';
-import {
-  buildHourlyReport,
-  renderHourlyReportHtml,
-  isLocale,
-  DEFAULT_LOCALE,
-  NarrativeConfigSchema,
-} from '@tempo/reports';
-import { htmlToPdf } from '@/lib/report-pdf';
-import { authenticate, corsHeaders, preflight } from '@/lib/api-auth';
+import { BriefObjective, NORTH_STAR_OBJECTIVE } from '@tempo/core';
+import { getClientBySlug, getDb } from '@tempo/db';
+import { authenticate, corsHeaders, preflight, type Caller } from '@/lib/api-auth';
 
 /**
- * GET /api/reports/:slug?lang=id|en&format=pdf|html|json&date=YYYY-MM-DD&days=N
+ * GET /api/reports/:slug — **deprecated alias** (Brief Deck PRD §1 K5, §11 R6).
  *
- * Generates the client's intraday performance report for a trailing window
- * ending on `date` (default: the most recently ingested date) — an executive
- * summary plus a full hour-by-hour appendix for that window. `days` sizes the
- * window (default 7); `date` is clamped down to the nearest ingested date at
- * or before it, so picking today or a gap date still resolves to real data.
- * Defaults to Bahasa Indonesia.
+ * This used to render the intraday hourly report. That document is gone: the
+ * Brief Deck replaces all three client documents with one 16:9 deck per
+ * objective, so there is no longer an "the report" for a slug — there is a deck
+ * per objective, and which one is honest for a client is decided by its north
+ * star. The alias makes that choice on the caller's behalf and redirects.
  *
- *   format=pdf   (default) streams the rendered PDF — the one-click download
- *   format=html  the raw document, for previewing
- *   format=json  the model + narrative, for a caller that renders its own UI
+ *   308 → /api/reports/:slug/brief/:objective
  *
- * Same-origin requests from this app are allowed through. Any external caller
- * (e.g. the Buzzo portal) must present an API key — see lib/api-auth.ts.
+ * 308 rather than 302 so method and body survive, and so a caller that follows
+ * redirects (curl -L, fetch, every HTTP client the portal uses) keeps working
+ * untouched. `format`, `date` and `days` carry over unchanged; `lang` carries
+ * over and is ignored downstream, because the deck is Bahasa-only.
+ *
+ * **Every call is logged** with the caller's identity. That is the whole point
+ * of the alias existing at all: R6 says a kill without caller logging is how
+ * portals break silently, so removal one release from now is gated on the log
+ * showing no caller we cannot name — not on anyone's confidence.
  */
 export const runtime = 'nodejs';
-export const maxDuration = 60;
-// Every export must reflect the latest ingested data and a freshly generated
-// narrative — never a build-time or CDN-cached response.
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 export const revalidate = 0;
+
+/** The successor path, ready to paste into a caller's config. */
+const SUCCESSOR = '/api/reports/:slug/brief/:objective';
+
+/** Query parameters the deck route understands. `lang` is accepted, not honoured. */
+const FORWARDED_PARAMS = ['format', 'date', 'days', 'lang', 'tier', 'fresh'] as const;
+
+function describeCaller(caller: Caller | undefined, request: Request): string {
+  const origin = request.headers.get('origin') ?? request.headers.get('referer') ?? 'no-origin';
+  const agent = request.headers.get('user-agent') ?? 'no-user-agent';
+  const who = caller?.kind === 'api-key' ? `key:${caller.keyId}` : (caller?.kind ?? 'unknown');
+  return `caller=${who} origin=${origin} ua=${JSON.stringify(agent)}`;
+}
 
 export async function OPTIONS(request: Request) {
   return preflight(request);
@@ -50,8 +57,13 @@ export async function GET(
 
   const { slug } = await params;
   const url = new URL(request.url);
-  const formatParam = url.searchParams.get('format');
-  const format = formatParam === 'html' || formatParam === 'json' ? formatParam : 'pdf';
+
+  // Logged before the client lookup, so a call for a slug that no longer exists
+  // still shows up as a caller that has not migrated.
+  console.warn(
+    `[reports] DEPRECATED GET /api/reports/${slug} — ${describeCaller(auth.caller, request)} ` +
+      `query=${JSON.stringify(url.search)} successor=${SUCCESSOR}`,
+  );
 
   const { db } = getDb();
   const client = await getClientBySlug(db, slug);
@@ -59,76 +71,30 @@ export async function GET(
     return new Response(`Client "${slug}" not found`, { status: 404, headers: cors });
   }
 
-  const langParam = url.searchParams.get('lang');
-  const locale = isLocale(langParam) ? langParam : DEFAULT_LOCALE;
+  // Which deck a client's single "the report" now means. `NORTH_STAR_OBJECTIVE`
+  // is the inverse of the same table the brief route's 409 gate reads, so the
+  // alias can never redirect a caller to a deck that route would refuse.
+  // Awareness is the fallback because it is the one objective open to everyone.
+  const objective = NORTH_STAR_OBJECTIVE[client.northStar] ?? BriefObjective.Awareness;
 
-  const dateParam = url.searchParams.get('date');
-  const endDate = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : undefined;
-  const daysParam = Number(url.searchParams.get('days'));
-  const windowDays = Number.isInteger(daysParam) && daysParam > 0 ? daysParam : undefined;
+  const forwarded = new URLSearchParams();
+  for (const key of FORWARDED_PARAMS) {
+    const value = url.searchParams.get(key);
+    if (value !== null) forwarded.set(key, value);
+  }
+  const query = forwarded.size > 0 ? `?${forwarded.toString()}` : '';
+  const location = `/api/reports/${encodeURIComponent(slug)}/brief/${objective}${query}`;
 
-  // The operator's Settings override (if any) wins over the .env defaults.
-  // Read and validate it here so a bad row can never break report generation.
-  const storedAi = await getSetting(db, SETTINGS_KEYS.reportNarrative);
-  const narrativeConfig = storedAi
-    ? (NarrativeConfigSchema.partial().safeParse(storedAi).data ?? undefined)
-    : undefined;
-
-  const model = await buildHourlyReport(db, client, {
-    generatedAt: new Date(),
-    locale,
-    endDate,
-    windowDays,
-    narrativeConfig,
+  return new Response(null, {
+    status: 308,
+    headers: {
+      ...cors,
+      Location: location,
+      // RFC 8594 — machine-readable "this is going away", so a caller's own
+      // monitoring can flag it without anyone reading our logs.
+      Deprecation: 'true',
+      Link: `<${location}>; rel="successor-version"`,
+      'Cache-Control': 'no-store',
+    },
   });
-  if (!model) {
-    return new Response(`No intraday data ingested for "${slug}"`, { status: 404, headers: cors });
-  }
-
-  // Structured form for callers that render their own UI. Excludes `copy`
-  // (a large static pack of label strings) — the payload is the data and the
-  // analysis, not the template.
-  if (format === 'json') {
-    const { copy: _copy, ...rest } = model;
-    return Response.json(
-      {
-        ...rest,
-        narrative: {
-          ...model.narrative,
-          // Say plainly whether prose was model-written or rule-generated.
-          source: model.narrative.source,
-        },
-      },
-      { headers: { ...cors, 'Cache-Control': 'no-store' } },
-    );
-  }
-
-  const html = renderHourlyReportHtml(model);
-
-  if (format === 'html') {
-    return new Response(html, {
-      headers: { ...cors, 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' },
-    });
-  }
-
-  try {
-    const pdf = await htmlToPdf(html);
-    const first = model.days[0]!.date;
-    const last = model.days[model.days.length - 1]!.date;
-    const span = first === last ? first : `${first}_${last}`;
-    const filename = `${client.slug}-tiktok-hourly-${span}.pdf`;
-    // Response body typed to a fresh ArrayBuffer to satisfy the Web BodyInit type.
-    const body = pdf.buffer.slice(pdf.byteOffset, pdf.byteOffset + pdf.byteLength) as ArrayBuffer;
-    return new Response(body, {
-      headers: {
-        ...cors,
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${filename}"`,
-        'Cache-Control': 'no-store',
-      },
-    });
-  } catch (err) {
-    console.error('[reports] PDF generation failed:', err);
-    return new Response('Failed to generate PDF report', { status: 500, headers: cors });
-  }
 }

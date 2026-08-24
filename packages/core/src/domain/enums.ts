@@ -97,6 +97,17 @@ export const OBJECTIVE_NORTH_STAR: Record<BriefObjective, NorthStar> = {
   [BriefObjective.Install]: NorthStar.AppInstall,
 };
 
+/**
+ * The inverse: which objective a client with this north star is really asking
+ * for when it asks for "the report". Derived from `OBJECTIVE_NORTH_STAR` rather
+ * than written out, so the two can never disagree — a hand-maintained second
+ * table is exactly how a client ends up aliased to a deck the brief route then
+ * refuses with a 409.
+ */
+export const NORTH_STAR_OBJECTIVE = Object.fromEntries(
+  Object.entries(OBJECTIVE_NORTH_STAR).map(([objective, northStar]) => [northStar, objective]),
+) as Record<NorthStar, BriefObjective>;
+
 export function isBriefObjective(value: string): value is BriefObjective {
   return (
     value === BriefObjective.Awareness ||
