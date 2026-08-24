@@ -4,7 +4,8 @@
 1. A golden test (always runs, no dependency on Tempo being checked out):
    catches any transcription error in `tempo_metrics.py` itself against a
    hand-verified snapshot of every field.
-2. A live-hash test (skipped unless the Tempo repo is findable): computes
+2. A live-hash test (now effectively always, since the two projects are
+   co-located — see `_find_tempo_repo`): computes
    sha256 of the actual `catalog.ts` and compares it to the pinned constant
    in `tempo_metrics.py`. Any change to the source — not just a mis-port —
    fails this until the port and the pin are updated together.
@@ -53,6 +54,17 @@ _EXPECTED = {
     "engagementRate": (
         "Engagement Rate", "Eng. Rate", DataSurface.ORGANIC, MetricFormat.PERCENT, MetricDirection.UP, 2,
     ),
+    # Paid video & delivery (Brief Deck M1).
+    "videoViews": ("Paid Video Views", "Video Views", DataSurface.PAID, MetricFormat.NUMBER, MetricDirection.UP, None),
+    "videoWatched6s": ("Video Views at 6s", "6s Views", DataSurface.PAID, MetricFormat.NUMBER, MetricDirection.UP, None),
+    "engagedView15s": (
+        "Engaged Views at 15s", "15s Views", DataSurface.PAID, MetricFormat.NUMBER, MetricDirection.UP, None,
+    ),
+    "engagements": ("Paid Engagements", "Engagements", DataSurface.PAID, MetricFormat.NUMBER, MetricDirection.UP, None),
+    "vtr6s": ("View-Through Rate (6s)", "VTR 6s", DataSurface.PAID, MetricFormat.PERCENT, MetricDirection.UP, 2),
+    "vtr15s": ("View-Through Rate (15s)", "VTR 15s", DataSurface.PAID, MetricFormat.PERCENT, MetricDirection.UP, 2),
+    "frequency": ("Frequency", "Freq.", DataSurface.PAID, MetricFormat.RATIO, MetricDirection.NEUTRAL, 2),
+    "cpv": ("Cost per Video View", "CPV", DataSurface.PAID, MetricFormat.CURRENCY, MetricDirection.DOWN, 2),
     "avgWatchTimeSec": (
         "Avg. Watch Time", "Watch Time", DataSurface.ORGANIC, MetricFormat.DURATION, MetricDirection.UP, 1,
     ),
@@ -79,7 +91,12 @@ def test_port_field_values_match_golden_snapshot(key: str) -> None:
 def _find_tempo_repo() -> Path | None:
     candidates = [
         os.environ.get("TEMPO_REPO_PATH"),
-        "../Tempo LM",  # sibling checkout, the common local-dev layout
+        # Co-located: tempo-engine/ now lives inside dna160/buzzobot, so the
+        # repo root is this file's great-grandparent. That makes the live-hash
+        # half of this check run everywhere — including CI — instead of
+        # skipping unless someone happened to have both checkouts side by side.
+        str(Path(__file__).resolve().parents[2]),
+        "../Tempo LM",  # sibling checkout, the older local-dev layout
     ]
     for c in candidates:
         if not c:

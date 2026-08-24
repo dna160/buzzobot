@@ -5,6 +5,7 @@ import {
   doublePrecision,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -252,6 +253,40 @@ export const organicDailyMetrics = pgTable(
  * shape is owned and validated by the code that reads them — not query
  * predicates. `value` holds a JSON document; `updated_at` is bumped on write.
  */
+/**
+ * Per-client Brief Deck configuration (Brief Deck PRD §3.3) — which metrics a
+ * deck shows and in what priority order, plus appendix toggles and targets.
+ *
+ * Keyed by (client, objective) rather than client alone: awareness decks are
+ * available to every client regardless of north star, so one client can hold an
+ * awareness spec alongside the spec for their own objective. Absent means the
+ * objective's preset, which is why nothing here is required for a client to get
+ * a working deck.
+ *
+ * The payload is validated by `ReportSpecSchema` in `@tempo/reports` on the way
+ * in and on the way out — `jsonb` here is storage, not a schema decision. A
+ * stored spec that no longer suits its objective falls back to the preset
+ * rather than failing the export.
+ */
+export const reportSpecs = pgTable(
+  'report_specs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    /** 'awareness' | 'gmv' | 'install' — `BriefObjective` in @tempo/core. */
+    objective: text('objective').notNull(),
+    spec: jsonb('spec').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('report_specs_client_objective_uq').on(t.clientId, t.objective),
+    index('report_specs_client_idx').on(t.clientId),
+  ],
+);
+
 export const appSettings = pgTable('app_settings', {
   key: text('key').primaryKey(),
   value: text('value').notNull(),

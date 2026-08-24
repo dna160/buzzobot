@@ -63,5 +63,13 @@ export type {
   DailyBriefComparison,
 } from './repositories/daily-brief.js';
 
+export {
+  getReportSpec,
+  listReportSpecs,
+  upsertReportSpec,
+  deleteReportSpec,
+} from './repositories/report-spec.js';
+export type { StoredReportSpec } from './repositories/report-spec.js';
+
 export { recentSyncRuns } from './repositories/sync.js';
 export { getSetting, setSetting, SETTINGS_KEYS } from './repositories/settings.js';

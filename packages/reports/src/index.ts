@@ -45,6 +45,53 @@ export {
 } from './narrative/probe.js';
 
 export { BriefObjective, OBJECTIVE_NORTH_STAR, isBriefObjective } from './brief-objective.js';
+
+// --- Brief Deck (docs/architecture/PRD_tempo_brief_deck.md) ----------------
+export {
+  parseEngineContent,
+  selectedFindings,
+  ENGINE_CONTENT_VERSION,
+  EngineBriefContentV2Schema,
+  type EngineBriefContentV2,
+  type EngineFinding,
+  type EngineCoverageAudit,
+  type EngineSectionRanking,
+  type EngineTier,
+} from './deck/engine-content.js';
+export type {
+  DeckModel,
+  DeckMeta,
+  DeckTier,
+  Slide,
+  Block,
+  KpiTile,
+  KpiGridLayout,
+  ChartSpec,
+  TableSpec,
+  TableRow,
+  FindingCard,
+  VideoCell,
+  RoadmapRow,
+  SectionFallback,
+  Light,
+} from './deck/model.js';
+export { light, rowLight, deltaDirection } from './deck/lights.js';
+export { solveKpiGrid, type GridSolution } from './deck/grid.js';
+export {
+  ReportSpecSchema,
+  MetricKeySchema,
+  OBJECTIVE_METRICS,
+  REPORT_SPEC_PRESETS,
+  PRESET_BY_OBJECTIVE,
+  ReportSpecObjectiveError,
+  parseReportSpec,
+  defaultReportSpec,
+  resolveReportSpec,
+  presetMetricsFor,
+  disallowedMetrics,
+  type ReportSpec,
+  type ReportSpecPreset,
+} from './deck/spec.js';
 export {
   renderEngineBriefHtml,
   type EngineBriefContent,

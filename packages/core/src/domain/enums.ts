@@ -70,3 +70,37 @@ export const Currency = {
   SGD: 'SGD',
 } as const;
 export type Currency = (typeof Currency)[keyof typeof Currency];
+
+/**
+ * The three client-facing brief objectives. Lives here rather than in
+ * `@tempo/reports` (where it started) because the metric catalog's grading
+ * bands and the report spec's allowed-metric sets are both keyed by it, and a
+ * domain kernel that cannot name the objective cannot express either.
+ * `@tempo/reports` re-exports it, so existing importers are unaffected.
+ */
+export const BriefObjective = {
+  Awareness: 'awareness',
+  Gmv: 'gmv',
+  Install: 'install',
+} as const;
+export type BriefObjective = (typeof BriefObjective)[keyof typeof BriefObjective];
+
+/**
+ * Which north star each objective is honest for. Presenting one objective's
+ * brief against a client configured for a different north star would mislabel
+ * real data (installs shown as GMV, or vice versa), so the API route gates on
+ * this and the engine's own `build_*_metric_frame` re-checks it independently.
+ */
+export const OBJECTIVE_NORTH_STAR: Record<BriefObjective, NorthStar> = {
+  [BriefObjective.Awareness]: NorthStar.Vtr,
+  [BriefObjective.Gmv]: NorthStar.Shop,
+  [BriefObjective.Install]: NorthStar.AppInstall,
+};
+
+export function isBriefObjective(value: string): value is BriefObjective {
+  return (
+    value === BriefObjective.Awareness ||
+    value === BriefObjective.Gmv ||
+    value === BriefObjective.Install
+  );
+}

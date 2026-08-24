@@ -1,32 +1,12 @@
-import { NorthStar } from '@tempo/core';
-
 /**
- * The three client-facing "brief" report types, each scoring a client's
- * TikTok Ads data on a different objective. Deliberately a request-time
- * choice, not a fixed client property: which briefs a given client's data
- * can honestly support is enforced separately (see the API route's
- * north-star gating), not baked into this type.
+ * Re-export shim. The objective vocabulary moved to `@tempo/core` at Brief
+ * Deck M1, because the metric catalog's grading bands and the report spec's
+ * allowed-metric sets are both keyed by it and a domain kernel that cannot
+ * name the objective cannot express either.
  *
- * Generation itself now lives in `tempo-engine` (a separate Python
- * service) — see `apps/web/src/app/api/reports/[slug]/brief/[objective]/route.ts`
- * and `engine-brief/render.ts`. This module only keeps the small,
- * generically useful vocabulary (objective names, north-star mapping,
- * the type guard) that both the route and `ExportDailyBriefButton.tsx`
- * still need.
+ * Kept as a module rather than deleted so every existing importer
+ * (`ExportDailyBriefButton.tsx`, the brief API route, `@tempo/reports`'s own
+ * barrel) keeps working unchanged. The definition lives in exactly one place;
+ * this file only forwards it.
  */
-export const BriefObjective = {
-  Awareness: 'awareness',
-  Gmv: 'gmv',
-  Install: 'install',
-} as const;
-export type BriefObjective = (typeof BriefObjective)[keyof typeof BriefObjective];
-
-export const OBJECTIVE_NORTH_STAR: Record<BriefObjective, NorthStar> = {
-  [BriefObjective.Awareness]: NorthStar.Vtr,
-  [BriefObjective.Gmv]: NorthStar.Shop,
-  [BriefObjective.Install]: NorthStar.AppInstall,
-};
-
-export function isBriefObjective(v: string): v is BriefObjective {
-  return v === BriefObjective.Awareness || v === BriefObjective.Gmv || v === BriefObjective.Install;
-}
+export { BriefObjective, OBJECTIVE_NORTH_STAR, isBriefObjective } from '@tempo/core';

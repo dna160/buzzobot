@@ -15,6 +15,13 @@ set to port, because none exists in Tempo today. See
 §3.3: TikTok Shop GMV already flows through the generic paid `conversions`/
 `conversionValue` keys below, disambiguated only by a client's `north_star`.
 
+Not ported: `labelId`, `category`, `bands`, `pickerVisible` (added to the
+source at Brief Deck M1). They are presentation concerns — which Bahasa label
+a tile prints, how a picker groups it, when it turns yellow — and the engine
+neither renders tiles nor grades them. The drift check still fires when they
+change, which is correct: it forces a look at whether the change was
+presentational or semantic, rather than assuming.
+
 Drift is caught two ways (see `tests/test_tempo_metrics_drift.py`):
 1. Always: a golden test asserts this port matches a hand-verified snapshot
    of the source, catching any transcription error in this file itself.
@@ -32,11 +39,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-# sha256 of packages/core/src/metrics/catalog.ts in dna160/buzzobot, pinned
-# 2026-08-19 at the commit this port was written against. Update this (and
+# sha256 of packages/core/src/metrics/catalog.ts in dna160/buzzobot, re-pinned
+# at Brief Deck M1 (8 paid video/delivery keys added, plus the deck-only
+# presentation fields noted above). Update this (and
 # the entries below) together whenever the source file changes — never one
 # without the other.
-CATALOG_SOURCE_SHA256 = "acbb73542d7394834d3aeb17c3937519470c5d7bb631035b90b64f7cae102d47"
+CATALOG_SOURCE_SHA256 = "8eebf94b6a69081890337eea26088d68e013b9c5d72d6335f7d6b688fcc10aee"
 CATALOG_SOURCE_PATH = "packages/core/src/metrics/catalog.ts"
 
 
@@ -72,6 +80,16 @@ MetricKey = Literal[
     "cpa",
     "conversionRate",
     "roas",
+    # Paid video & delivery — added Brief Deck M1, when the deck's KPI grid
+    # needed to name the columns the day-grain brief rollup already sums.
+    "videoViews",
+    "videoWatched6s",
+    "engagedView15s",
+    "engagements",
+    "vtr6s",
+    "vtr15s",
+    "frequency",
+    "cpv",
     # Organic
     "views",
     "likes",
@@ -153,6 +171,46 @@ METRICS: dict[MetricKey, MetricDef] = {
         format=MetricFormat.RATIO, good_direction=MetricDirection.UP,
         description="Conversion value divided by spend.", precision=2,
     ),
+    "videoViews": MetricDef(
+        key="videoViews", label="Paid Video Views", short_label="Video Views",
+        surface=DataSurface.PAID, format=MetricFormat.NUMBER, good_direction=MetricDirection.UP,
+        description="Video views delivered by paid campaigns (distinct from organic `views`).",
+    ),
+    "videoWatched6s": MetricDef(
+        key="videoWatched6s", label="Video Views at 6s", short_label="6s Views",
+        surface=DataSurface.PAID, format=MetricFormat.NUMBER, good_direction=MetricDirection.UP,
+        description="Paid video views that reached six seconds.",
+    ),
+    "engagedView15s": MetricDef(
+        key="engagedView15s", label="Engaged Views at 15s", short_label="15s Views",
+        surface=DataSurface.PAID, format=MetricFormat.NUMBER, good_direction=MetricDirection.UP,
+        description="Paid video views that reached fifteen seconds.",
+    ),
+    "engagements": MetricDef(
+        key="engagements", label="Paid Engagements", short_label="Engagements",
+        surface=DataSurface.PAID, format=MetricFormat.NUMBER, good_direction=MetricDirection.UP,
+        description="Interactions attributed to paid delivery.",
+    ),
+    "vtr6s": MetricDef(
+        key="vtr6s", label="View-Through Rate (6s)", short_label="VTR 6s",
+        surface=DataSurface.PAID, format=MetricFormat.PERCENT, good_direction=MetricDirection.UP,
+        description="Six-second video views divided by impressions.", precision=2,
+    ),
+    "vtr15s": MetricDef(
+        key="vtr15s", label="View-Through Rate (15s)", short_label="VTR 15s",
+        surface=DataSurface.PAID, format=MetricFormat.PERCENT, good_direction=MetricDirection.UP,
+        description="Fifteen-second engaged views divided by impressions.", precision=2,
+    ),
+    "frequency": MetricDef(
+        key="frequency", label="Frequency", short_label="Freq.",
+        surface=DataSurface.PAID, format=MetricFormat.RATIO, good_direction=MetricDirection.NEUTRAL,
+        description="Impressions divided by reach over the window.", precision=2,
+    ),
+    "cpv": MetricDef(
+        key="cpv", label="Cost per Video View", short_label="CPV",
+        surface=DataSurface.PAID, format=MetricFormat.CURRENCY, good_direction=MetricDirection.DOWN,
+        description="Spend divided by paid video views.", precision=2,
+    ),
     "views": MetricDef(
         key="views", label="Video Views", short_label="Views", surface=DataSurface.ORGANIC,
         format=MetricFormat.NUMBER, good_direction=MetricDirection.UP,
@@ -176,7 +234,10 @@ METRICS: dict[MetricKey, MetricDef] = {
     "reach": MetricDef(
         key="reach", label="Reach", short_label="Reach", surface=DataSurface.ORGANIC,
         format=MetricFormat.NUMBER, good_direction=MetricDirection.UP,
-        description="Unique accounts that saw the content.",
+        description=(
+            "Unique accounts that saw the content. Also reported for paid delivery, where the "
+            "brief window sums it across hourly rows (not deduped — the accepted convention here)."
+        ),
     ),
     "newFollowers": MetricDef(
         key="newFollowers", label="New Followers", short_label="Followers", surface=DataSurface.ORGANIC,
