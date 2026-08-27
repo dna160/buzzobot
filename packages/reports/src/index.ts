@@ -8,9 +8,13 @@
  * is what keeps the output format swappable — the PDF conversion itself lives
  * in the app layer (headless Chromium), so this package stays pure.
  *
- * Since M7 there is nothing else here. The Phase 1.5 daily report, the hourly
- * report document, the fact-sheet narrative stack and the report copy monolith
- * were deleted once the deck replaced them (PRD §1, K1/K2/K3/K7).
+ * M7 deleted the Phase 1.5 daily report, the fact-sheet narrative stack and the
+ * report copy monolith once the deck replaced them (PRD §1, K1/K2/K3/K7). It
+ * also deleted the hourly document, and that one turned out to have no
+ * successor: the deck is day-grain and reads no `paid_hourly_metrics`, so a
+ * premium client's intraday telemetry had no document at all. `renderHourlyHtml`
+ * is that document restored — deck-independent, engine-independent, and
+ * rendering only what the intraday read-model already derived.
  *
  * `BriefObjective` and friends come from `@tempo/core` and are re-exported so
  * a caller that already depends on this package need not add another import.
@@ -18,6 +22,7 @@
 
 export { BriefObjective, OBJECTIVE_NORTH_STAR, NORTH_STAR_OBJECTIVE, isBriefObjective } from '@tempo/core';
 export { comboChart, type ComboPoint, type ComboOptions } from './charts.js';
+export { renderHourlyHtml, type HourlyReportOptions } from './hourly.js';
 
 export {
   parseEngineContent,

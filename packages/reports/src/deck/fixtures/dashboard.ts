@@ -132,6 +132,9 @@ export function buildDashboardFixture(): DailyBriefDashboardData {
       currency: 'IDR',
       timezone: 'Asia/Jakarta',
       northStar: 'shop',
+      // Sovella has intraday telemetry in the fixture's story, and the field
+      // has been required on ClientSummary since the clients.tier migration.
+      tier: 'premium',
     },
     days,
     windowTotals,
