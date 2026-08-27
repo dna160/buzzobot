@@ -61,6 +61,17 @@ export const NorthStar = {
 } as const;
 export type NorthStar = (typeof NorthStar)[keyof typeof NorthStar];
 
+/**
+ * Service tier of a client brand:
+ *   Premium   — Full hourly intraday telemetry (*_daily_performance tables), pacing, and brief reports.
+ *   Standard  — GMV Brief / Daily Overview performance summaries.
+ */
+export const ClientTier = {
+  Premium: 'premium',
+  Standard: 'standard',
+} as const;
+export type ClientTier = (typeof ClientTier)[keyof typeof ClientTier];
+
 /** Currency codes we format for. Extend as the agency onboards new markets. */
 export const Currency = {
   USD: 'USD',

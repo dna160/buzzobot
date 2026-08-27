@@ -1,16 +1,16 @@
 import type { Metadata } from 'next';
-import { HourlyView } from '@/components/hourly/HourlyView';
+import { ClientView } from '@/components/client/ClientView';
 
 export const metadata: Metadata = {
-  title: 'Hourly Performance · Tempo Insight Engine',
+  title: 'Client Performance · Tempo Insight Engine',
 };
 
-/** Client intraday route. Params are async in Next 15. */
+/** Client route. Params are async in Next 15. */
 export default async function ClientHourlyPage({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  return <HourlyView slug={slug} />;
+  return <ClientView slug={slug} />;
 }

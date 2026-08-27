@@ -1,9 +1,11 @@
 import { z } from 'zod';
 import {
   CampaignObjective,
+  ClientTier,
   Currency,
   DataSurface,
   EntityStatus,
+  NorthStar,
   SyncStatus,
 } from './enums.js';
 
@@ -34,6 +36,8 @@ export const ClientSchema = z.object({
   brandColor: z.string().nullable(),
   timezone: z.string().default('UTC'),
   currency: zEnum(Currency).default(Currency.USD),
+  northStar: zEnum(NorthStar).default(NorthStar.Vtr),
+  tier: zEnum(ClientTier).default(ClientTier.Standard),
   createdAt: z.date(),
 });
 export type Client = z.infer<typeof ClientSchema>;

@@ -3,6 +3,7 @@ import {
   type DateRange,
   type MetricKey,
   type NorthStar,
+  type ClientTier,
   METRICS,
   derivePaid,
   deriveOrganic,
@@ -41,6 +42,8 @@ export interface ClientSummary {
   timezone: string;
   /** Which figure this client's dashboard/reports are built around. */
   northStar: NorthStar;
+  /** Service tier: 'premium' (hourly intraday telemetry) or 'standard' (GMV brief). */
+  tier: ClientTier;
 }
 
 export interface KpiCard {
@@ -117,6 +120,7 @@ export async function getClientBySlug(
       currency: clients.currency,
       timezone: clients.timezone,
       northStar: clients.northStar,
+      tier: clients.tier,
     })
     .from(clients)
     .where(eq(clients.slug, slug))
@@ -137,6 +141,7 @@ export async function listClients(db: Database): Promise<ClientSummary[]> {
       currency: clients.currency,
       timezone: clients.timezone,
       northStar: clients.northStar,
+      tier: clients.tier,
     })
     .from(clients)
     .orderBy(asc(clients.name)) as unknown as Promise<ClientSummary[]>;

@@ -58,6 +58,12 @@ export const clients = pgTable(
      *   'app_install'  — app installs are the buyable outcome; CPI leads.
      */
     northStar: text('north_star').notNull().default('vtr'),
+    /**
+     * Service tier:
+     *   'premium'  — Full hourly intraday telemetry (*_daily_performance tables), pacing, and brief reports.
+     *   'standard' — GMV Brief / Daily Overview performance summaries.
+     */
+    tier: text('tier').notNull().default('standard'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex('clients_agency_slug_uq').on(t.agencyId, t.slug)],

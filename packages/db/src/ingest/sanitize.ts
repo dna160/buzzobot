@@ -132,6 +132,7 @@ export async function syncBrandToDomain(
       currency: brand.currency,
       timezone: brand.timezone,
       northStar: brand.northStar,
+      tier: brand.tier,
     })
     .onConflictDoUpdate({
       target: [clients.agencyId, clients.slug],
@@ -141,13 +142,14 @@ export async function syncBrandToDomain(
         currency: brand.currency,
         timezone: brand.timezone,
         northStar: brand.northStar,
+        tier: brand.tier,
       },
     })
     .returning({ id: clients.id });
   const clientId = client!.id;
 
   // 3. Ensure TikTok Account
-  const externalId = `${brand.slug}-tiktok-ads`;
+  const externalId = brand.tiktokAdAccountId || `${brand.slug}-tiktok-ads`;
   const [account] = await db
     .insert(tiktokAccounts)
     .values({
@@ -256,8 +258,153 @@ export async function syncBrandToDomain(
 }
 
 /**
+ * Ingest daily campaign performance for standard Buzzohero brands (GMV Brief).
+ */
+export async function syncStandardBrandToDomain(
+  db: Database,
+  brand: DiscoveredBrand,
+  postgresPool: pg.Pool | null,
+): Promise<{ dailyIngested: number; campaignCount: number }> {
+  // 1. Ensure Agency
+  const [agency] = await db
+    .insert(agencies)
+    .values({ name: 'Buzzo Media', slug: 'buzzo-media' })
+    .onConflictDoUpdate({ target: agencies.slug, set: { name: 'Buzzo Media' } })
+    .returning({ id: agencies.id });
+  const agencyId = agency!.id;
+
+  // 2. Ensure Client
+  const [client] = await db
+    .insert(clients)
+    .values({
+      agencyId,
+      name: brand.name,
+      slug: brand.slug,
+      brandColor: brand.brandColor,
+      currency: brand.currency,
+      timezone: brand.timezone,
+      northStar: brand.northStar,
+      tier: brand.tier,
+    })
+    .onConflictDoUpdate({
+      target: [clients.agencyId, clients.slug],
+      set: {
+        name: brand.name,
+        brandColor: brand.brandColor,
+        currency: brand.currency,
+        timezone: brand.timezone,
+        northStar: brand.northStar,
+        tier: brand.tier,
+      },
+    })
+    .returning({ id: clients.id });
+  const clientId = client!.id;
+
+  // 3. Ensure TikTok Account
+  const externalId = brand.tiktokAdAccountId || `${brand.slug}-tiktok-ads`;
+  const [account] = await db
+    .insert(tiktokAccounts)
+    .values({
+      clientId,
+      surface: 'paid',
+      externalId,
+      displayName: brand.name,
+      status: 'active',
+    })
+    .onConflictDoUpdate({
+      target: [tiktokAccounts.surface, tiktokAccounts.externalId],
+      set: { clientId, displayName: brand.name, status: 'active' },
+    })
+    .returning({ id: tiktokAccounts.id });
+  const accountId = account!.id;
+
+  if (!postgresPool || !brand.tiktokAdAccountId) {
+    return { dailyIngested: 0, campaignCount: 0 };
+  }
+
+  // Fetch campaign rows from tiktok_ads_campaign for this brand
+  try {
+    const campaignRes = await postgresPool.query<{
+      date_str: string;
+      campaign_id: string;
+      campaign_name: string;
+      spend: string | number;
+      impressions: string | number;
+      clicks: string | number;
+      conversions: string | number;
+      conversion_value: string | number;
+    }>(
+      `SELECT 
+         date::text as date_str,
+         campaign_id,
+         COALESCE(NULLIF(campaign_name, ''), campaign_id) as campaign_name,
+         SUM(COALESCE(spend, 0)) as spend,
+         SUM(COALESCE(impressions, 0)) as impressions,
+         SUM(COALESCE(clicks, 0)) as clicks,
+         SUM(COALESCE(total_purchase, 0)) as conversions,
+         SUM(COALESCE(total_purchase_value, 0)) as conversion_value
+       FROM tiktok_ads_campaign
+       WHERE ad_account_id = $1 AND spend > 0
+       GROUP BY date, campaign_id, campaign_name
+       ORDER BY date;`,
+      [brand.tiktokAdAccountId],
+    );
+
+    const rows = campaignRes.rows;
+    if (rows.length === 0) return { dailyIngested: 0, campaignCount: 0 };
+
+    // Unique campaigns
+    const uniqueCampaigns = new Map<string, string>();
+    for (const r of rows) {
+      uniqueCampaigns.set(r.campaign_id, r.campaign_name);
+    }
+
+    const campaignDTOs = Array.from(uniqueCampaigns.entries()).map(([extId, name]) => ({
+      externalId: extId,
+      name,
+      objective: inferObjective(name),
+      status: EntityStatus.Active,
+      dailyBudget: null,
+    }));
+
+    const campaignIdMap = await upsertCampaigns(db, accountId, campaignDTOs);
+
+    const dailyMetrics: PaidMetricDTO[] = rows.map((r) => ({
+      date: r.date_str,
+      campaignExternalId: r.campaign_id,
+      spend: Number(r.spend) || 0,
+      impressions: Math.round(Number(r.impressions) || 0),
+      clicks: Math.round(Number(r.clicks) || 0),
+      conversions: Math.round(Number(r.conversions) || 0),
+      conversionValue: Number(r.conversion_value) || 0,
+      videoViews: 0,
+    }));
+
+    const dailyIngested = await upsertPaidMetrics(db, campaignIdMap, dailyMetrics);
+
+    const windowStart = rows[0]?.date_str ?? new Date().toISOString().slice(0, 10);
+    const windowEnd = rows[rows.length - 1]?.date_str ?? windowStart;
+
+    await db.insert(syncRuns).values({
+      accountId,
+      surface: 'paid',
+      status: 'succeeded',
+      windowStart,
+      windowEnd,
+      rowsIngested: dailyIngested,
+      finishedAt: new Date(),
+    });
+
+    return { dailyIngested, campaignCount: uniqueCampaigns.size };
+  } catch (err) {
+    console.warn(`[Sync] Warning syncing standard brand "${brand.name}":`, err);
+    return { dailyIngested: 0, campaignCount: 0 };
+  }
+}
+
+/**
  * End-to-end scalable data pipeline:
- * 1. Auto-discovers all brand tables from PostgreSQL.
+ * 1. Auto-discovers all Buzzohero brands from PostgreSQL (Premium with hourly tables vs Standard GMV Brief).
  * 2. Ingests, sanitizes, and filters non-zero rows into `brand_hourly_tempo`.
  * 3. Automatically provisions and updates `clients`, `campaigns`, `adgroups`, `paid_hourly_metrics`, and `paid_daily_metrics`.
  * 4. Falls back to offline sync if PostgreSQL is unavailable.
@@ -317,7 +464,7 @@ export async function fetchSanitizeAndSeed(options: FetchSanitizeOptions = {}) {
     }
   }
 
-  // If live PostgreSQL is unavailable or returned no tables, fall back to offline discovery from brand_hourly_tempo
+  // If live PostgreSQL is unavailable or returned no tables, fall back to offline discovery
   if (discoveredBrands.length === 0) {
     console.log('ℹ️ Running in offline/cached mode — discovering brands from local database...');
     discoveredBrands = await discoverSanitizedBrands(pglite);
@@ -331,20 +478,26 @@ export async function fetchSanitizeAndSeed(options: FetchSanitizeOptions = {}) {
     return;
   }
 
+  const premiumBrands = discoveredBrands.filter((b) => b.tier === 'premium');
+  const standardBrands = discoveredBrands.filter((b) => b.tier === 'standard');
+
   console.log('====================================================');
-  console.log(`⚡ Auto-Discovered ${discoveredBrands.length} Brand(s):`);
-  for (const b of discoveredBrands) {
-    console.log(`   • ${b.name} (slug: "${b.slug}", northStar: "${b.northStar}", color: ${b.brandColor})`);
+  console.log(`⚡ Auto-Discovered ${discoveredBrands.length} Buzzohero Brand(s):`);
+  console.log(`   ⭐ Premium (Hourly Intraday): ${premiumBrands.length} brand(s)`);
+  for (const b of premiumBrands) {
+    console.log(`      • ${b.name} (${b.table ?? b.slug}, northStar: "${b.northStar}")`);
   }
+  console.log(`   📊 Standard (GMV Brief): ${standardBrands.length} brand(s)`);
   console.log('====================================================');
 
   try {
-    for (const brand of discoveredBrands) {
-      console.log(`\n📦 Processing brand "${brand.name}" (${brand.table})...`);
+    // 1. Process Premium Brands (Hourly Telemetry)
+    for (const brand of premiumBrands) {
+      console.log(`\n⭐ Processing Premium brand "${brand.name}" (${brand.table})...`);
 
       const allActiveRows: RawExportRow[] = [];
 
-      if (postgresPool) {
+      if (postgresPool && brand.table) {
         // Fast direct fetch from PostgreSQL
         const queryRes = await postgresPool.query<{
           metrics: string;
@@ -431,7 +584,18 @@ export async function fetchSanitizeAndSeed(options: FetchSanitizeOptions = {}) {
       }
     }
 
-    console.log('\n🎉 All brands and metrics are fully synchronized and available on the website!');
+    // 2. Process Standard Brands (GMV Brief)
+    console.log(`\n📊 Processing ${standardBrands.length} Standard Buzzohero brands (GMV Brief)...`);
+    let syncedStandardCount = 0;
+    for (const brand of standardBrands) {
+      const stats = await syncStandardBrandToDomain(db, brand, postgresPool);
+      if (stats.dailyIngested > 0) {
+        syncedStandardCount += 1;
+      }
+    }
+    console.log(`  ✓ Successfully provisioned ${standardBrands.length} brands (${syncedStandardCount} with active campaign facts).`);
+
+    console.log('\n🎉 All Buzzohero brands and metrics are fully synchronized and available on the website!');
   } finally {
     if (postgresPool) {
       await postgresPool.end();

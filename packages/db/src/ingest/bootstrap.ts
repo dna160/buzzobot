@@ -24,6 +24,7 @@ const DEMO_CLIENT = {
   currency: 'USD',
   timezone: 'America/Los_Angeles',
   northStar: NorthStar.Vtr,
+  tier: 'premium',
 };
 
 export async function ensureDemoTenant(
@@ -44,6 +45,7 @@ export async function ensureDemoTenant(
         currency: declared.currency,
         timezone: declared.timezone,
         northStar: declared.northStar,
+        tier: 'premium',
       }
     : DEMO_CLIENT;
 
@@ -66,6 +68,7 @@ export async function ensureDemoTenant(
         currency: clientValues.currency,
         timezone: clientValues.timezone,
         northStar: clientValues.northStar,
+        tier: clientValues.tier,
       },
     })
     .returning({ id: clients.id });

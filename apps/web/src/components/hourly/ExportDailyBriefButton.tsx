@@ -24,6 +24,12 @@ export type BriefObjective = keyof typeof OBJECTIVE_LABEL;
  *
  * Defaults to a trailing 7-day window ending on the dashboard's currently
  * selected date.
+ *
+ * `tier` defaults to `full` — the real probe loop + narrator/critic/
+ * synthesist agents through LM Studio, minutes not seconds. Pass `instant`
+ * only for a caller that explicitly wants the zero-model-call, ≤10s
+ * deterministic-template path (the route's own default, unused by this
+ * button unless overridden).
  */
 export function ExportDailyBriefButton({
   slug,
@@ -31,6 +37,7 @@ export function ExportDailyBriefButton({
   lang,
   date,
   primary = false,
+  tier = 'full',
 }: {
   slug: string;
   objective: BriefObjective;
@@ -38,6 +45,7 @@ export function ExportDailyBriefButton({
   date?: string;
   /** The client's north-star deck, given visual weight over the others. */
   primary?: boolean;
+  tier?: 'instant' | 'full';
 }) {
   const [state, setState] = useState<'idle' | 'loading' | 'error'>('idle');
 
@@ -47,6 +55,7 @@ export function ExportDailyBriefButton({
       const params = new URLSearchParams();
       if (lang) params.set('lang', lang);
       if (date) params.set('date', date);
+      if (tier === 'full') params.set('tier', 'full');
       const query = params.size > 0 ? `?${params.toString()}` : '';
       const res = await fetch(`/api/reports/${slug}/brief/${objective}${query}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(`Brief request failed (${res.status})`);

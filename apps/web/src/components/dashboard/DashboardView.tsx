@@ -20,7 +20,13 @@ const comparisonLabel: Record<RangePresetValue, string> = {
   '90d': 'vs prev 90d',
 };
 
-export function DashboardView({ slug }: { slug: string }) {
+export function DashboardView({
+  slug,
+  isStandardGmvBrief,
+}: {
+  slug: string;
+  isStandardGmvBrief?: boolean;
+}) {
   const [preset, setPreset] = useState<RangePresetValue>('30d');
   const [surface, setSurface] = useState<SurfaceFilter>('both');
 
@@ -29,6 +35,7 @@ export function DashboardView({ slug }: { slug: string }) {
     { placeholderData: (prev) => prev },
   );
 
+  const isGmvTier = isStandardGmvBrief || data?.client.tier === 'standard';
   const showPaid = surface !== 'organic';
   const showOrganic = surface !== 'paid';
 
@@ -38,17 +45,24 @@ export function DashboardView({ slug }: { slug: string }) {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <span
-            className="flex h-10 w-10 items-center justify-center rounded-lg text-[17px] font-semibold text-on-accent"
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-[17px] font-semibold text-on-accent shadow-xs"
             style={{ backgroundColor: data?.client.brandColor ?? 'var(--color-accent)' }}
           >
             {data?.client.name?.charAt(0) ?? 'A'}
           </span>
           <div>
-            <h1 className="text-[22px] font-semibold leading-tight tracking-tight text-primary">
-              {data?.client.name ?? 'Loading…'}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-[22px] font-semibold leading-tight tracking-tight text-primary">
+                {data?.client.name ?? 'Loading…'}
+              </h1>
+              {isGmvTier ? (
+                <span className="rounded-md bg-accent/10 px-2 py-0.5 text-[11px] font-semibold text-accent border border-accent/20">
+                  GMV Brief
+                </span>
+              ) : null}
+            </div>
             <p className="flex items-center gap-2 text-[13px] text-muted">
-              TikTok performance
+              {isGmvTier ? 'Daily TikTok Shop & campaign performance overview' : 'TikTok performance overview'}
               {isFetching ? (
                 <span className="inline-flex items-center gap-1 text-accent">
                   <RefreshCw size={11} className="animate-spin" /> syncing

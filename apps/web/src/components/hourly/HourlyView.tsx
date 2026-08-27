@@ -32,10 +32,16 @@ import { DayOverDayChart } from './charts/DayOverDayChart';
 import { HourlyCampaignTable } from './HourlyCampaignTable';
 import { ExportDailyBriefButton } from './ExportDailyBriefButton';
 
-export function HourlyView({ slug }: { slug: string }) {
+export function HourlyView({
+  slug,
+  onSwitchToOverview,
+}: {
+  slug: string;
+  onSwitchToOverview?: () => void;
+}) {
   const [date, setDate] = useState<string | undefined>(undefined);
 
-  const { data, isLoading, isError, error, isFetching } = trpc.dashboard.hourly.useQuery(
+  const { data, isLoading, isError, isFetching } = trpc.dashboard.hourly.useQuery(
     { clientSlug: slug, date },
     { placeholderData: (prev) => prev },
   );
@@ -45,7 +51,7 @@ export function HourlyView({ slug }: { slug: string }) {
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <span
-            className="flex h-10 w-10 items-center justify-center rounded-lg text-[17px] font-semibold text-on-accent"
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-[17px] font-semibold text-on-accent shadow-xs"
             style={{ backgroundColor: data?.client.brandColor ?? 'var(--color-accent)' }}
           >
             {data?.client.name?.charAt(0) ?? '·'}
@@ -93,10 +99,25 @@ export function HourlyView({ slug }: { slug: string }) {
       </header>
 
       {isError ? (
-        <EmptyState
-          title="Couldn't load intraday data"
-          description={error?.message ?? 'An unexpected error occurred.'}
-        />
+        <div className="rounded-xl border border-border bg-surface p-8 text-center shadow-xs">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent/10 text-accent mb-4">
+            <AlertTriangle size={24} />
+          </div>
+          <h3 className="text-[16px] font-semibold text-primary">Hourly Telemetry Not Configured</h3>
+          <p className="mx-auto mt-2 max-w-md text-[13px] text-muted leading-relaxed">
+            Intraday hourly telemetry is enabled for Premium clients with dedicated hourly tracking tables (e.g. Cimory, Treasury, Laneige, Bardi Jakarta, Kanzler).
+            This brand is tracked via the Buzzohero GMV Brief tier.
+          </p>
+          {onSwitchToOverview ? (
+            <button
+              type="button"
+              onClick={onSwitchToOverview}
+              className="mt-5 inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-[13px] font-semibold text-on-accent shadow-sm transition-all hover:bg-accent-hover"
+            >
+              View GMV Brief Overview
+            </button>
+          ) : null}
+        </div>
       ) : isLoading || !data ? (
         <LoadingState />
       ) : (

@@ -1,9 +1,9 @@
 import type pg from 'pg';
-import { NorthStar } from '@tempo/core';
+import { ClientTier, NorthStar } from '@tempo/core';
 import type { PGlite } from '@electric-sql/pglite';
 
 export interface DiscoveredBrand {
-  table: string;
+  table?: string;
   brandKey: string;
   slug: string;
   name: string;
@@ -11,6 +11,9 @@ export interface DiscoveredBrand {
   currency: string;
   timezone: string;
   northStar: NorthStar;
+  tier: ClientTier;
+  tiktokAdAccountId?: string;
+  brandId?: number;
   conversionMetric?: string;
   conversionValueMetric?: string;
   metrics: string[];
@@ -54,6 +57,8 @@ const BRAND_OVERRIDES: Record<
     conversionValueMetric: 'total_onsite_shopping_value',
   },
   treasury: { name: 'Treasury', slug: 'treasury', northStar: NorthStar.AppInstall, conversionMetric: 'app_install' },
+  kanzler: { name: 'Kanzler', slug: 'kanzler', northStar: NorthStar.Vtr },
+  chocomory: { name: 'Chocomory', slug: 'chocomory', northStar: NorthStar.Vtr },
 };
 
 /** Deterministically pick a color from the palette based on brand slug hash. */
@@ -145,10 +150,40 @@ const ACTIVE_HOUR_CONDITIONS = Array.from({ length: 24 }, (_, i) => `h${String(i
 );
 
 /**
- * Auto-discover all brand tables matching '%_daily_performance' in PostgreSQL
- * and dynamically extract their metadata and active metrics.
+ * Auto-discover Buzzohero brands from PostgreSQL:
+ * 1. Filter exclusively to Buzzohero brands (agency_id = 1, status = 'active').
+ * 2. Premium clients: Have dedicated '*_daily_performance' tables with full hourly data.
+ * 3. Standard clients: Accommodated for GMV Brief / daily summaries.
  */
 export async function discoverPostgresBrands(pool: pg.Pool): Promise<DiscoveredBrand[]> {
+  // Query all active Buzzohero brands
+  let buzzoheroRows: Array<{
+    id: number;
+    name: string;
+    tempo_slug: string | null;
+    tiktok_ad_account_id: string;
+    timezone: string | null;
+  }> = [];
+
+  try {
+    const buzzoRes = await pool.query<{
+      id: number;
+      name: string;
+      tempo_slug: string | null;
+      tiktok_ad_account_id: string;
+      timezone: string | null;
+    }>(`
+      SELECT id, name, tempo_slug, tiktok_ad_account_id, timezone
+      FROM brands
+      WHERE agency_id = 1 AND status = 'active'
+      ORDER BY name;
+    `);
+    buzzoheroRows = buzzoRes.rows;
+  } catch (err) {
+    console.warn('[Auto-Discovery] Warning: could not query brands table:', err);
+  }
+
+  // Query all hourly performance tables matching '%_daily_performance'
   const tablesQuery = await pool.query<{ table_name: string }>(`
     SELECT table_name 
     FROM information_schema.tables 
@@ -157,16 +192,36 @@ export async function discoverPostgresBrands(pool: pg.Pool): Promise<DiscoveredB
     ORDER BY table_name;
   `);
 
-  const tables = tablesQuery.rows.map((r) => r.table_name);
+  const dailyTables = new Set(tablesQuery.rows.map((r) => r.table_name));
   const discovered: DiscoveredBrand[] = [];
+  const processedSlugs = new Set<string>();
 
-  for (const table of tables) {
+  // Helper to find matching hourly table for a brand
+  const findHourlyTable = (brandKey: string, slug: string): string | undefined => {
+    const candidates = [
+      `${brandKey}_daily_performance`,
+      `${brandKey.replace(/-/g, '_')}_daily_performance`,
+      `${slug.replace(/-/g, '_')}_daily_performance`,
+    ];
+    return candidates.find((t) => dailyTables.has(t));
+  };
+
+  // 1. First process Premium brands (those with *_daily_performance tables)
+  for (const table of dailyTables) {
     const brandKey = table.replace(/_daily_performance$/, '');
     const override = BRAND_OVERRIDES[brandKey] ?? BRAND_OVERRIDES[table];
 
     const slug = override?.slug ?? formatBrandSlug(brandKey);
     const name = override?.name ?? formatBrandName(brandKey);
     const brandColor = deriveBrandColor(slug);
+
+    // Look for matching Buzzohero brand row if present
+    const matchingBrand = buzzoheroRows.find(
+      (b) =>
+        (b.tempo_slug && b.tempo_slug.toLowerCase() === slug.toLowerCase()) ||
+        formatBrandSlug(b.name) === slug ||
+        b.name.toLowerCase().includes(brandKey.replace(/_/g, ' ')),
+    );
 
     // Fetch active non-zero metrics from the brand's table
     let metrics: string[] = [];
@@ -178,7 +233,6 @@ export async function discoverPostgresBrands(pool: pg.Pool): Promise<DiscoveredB
       `);
       metrics = metricsRes.rows.map((r) => r.metrics).filter(Boolean);
     } catch {
-      // Fallback to simple distinct
       try {
         const metricsRes = await pool.query<{ metrics: string }>(`
           SELECT DISTINCT metrics FROM ${table};
@@ -201,12 +255,63 @@ export async function discoverPostgresBrands(pool: pg.Pool): Promise<DiscoveredB
       name,
       brandColor,
       currency: 'IDR',
-      timezone: 'UTC',
+      timezone: matchingBrand?.timezone || 'UTC',
       northStar,
+      tier: ClientTier.Premium,
+      tiktokAdAccountId: matchingBrand?.tiktok_ad_account_id,
+      brandId: matchingBrand?.id,
       conversionMetric,
       conversionValueMetric,
       metrics,
     });
+    processedSlugs.add(slug);
+  }
+
+  // 2. Process all remaining Buzzohero active brands as Standard (GMV Brief) tier
+  for (const brand of buzzoheroRows) {
+    const slug = brand.tempo_slug?.trim() || formatBrandSlug(brand.name);
+    if (!slug || processedSlugs.has(slug)) continue;
+
+    const brandKey = slug.replace(/-/g, '_');
+    const override = BRAND_OVERRIDES[brandKey] ?? BRAND_OVERRIDES[slug];
+    const hourlyTable = findHourlyTable(brandKey, slug);
+
+    if (hourlyTable) {
+      // It's a premium table we haven't added yet
+      const brandColor = deriveBrandColor(slug);
+      discovered.push({
+        table: hourlyTable,
+        brandKey,
+        slug,
+        name: brand.name,
+        brandColor,
+        currency: 'IDR',
+        timezone: brand.timezone || 'UTC',
+        northStar: override?.northStar ?? NorthStar.Shop,
+        tier: ClientTier.Premium,
+        tiktokAdAccountId: brand.tiktok_ad_account_id,
+        brandId: brand.id,
+        metrics: [],
+      });
+      processedSlugs.add(slug);
+    } else {
+      // Standard Buzzohero Brand — GMV Brief only
+      const brandColor = deriveBrandColor(slug);
+      discovered.push({
+        brandKey,
+        slug,
+        name: brand.name,
+        brandColor,
+        currency: 'IDR',
+        timezone: brand.timezone || 'UTC',
+        northStar: override?.northStar ?? NorthStar.Shop, // Default to GMV brief
+        tier: ClientTier.Standard,
+        tiktokAdAccountId: brand.tiktok_ad_account_id,
+        brandId: brand.id,
+        metrics: ['spend', 'impressions', 'clicks', 'conversions', 'conversion_value'],
+      });
+      processedSlugs.add(slug);
+    }
   }
 
   return discovered;
@@ -214,9 +319,43 @@ export async function discoverPostgresBrands(pool: pg.Pool): Promise<DiscoveredB
 
 /**
  * Secondary discovery fallback: discover all brands already stored in the
- * sanitized `brand_hourly_tempo` table (useful for offline/demo operations).
+ * sanitized database (useful for offline/demo operations).
  */
 export async function discoverSanitizedBrands(pglite: PGlite): Promise<DiscoveredBrand[]> {
+  // Check if clients table exists in pglite
+  try {
+    const clientsRes = await pglite.query<{
+      name: string;
+      slug: string;
+      brand_color: string;
+      currency: string;
+      timezone: string;
+      north_star: string;
+      tier: string;
+    }>(`
+      SELECT name, slug, brand_color, currency, timezone, north_star, tier
+      FROM clients
+      ORDER BY name;
+    `);
+
+    if (clientsRes.rows.length > 0) {
+      return clientsRes.rows.map((row) => ({
+        table: row.tier === 'premium' ? `${row.slug.replace(/-/g, '_')}_daily_performance` : undefined,
+        brandKey: row.slug.replace(/-/g, '_'),
+        slug: row.slug,
+        name: row.name,
+        brandColor: row.brand_color || deriveBrandColor(row.slug),
+        currency: row.currency || 'IDR',
+        timezone: row.timezone || 'UTC',
+        northStar: (row.north_star as NorthStar) || NorthStar.Shop,
+        tier: (row.tier as ClientTier) || (row.slug === 'cimory' || row.slug === 'treasury' || row.slug === 'laneige' ? ClientTier.Premium : ClientTier.Standard),
+        metrics: [],
+      }));
+    }
+  } catch {
+    // fallback to checking brand_hourly_tempo table
+  }
+
   const tableCheck = await pglite.query<{ exists: boolean }>(`
     SELECT EXISTS (
       SELECT FROM information_schema.tables 
@@ -261,6 +400,7 @@ export async function discoverSanitizedBrands(pglite: PGlite): Promise<Discovere
       currency: 'IDR',
       timezone: 'UTC',
       northStar,
+      tier: ClientTier.Premium,
       conversionMetric,
       conversionValueMetric,
       metrics,

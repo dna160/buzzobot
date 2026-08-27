@@ -66,7 +66,10 @@ import { authenticate, corsHeaders, preflight } from '@/lib/api-auth';
  * requested, so the same key works across every client on the platform.
  */
 export const runtime = 'nodejs';
-export const maxDuration = 180;
+// Brief Deck PRD §5: full tier targets p95 ≤ 6 min (~24 model calls on the
+// 12B budget) — the Awareness Brief button always requests it, so this must
+// outlast that, not just the instant tier's sub-10s round trip.
+export const maxDuration = 360;
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
 export const revalidate = 0;
