@@ -354,6 +354,85 @@ export const reportRuns = pgTable(
   ],
 );
 
+/**
+ * Manually-entered target values for the Template Report's "Result Metric vs
+ * Benchmark" section. There is no industry-benchmark data source anywhere in
+ * this system — an AM types in the numbers they actually negotiate with the
+ * brand, one row per (client, funnel stage, metric).
+ */
+export const reportBenchmarks = pgTable(
+  'report_benchmarks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    /** 'awareness' | 'consideration' | 'conversion' — the template's funnel stage. */
+    objective: text('objective').notNull(),
+    /** 'cpm' | 'ctr' | 'vtr' | 'cpc' | 'cost_per_atc' | 'roi' | 'cvr' | 'cpa'. */
+    metric: text('metric').notNull(),
+    targetValue: doublePrecision('target_value').notNull(),
+    /** 'higher_is_better' | 'lower_is_better' — which side of the target is Baik. */
+    comparisonDirection: text('comparison_direction').notNull(),
+    updatedBy: text('updated_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('report_benchmarks_client_obj_metric_uq').on(t.clientId, t.objective, t.metric)],
+);
+
+/** One row per Template Report generation — the ledger, mirroring `reportRuns`. */
+export const templateReportRuns = pgTable(
+  'template_report_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    periodStart: date('period_start', { mode: 'string' }),
+    periodEnd: date('period_end', { mode: 'string' }),
+    status: text('status').notNull().default('running'),
+    artifactPath: text('artifact_path'),
+    artifactBytes: integer('artifact_bytes'),
+    error: text('error'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [index('template_report_runs_lookup_idx').on(t.clientId, t.periodEnd)],
+);
+
+/**
+ * Industry classification for real Buzzohero ad accounts (the source
+ * `brands` table has no category/industry column of its own — confirmed by
+ * inspecting `information_schema.columns`). Populated by a one-time Claude
+ * categorization pass over the full real account list (not by an LLM at
+ * runtime, and never by string-matching), so "populate benchmarks from
+ * industry peers" can look up a client's real peers by a fixed `industry`
+ * code instead of re-deriving keyword guesses on every run. Lives in Tempo's
+ * own domain DB — it is enrichment data Tempo owns, not something written
+ * back into the shared real Buzzohero source database.
+ */
+export const brandIndustryTags = pgTable(
+  'brand_industry_tags',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** The real TikTok ad account id from Buzzohero's `brands` table — the join key back to real data. */
+    tiktokAdAccountId: text('tiktok_ad_account_id').notNull(),
+    /** Snapshot of the real account name at categorization time, for auditability. */
+    name: text('name').notNull(),
+    /** One of INDUSTRY_TAXONOMY's fixed codes (e.g. 'cosmetics_skincare'). */
+    industry: text('industry').notNull(),
+    /** 'high' | 'medium' — how confident the categorization is; low-confidence guesses are deliberately excluded rather than stored as noise. */
+    confidence: text('confidence').notNull(),
+    source: text('source').notNull().default('claude-categorized'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('brand_industry_tags_account_uq').on(t.tiktokAdAccountId),
+    index('brand_industry_tags_industry_idx').on(t.industry),
+  ],
+);
+
 export const appSettings = pgTable('app_settings', {
   key: text('key').primaryKey(),
   value: text('value').notNull(),

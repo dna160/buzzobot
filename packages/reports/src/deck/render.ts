@@ -297,7 +297,7 @@ function renderKpiGrid(tiles: KpiTile[], layout: string): string {
   return `<div class="block kpis kpis--${esc(layout)}">${cells}</div>`;
 }
 
-function renderTable(spec: TableSpec, appendix = false): string {
+export function renderTable(spec: TableSpec, appendix = false): string {
   if (spec.rows.length === 0) {
     return `<div class="block"><p class="empty">${esc(spec.emptyNote ?? '')}</p></div>`;
   }

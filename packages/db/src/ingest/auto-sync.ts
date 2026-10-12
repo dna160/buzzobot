@@ -27,7 +27,7 @@ export async function triggerAutoSyncIfStale(options: AutoSyncOptions = {}): Pro
   // Start the background interval once in this runtime process
   if (!backgroundIntervalStarted) {
     backgroundIntervalStarted = true;
-    const intervalMs = Number(process.env.AUTO_SYNC_INTERVAL_MS) || 5 * 60 * 1000; // default 5 minutes
+    const intervalMs = Number(process.env.AUTO_SYNC_INTERVAL_MS) || 30 * 60 * 1000; // default 30 minutes
     const timer = setInterval(() => {
       triggerAutoSyncIfStale({ maxAgeMs: intervalMs - 1000, blocking: false }).catch(() => {});
     }, intervalMs);
@@ -40,7 +40,15 @@ export async function triggerAutoSyncIfStale(options: AutoSyncOptions = {}): Pro
   const runSync = async () => {
     isSyncing = true;
     try {
-      await fetchSanitizeAndSeed({ closeOnComplete: false });
+      // `fetchSanitizeAndSeed` opens its own PGlite instance whenever the
+      // active `getDb()` backend isn't already PGlite (true here — this repo
+      // runs Postgres via DATABASE_URL) and only closes it when told to. With
+      // `false` here, every single auto-sync tick — the 30-min interval below
+      // *and* every `clients.list` query more than 60s after the last sync —
+      // leaked one more open PGlite instance (real OS file handles to
+      // `postgres.data`) for the lifetime of the process, eventually crashing
+      // the dev server with EMFILE. `true` closes it every time instead.
+      await fetchSanitizeAndSeed({ closeOnComplete: true });
       lastSyncTime = Date.now();
     } catch (err) {
       console.warn('[tempo-auto-sync] Automatic background sync error:', err);

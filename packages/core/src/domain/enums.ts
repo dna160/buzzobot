@@ -126,3 +126,41 @@ export function isBriefObjective(value: string): value is BriefObjective {
     value === BriefObjective.Install
   );
 }
+
+/**
+ * Fixed industry taxonomy for "populate benchmarks from industry peers".
+ * Closed set, not free text: a small local model doing a closed-set pick from
+ * ~20 options is a far more reliable task than generating open-ended keywords
+ * from scratch, and a fixed code is what `brand_industry_tags` stores per
+ * real account (see `packages/db/src/schema.ts`).
+ */
+export const INDUSTRY_TAXONOMY = [
+  { code: 'cosmetics_skincare', label: 'FMCG - Cosmetics & Skincare' },
+  { code: 'food_beverage', label: 'FMCG - Food & Beverage' },
+  { code: 'household_personal_care', label: 'FMCG - Household & Personal Care' },
+  { code: 'fashion_apparel', label: 'Fashion & Apparel' },
+  { code: 'fashion_accessories', label: 'Fashion Accessories, Jewelry & Watches' },
+  { code: 'electronics', label: 'Electronics & Appliances' },
+  { code: 'home_living', label: 'Home & Living' },
+  { code: 'automotive', label: 'Automotive' },
+  { code: 'baby_kids', label: 'Baby & Kids' },
+  { code: 'health_pharmacy', label: 'Health & Pharmacy' },
+  { code: 'marketplace_retail', label: 'Retail / Marketplace' },
+  { code: 'financial_services', label: 'Financial Services' },
+  { code: 'education', label: 'Education' },
+  { code: 'travel_hospitality', label: 'Travel & Hospitality' },
+  { code: 'telecom_tech', label: 'Telecom & Tech' },
+  { code: 'government_public', label: 'Government / Public Sector' },
+  { code: 'media_entertainment', label: 'Media & Entertainment' },
+  { code: 'professional_services', label: 'Professional / Agency Services' },
+  { code: 'sports_outdoor', label: 'Sports & Outdoor' },
+  { code: 'pet_supplies', label: 'Pet Supplies' },
+  { code: 'property_real_estate', label: 'Property & Real Estate' },
+  { code: 'agency_internal', label: 'Agency / Internal (Buzzohero)' },
+] as const;
+
+export type IndustryCode = (typeof INDUSTRY_TAXONOMY)[number]['code'];
+
+export function isIndustryCode(value: string): value is IndustryCode {
+  return INDUSTRY_TAXONOMY.some((t) => t.code === value);
+}

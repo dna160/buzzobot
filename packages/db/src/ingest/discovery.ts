@@ -13,6 +13,15 @@ export interface DiscoveredBrand {
   northStar: NorthStar;
   tier: ClientTier;
   tiktokAdAccountId?: string;
+  /**
+   * Every real `brands` row this entry fuzzy-matched — plural because a
+   * hand-curated Premium brand (a `_daily_performance` table built by
+   * combining several real TikTok ad accounts, e.g. Kanzler) can match more
+   * than one `brands` row. `tiktokAdAccountId` above is just the first of
+   * these, kept for existing single-id callers; a caller that wants the
+   * client's full real ad-account footprint should use this instead.
+   */
+  tiktokAdAccountIds?: string[];
   brandId?: number;
   conversionMetric?: string;
   conversionValueMetric?: string;
@@ -58,7 +67,11 @@ const BRAND_OVERRIDES: Record<
   },
   treasury: { name: 'Treasury', slug: 'treasury', northStar: NorthStar.AppInstall, conversionMetric: 'app_install' },
   kanzler: { name: 'Kanzler', slug: 'kanzler', northStar: NorthStar.Vtr },
-  chocomory: { name: 'Chocomory', slug: 'chocomory', northStar: NorthStar.Vtr },
+  // Chocomory delivers entirely through GMV Max / LIVE GMV Max, which reports
+  // cost, orders and gross revenue and no impressions or views at all. A VTR
+  // headline is unbuildable from that surface, so the north star is Shop —
+  // which is also what the Standard tier would have defaulted to on its own.
+  chocomory: { name: 'Chocomory', slug: 'chocomory', northStar: NorthStar.Shop },
 };
 
 /** Deterministically pick a color from the palette based on brand slug hash. */
@@ -145,6 +158,26 @@ export function inferBrandNorthStar(activeMetrics: string[]): {
   };
 }
 
+/**
+ * `brands.status` values whose warehouse rows Tempo ingests.
+ *
+ * This used to be `status = 'active'` alone, which silently froze every brand
+ * bound to the Business Center the other way round. `reverse_binding` is a
+ * binding direction, not a dormancy flag: 19 of those 62 Buzzohero brands carry
+ * `tiktok_ads_campaign` rows and 12 were still reporting spend in the last
+ * week, BARDI Jakarta (a Premium brand, with its own curated
+ * `bardi_jakarta_daily_performance` table) among them. Excluding them did not
+ * just skip their warehouse days — it left `matchingBrands` empty, so they had
+ * no `tiktok_ad_account_id` to read the warehouse *with* at all, and their
+ * dashboards sat twenty days behind a source that had the data all along.
+ *
+ * `external` is in for the same reason: 1 of its 3 brands reports through
+ * 27 Sep. `not_in_bc` (4 brands) and `deactivate` (1) are deliberately left
+ * out — neither has a single warehouse row, so including them would only
+ * manufacture empty clients.
+ */
+const INGESTIBLE_BRAND_STATUSES = ['active', 'reverse_binding', 'external'] as const;
+
 const ACTIVE_HOUR_CONDITIONS = Array.from({ length: 24 }, (_, i) => `h${String(i).padStart(2, '0')} <> 0`).join(
   ' OR ',
 );
@@ -172,12 +205,15 @@ export async function discoverPostgresBrands(pool: pg.Pool): Promise<DiscoveredB
       tempo_slug: string | null;
       tiktok_ad_account_id: string;
       timezone: string | null;
-    }>(`
+    }>(
+      `
       SELECT id, name, tempo_slug, tiktok_ad_account_id, timezone
       FROM brands
-      WHERE agency_id = 1 AND status = 'active'
+      WHERE agency_id = 1 AND status = ANY($1)
       ORDER BY name;
-    `);
+    `,
+      [INGESTIBLE_BRAND_STATUSES],
+    );
     buzzoheroRows = buzzoRes.rows;
   } catch (err) {
     console.warn('[Auto-Discovery] Warning: could not query brands table:', err);
@@ -195,6 +231,15 @@ export async function discoverPostgresBrands(pool: pg.Pool): Promise<DiscoveredB
   const dailyTables = new Set(tablesQuery.rows.map((r) => r.table_name));
   const discovered: DiscoveredBrand[] = [];
   const processedSlugs = new Set<string>();
+  // A Premium brand's own slug (e.g. 'kanzler') and the `brands` row it
+  // fuzzy-matched (e.g. id 169 "Kanzler Homepack") can be different strings,
+  // so `processedSlugs` alone doesn't stop the Standard loop below from also
+  // processing that same `brands` row under its own natural slug
+  // ('kanzler-homepack') — and since Standard runs second, its upsert on the
+  // same (surface, ad_account_id) unique key would silently steal the
+  // `tiktok_accounts` row's clientId away from the Premium client. Track the
+  // real `brands.id`s a Premium match already claimed so Standard skips them.
+  const claimedBrandIds = new Set<number>();
 
   // Helper to find matching hourly table for a brand
   const findHourlyTable = (brandKey: string, slug: string): string | undefined => {
@@ -215,13 +260,18 @@ export async function discoverPostgresBrands(pool: pg.Pool): Promise<DiscoveredB
     const name = override?.name ?? formatBrandName(brandKey);
     const brandColor = deriveBrandColor(slug);
 
-    // Look for matching Buzzohero brand row if present
-    const matchingBrand = buzzoheroRows.find(
+    // Look for every matching Buzzohero brand row, not just the first — a
+    // hand-curated Premium table like Kanzler's is built from several real ad
+    // accounts (Kanzler Homepack Nugget, Singles, Singles Bakso, Homepack,
+    // Nyaos), and only claiming one left the other four unclaimed to be
+    // separately (and wrongly) re-discovered as their own Standard clients.
+    const matchingBrands = buzzoheroRows.filter(
       (b) =>
         (b.tempo_slug && b.tempo_slug.toLowerCase() === slug.toLowerCase()) ||
         formatBrandSlug(b.name) === slug ||
         b.name.toLowerCase().includes(brandKey.replace(/_/g, ' ')),
     );
+    const matchingBrand = matchingBrands[0];
 
     // Fetch active non-zero metrics from the brand's table
     let metrics: string[] = [];
@@ -259,18 +309,20 @@ export async function discoverPostgresBrands(pool: pg.Pool): Promise<DiscoveredB
       northStar,
       tier: ClientTier.Premium,
       tiktokAdAccountId: matchingBrand?.tiktok_ad_account_id,
+      tiktokAdAccountIds: matchingBrands.map((b) => b.tiktok_ad_account_id).filter(Boolean),
       brandId: matchingBrand?.id,
       conversionMetric,
       conversionValueMetric,
       metrics,
     });
     processedSlugs.add(slug);
+    for (const b of matchingBrands) claimedBrandIds.add(b.id);
   }
 
   // 2. Process all remaining Buzzohero active brands as Standard (GMV Brief) tier
   for (const brand of buzzoheroRows) {
     const slug = brand.tempo_slug?.trim() || formatBrandSlug(brand.name);
-    if (!slug || processedSlugs.has(slug)) continue;
+    if (!slug || processedSlugs.has(slug) || claimedBrandIds.has(brand.id)) continue;
 
     const brandKey = slug.replace(/-/g, '_');
     const override = BRAND_OVERRIDES[brandKey] ?? BRAND_OVERRIDES[slug];

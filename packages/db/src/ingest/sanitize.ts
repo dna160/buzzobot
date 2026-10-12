@@ -1,16 +1,18 @@
 import { mkdirSync } from 'node:fs';
 import pg from 'pg';
 import { PGlite } from '@electric-sql/pglite';
-import { EntityStatus } from '@tempo/core';
+import { CampaignObjective, EntityStatus } from '@tempo/core';
 import {
   inferObjective,
   pivotHourlyRows,
+  type CampaignDTO,
   type HourBucket,
   type PaidHourlyMetricDTO,
   type PaidMetricDTO,
   type RawExportRow,
 } from '@tempo/tiktok';
 import { getDb, resolvePgliteDir, type Database } from '../client.js';
+import { sql } from 'drizzle-orm';
 import { agencies, clients, syncRuns, tiktokAccounts } from '../schema.js';
 import {
   upsertAdgroups,
@@ -106,6 +108,7 @@ export async function syncBrandToDomain(
   db: Database,
   brand: DiscoveredBrand,
   rawRows: readonly RawExportRow[],
+  postgresPool?: pg.Pool | null,
 ): Promise<{ hourlyIngested: number; dailyIngested: number; dateCount: number }> {
   const extraFields: Record<string, keyof HourBucket> = {};
   if (brand.conversionMetric) extraFields[brand.conversionMetric] = 'conversions';
@@ -148,7 +151,10 @@ export async function syncBrandToDomain(
     .returning({ id: clients.id });
   const clientId = client!.id;
 
-  // 3. Ensure TikTok Account
+  // 3. Ensure TikTok Account. Campaigns/adgroups/hourly metrics parent to
+  // this one row regardless of how many real accounts feed the brand's
+  // table — they don't need to be split by which of several real accounts
+  // they came from for the dashboard's purposes.
   const externalId = brand.tiktokAdAccountId || `${brand.slug}-tiktok-ads`;
   const [account] = await db
     .insert(tiktokAccounts)
@@ -165,6 +171,27 @@ export async function syncBrandToDomain(
     })
     .returning({ id: tiktokAccounts.id });
   const accountId = account!.id;
+
+  // A hand-curated Premium table can be built from more than one real ad
+  // account (e.g. Kanzler's 5) — link every one of them to this client too,
+  // purely so a caller that needs the client's full real-account footprint
+  // (e.g. the Template Report, pulling directly from TikTok's own tables)
+  // can find all of them, not just the first. These extra rows carry no
+  // campaign/adgroup data of their own.
+  const extraAccountIds = (brand.tiktokAdAccountIds ?? []).filter((id) => id !== externalId);
+  for (const extraId of extraAccountIds) {
+    await db
+      .insert(tiktokAccounts)
+      .values({ clientId, surface: 'paid', externalId: extraId, displayName: brand.name, status: 'active' })
+      .onConflictDoUpdate({
+        target: [tiktokAccounts.surface, tiktokAccounts.externalId],
+        set: { clientId, displayName: brand.name, status: 'active' },
+      });
+  }
+
+  // 3c. Remove campaigns duplicated onto this client's other accounts by an
+  // earlier ingest layout, so client totals are not double-counted.
+  await pruneDuplicateCampaigns(db, clientId, accountId);
 
   // 4. Upsert Campaigns
   const campaignDTOs = parsed.campaigns.map((c) => ({
@@ -235,10 +262,44 @@ export async function syncBrandToDomain(
   }
   const dailyIngested = await upsertPaidMetrics(db, campaignIdMap, [...dailyAcc.values()]);
 
+  // 7b. The shared warehouse — the same Robot Pintar tables every Standard
+  // brand reads. A Premium brand is no longer confined to its own curated
+  // `*_daily_performance` table.
+  //
+  // That table is a curated slice, not a superset, and how far it lags varies
+  // per brand: Kanzler's held 16 campaigns to 25 Aug while the warehouse had 83
+  // through 6 Sep, yet Laneige's holds 287 campaign-days the warehouse never
+  // sees. So this is a union of both, never a swap of one for the other.
+  //
+  // The curated table wins on overlap, because it carries true hourly
+  // granularity the warehouse cannot offer; the warehouse contributes every
+  // campaign-day the curated table lacks. De-duplication is per campaign-DAY:
+  // excluding whole campaigns would have discarded Kanzler's January-to-
+  // September warehouse history for the very campaigns its table happens to
+  // mention for two weeks in August.
+  const coveredCampaignDays = new Set(
+    parsed.buckets.map((b) => campaignDayKey(b.campaignExternalId, b.date)),
+  );
+  const adAccountIds = brand.tiktokAdAccountIds?.length
+    ? brand.tiktokAdAccountIds
+    : brand.tiktokAdAccountId
+      ? [brand.tiktokAdAccountId]
+      : [];
+
+  const warehouse = postgresPool
+    ? await ingestWarehouseCampaigns(db, postgresPool, accountId, adAccountIds, coveredCampaignDays)
+    : EMPTY_INGEST;
+  const gmvMax = postgresPool
+    ? await ingestGmvMaxCampaigns(db, postgresPool, accountId, adAccountIds, coveredCampaignDays)
+    : EMPTY_INGEST;
+
   // 8. Record Sync Run
-  const dates = parsed.dates;
+  const dates = [...new Set([...parsed.dates, ...warehouse.dates, ...gmvMax.dates])].sort();
   const windowStart = dates[0] ?? new Date().toISOString().slice(0, 10);
   const windowEnd = dates[dates.length - 1] ?? windowStart;
+
+  const totalHourly = hourlyIngested + warehouse.hourlyIngested + gmvMax.hourlyIngested;
+  const totalDaily = dailyIngested + warehouse.dailyIngested + gmvMax.dailyIngested;
 
   await db.insert(syncRuns).values({
     accountId,
@@ -246,14 +307,306 @@ export async function syncBrandToDomain(
     status: 'succeeded',
     windowStart,
     windowEnd,
-    rowsIngested: hourlyIngested + dailyIngested,
+    rowsIngested: totalHourly + totalDaily,
     finishedAt: new Date(),
   });
 
   return {
-    hourlyIngested,
-    dailyIngested,
+    hourlyIngested: totalHourly,
+    dailyIngested: totalDaily,
     dateCount: dates.length,
+  };
+}
+
+interface StandardCampaignRow {
+  date_str: string;
+  campaign_id: string;
+  campaign_name: string;
+  spend: string | number;
+  impressions: string | number;
+  clicks: string | number;
+  conversions: string | number;
+  conversion_value: string | number;
+}
+
+/**
+ * A GMV Max / LIVE GMV Max campaign-day. This surface reports cost, orders and
+ * gross revenue only — it has no impression, click or video-view column.
+ */
+interface GmvMaxCampaignRow {
+  date_str: string;
+  campaign_id: string;
+  campaign_name: string;
+  promotion_type: string;
+  operation_status: string | null;
+  spend: string | number;
+  conversions: string | number;
+  conversion_value: string | number;
+}
+
+/**
+ * Drop campaign rows stranded on a client's *other* paid accounts.
+ *
+ * A Premium brand can be built from several real ad accounts (Kanzler's five),
+ * so its client owns several `tiktok_accounts` rows. Only one of them — the
+ * `accountId` this sync writes to — is meant to hold campaigns; the rest exist
+ * purely so a caller can find the client's full real-account footprint, and are
+ * documented as carrying "no campaign/adgroup data of their own".
+ *
+ * Earlier versions of this ingest attached campaigns per-account, and because
+ * every write here is an upsert that never retracts anything, those rows simply
+ * stayed. The result was a client whose totals silently counted the same
+ * campaign twice: Kanzler read Rp 10.3B against a warehouse truth of Rp 5.1B,
+ * with 80 campaigns duplicated across four dead accounts.
+ *
+ * Only true duplicates are removed — a campaign is dropped solely when the same
+ * `externalId` already exists under the account being written to. Anything
+ * unique to another account is left alone, so a future layout that legitimately
+ * spreads campaigns across accounts loses nothing here. Metrics follow via
+ * `ON DELETE CASCADE`.
+ */
+async function pruneDuplicateCampaigns(
+  db: Database,
+  clientId: string,
+  accountId: string,
+): Promise<void> {
+  await db.execute(sql`
+    DELETE FROM campaigns c
+    USING tiktok_accounts a
+    WHERE c.account_id = a.id
+      AND a.client_id = ${clientId}::uuid
+      AND c.account_id <> ${accountId}::uuid
+      AND EXISTS (
+        SELECT 1 FROM campaigns keep
+        WHERE keep.account_id = ${accountId}::uuid
+          AND keep.external_id = c.external_id
+      )
+  `);
+}
+
+/** Key identifying one campaign-day, for cross-source de-duplication. */
+const campaignDayKey = (campaignExternalId: string, date: string): string =>
+  `${campaignExternalId}|${date}`;
+
+/**
+ * A whole-day `paid_hourly_metrics` bucket.
+ *
+ * Both warehouse surfaces below report at day grain — neither
+ * `tiktok_ads_campaign` nor `tiktok_ads_gmv_max_product_campaign` carries an
+ * hourly breakdown — so each day lands as one bucket at `hour = 0` with
+ * `spanHours = 24`. That is the schema's documented convention for a bucket
+ * absorbing a whole day, and consumers already honour it: `hourly.ts` drops
+ * `spanHours !== 1` from true-hour series and reports them as coverage notes,
+ * while day- and window-grain sums include them.
+ *
+ * The hourly write is what makes warehouse data reachable at all: the report
+ * brief (`repositories/daily-brief.ts`) and the entire Tempo Intelligence
+ * Engine (`tempo-engine`'s `fetch_available_dates`, `fetch_paid_rollup`, every
+ * `build_*_metric_frame`) read `paid_hourly_metrics` and never
+ * `paid_daily_metrics`.
+ */
+const dayBucket = (r: {
+  date: string;
+  campaignExternalId: string;
+  spend: number;
+  impressions?: number;
+  clicks?: number;
+  conversions: number;
+  conversionValue: number;
+}): PaidHourlyMetricDTO => ({
+  date: r.date,
+  hour: 0,
+  campaignExternalId: r.campaignExternalId,
+  adgroupExternalId: null,
+  spend: r.spend,
+  impressions: r.impressions ?? 0,
+  clicks: r.clicks ?? 0,
+  reach: 0,
+  videoViews: 0,
+  videoWatched6s: 0,
+  engagedView15s: 0,
+  engagements: 0,
+  likes: 0,
+  comments: 0,
+  shares: 0,
+  follows: 0,
+  profileVisits: 0,
+  conversions: r.conversions,
+  conversionValue: r.conversionValue,
+  spanHours: 24,
+});
+
+interface IngestResult {
+  campaignCount: number;
+  dailyIngested: number;
+  hourlyIngested: number;
+  dates: string[];
+}
+
+const EMPTY_INGEST: IngestResult = { campaignCount: 0, dailyIngested: 0, hourlyIngested: 0, dates: [] };
+
+/**
+ * Regular-ads (TTAM) campaign-days from the shared warehouse
+ * (`tiktok_ads_campaign`), for any brand — Premium or Standard.
+ *
+ * Every brand reads this table so that all of them sit on the same Robot Pintar
+ * data. A Premium brand used to be limited to its own hand-curated
+ * `*_daily_performance` table, which is a curated slice and can lag badly:
+ * Kanzler's covered 16 campaigns to 25 Aug while the warehouse held 83
+ * campaigns through 6 Sep, so its dashboard sat ten days stale with the fresher
+ * rows sitting right there unread.
+ *
+ * `excludeCampaignDays` is what keeps the union honest. The curated table wins
+ * for the campaign-days it covers, because it carries true hourly granularity
+ * the warehouse cannot offer; the warehouse fills in every campaign-day the
+ * curated table lacks. De-duplication is per campaign-DAY, not per campaign —
+ * excluding a whole campaign would have thrown away January-to-September
+ * warehouse history for the 16 campaigns Kanzler's table happens to mention for
+ * two weeks in August.
+ */
+async function ingestWarehouseCampaigns(
+  db: Database,
+  postgresPool: pg.Pool,
+  accountId: string,
+  adAccountIds: readonly string[],
+  excludeCampaignDays: ReadonlySet<string> = new Set(),
+): Promise<IngestResult> {
+  const ids = adAccountIds.filter(Boolean);
+  if (ids.length === 0) return EMPTY_INGEST;
+
+  const res = await postgresPool.query<StandardCampaignRow>(
+    `SELECT
+       date::text as date_str,
+       campaign_id,
+       COALESCE(NULLIF(campaign_name, ''), campaign_id) as campaign_name,
+       SUM(COALESCE(spend, 0)) as spend,
+       SUM(COALESCE(impressions, 0)) as impressions,
+       SUM(COALESCE(clicks, 0)) as clicks,
+       SUM(COALESCE(total_purchase, 0)) as conversions,
+       SUM(COALESCE(total_purchase_value, 0)) as conversion_value
+     FROM tiktok_ads_campaign
+     WHERE ad_account_id = ANY($1) AND spend > 0
+     GROUP BY date, campaign_id, campaign_name
+     ORDER BY date;`,
+    [ids],
+  );
+
+  const rows = res.rows.filter((r) => !excludeCampaignDays.has(campaignDayKey(r.campaign_id, r.date_str)));
+  if (rows.length === 0) return EMPTY_INGEST;
+
+  const uniqueCampaigns = new Map<string, CampaignDTO>();
+  for (const r of rows) {
+    uniqueCampaigns.set(r.campaign_id, {
+      externalId: r.campaign_id,
+      name: r.campaign_name,
+      objective: inferObjective(r.campaign_name),
+      status: EntityStatus.Active,
+      dailyBudget: null,
+    });
+  }
+  const campaignIdMap = await upsertCampaigns(db, accountId, Array.from(uniqueCampaigns.values()));
+
+  const metrics = rows.map((r) => ({
+    date: r.date_str,
+    campaignExternalId: r.campaign_id,
+    spend: Number(r.spend) || 0,
+    impressions: Math.round(Number(r.impressions) || 0),
+    clicks: Math.round(Number(r.clicks) || 0),
+    conversions: Math.round(Number(r.conversions) || 0),
+    conversionValue: Number(r.conversion_value) || 0,
+    videoViews: 0,
+  }));
+
+  const dailyIngested = await upsertPaidMetrics(db, campaignIdMap, metrics);
+  const hourlyIngested = await upsertPaidHourlyMetrics(db, campaignIdMap, new Map(), metrics.map(dayBucket));
+
+  return {
+    campaignCount: uniqueCampaigns.size,
+    dailyIngested,
+    hourlyIngested,
+    dates: Array.from(new Set(rows.map((r) => r.date_str))).sort(),
+  };
+}
+
+/**
+ * GMV Max and LIVE GMV Max campaign-days, for any brand — Premium or Standard.
+ *
+ * These deliver through their own reporting surface,
+ * `tiktok_ads_gmv_max_product_campaign`, keyed by `promotion_type` ('PRODUCT'
+ * for GMV Max, 'LIVE' for Live GMV Max). They never appear in
+ * `tiktok_ads_campaign` with spend — they land there as skeleton rows with
+ * every metric zeroed, which that table's `spend > 0` filter drops. A brand
+ * running GMV Max exclusively (Chocomory, and 53 other accounts) therefore
+ * ingested nothing at all and rendered as an empty client.
+ *
+ * The GMV Max surface reports cost, orders and gross revenue only — there is no
+ * impression, click or view column to map, so those stay 0 rather than being
+ * invented.
+ */
+async function ingestGmvMaxCampaigns(
+  db: Database,
+  postgresPool: pg.Pool,
+  accountId: string,
+  adAccountIds: readonly string[],
+  excludeCampaignDays: ReadonlySet<string> = new Set(),
+): Promise<IngestResult> {
+  const ids = adAccountIds.filter(Boolean);
+  if (ids.length === 0) return EMPTY_INGEST;
+
+  const res = await postgresPool.query<GmvMaxCampaignRow>(
+    `SELECT
+       date::text as date_str,
+       campaign_id,
+       COALESCE(NULLIF(campaign_name, ''), campaign_id) as campaign_name,
+       COALESCE(promotion_type, 'PRODUCT') as promotion_type,
+       operation_status,
+       SUM(COALESCE(cost, 0)) as spend,
+       SUM(COALESCE(orders, 0)) as conversions,
+       SUM(COALESCE(gross_revenue, 0)) as conversion_value
+     FROM tiktok_ads_gmv_max_product_campaign
+     WHERE ad_account_id = ANY($1)
+     GROUP BY date, campaign_id, campaign_name, promotion_type, operation_status
+     ORDER BY date;`,
+    [ids],
+  );
+
+  const rows = res.rows.filter((r) => !excludeCampaignDays.has(campaignDayKey(r.campaign_id, r.date_str)));
+  if (rows.length === 0) return EMPTY_INGEST;
+
+  // GMV Max is a sales objective whatever the campaign is called — passing the
+  // name to `inferObjective` would default "Growing SKU Campaign" to video
+  // views, which misreads the campaign entirely.
+  const uniqueCampaigns = new Map<string, CampaignDTO>();
+  for (const r of rows) {
+    uniqueCampaigns.set(r.campaign_id, {
+      externalId: r.campaign_id,
+      name: r.campaign_name,
+      objective: CampaignObjective.ProductSales,
+      status: r.operation_status === 'ENABLE' ? EntityStatus.Active : EntityStatus.Paused,
+      dailyBudget: null,
+    });
+  }
+  const campaignIdMap = await upsertCampaigns(db, accountId, Array.from(uniqueCampaigns.values()));
+
+  const metrics = rows.map((r) => ({
+    date: r.date_str,
+    campaignExternalId: r.campaign_id,
+    spend: Number(r.spend) || 0,
+    impressions: 0,
+    clicks: 0,
+    conversions: Math.round(Number(r.conversions) || 0),
+    conversionValue: Number(r.conversion_value) || 0,
+    videoViews: 0,
+  }));
+
+  const dailyIngested = await upsertPaidMetrics(db, campaignIdMap, metrics);
+  const hourlyIngested = await upsertPaidHourlyMetrics(db, campaignIdMap, new Map(), metrics.map(dayBucket));
+
+  return {
+    campaignCount: uniqueCampaigns.size,
+    dailyIngested,
+    hourlyIngested,
+    dates: Array.from(new Set(rows.map((r) => r.date_str))).sort(),
   };
 }
 
@@ -322,68 +675,23 @@ export async function syncStandardBrandToDomain(
     return { dailyIngested: 0, campaignCount: 0 };
   }
 
-  // Fetch campaign rows from tiktok_ads_campaign for this brand
+  // Both warehouse surfaces, exactly as a Premium brand now reads them — the
+  // regular-ads table and the GMV Max / LIVE GMV Max table. No exclusions here:
+  // a Standard brand has no curated `*_daily_performance` table of its own, so
+  // nothing is already covered.
+  const adAccountIds = [brand.tiktokAdAccountId];
   try {
-    const campaignRes = await postgresPool.query<{
-      date_str: string;
-      campaign_id: string;
-      campaign_name: string;
-      spend: string | number;
-      impressions: string | number;
-      clicks: string | number;
-      conversions: string | number;
-      conversion_value: string | number;
-    }>(
-      `SELECT 
-         date::text as date_str,
-         campaign_id,
-         COALESCE(NULLIF(campaign_name, ''), campaign_id) as campaign_name,
-         SUM(COALESCE(spend, 0)) as spend,
-         SUM(COALESCE(impressions, 0)) as impressions,
-         SUM(COALESCE(clicks, 0)) as clicks,
-         SUM(COALESCE(total_purchase, 0)) as conversions,
-         SUM(COALESCE(total_purchase_value, 0)) as conversion_value
-       FROM tiktok_ads_campaign
-       WHERE ad_account_id = $1 AND spend > 0
-       GROUP BY date, campaign_id, campaign_name
-       ORDER BY date;`,
-      [brand.tiktokAdAccountId],
-    );
+    const warehouse = await ingestWarehouseCampaigns(db, postgresPool, accountId, adAccountIds);
+    const gmvMax = await ingestGmvMaxCampaigns(db, postgresPool, accountId, adAccountIds);
 
-    const rows = campaignRes.rows;
-    if (rows.length === 0) return { dailyIngested: 0, campaignCount: 0 };
-
-    // Unique campaigns
-    const uniqueCampaigns = new Map<string, string>();
-    for (const r of rows) {
-      uniqueCampaigns.set(r.campaign_id, r.campaign_name);
+    if (warehouse.dailyIngested === 0 && gmvMax.dailyIngested === 0) {
+      return { dailyIngested: 0, campaignCount: 0 };
     }
 
-    const campaignDTOs = Array.from(uniqueCampaigns.entries()).map(([extId, name]) => ({
-      externalId: extId,
-      name,
-      objective: inferObjective(name),
-      status: EntityStatus.Active,
-      dailyBudget: null,
-    }));
-
-    const campaignIdMap = await upsertCampaigns(db, accountId, campaignDTOs);
-
-    const dailyMetrics: PaidMetricDTO[] = rows.map((r) => ({
-      date: r.date_str,
-      campaignExternalId: r.campaign_id,
-      spend: Number(r.spend) || 0,
-      impressions: Math.round(Number(r.impressions) || 0),
-      clicks: Math.round(Number(r.clicks) || 0),
-      conversions: Math.round(Number(r.conversions) || 0),
-      conversionValue: Number(r.conversion_value) || 0,
-      videoViews: 0,
-    }));
-
-    const dailyIngested = await upsertPaidMetrics(db, campaignIdMap, dailyMetrics);
-
-    const windowStart = rows[0]?.date_str ?? new Date().toISOString().slice(0, 10);
-    const windowEnd = rows[rows.length - 1]?.date_str ?? windowStart;
+    const dailyIngested = warehouse.dailyIngested + gmvMax.dailyIngested;
+    const allDates = [...warehouse.dates, ...gmvMax.dates].sort();
+    const windowStart = allDates[0] ?? new Date().toISOString().slice(0, 10);
+    const windowEnd = allDates[allDates.length - 1] ?? windowStart;
 
     await db.insert(syncRuns).values({
       accountId,
@@ -395,7 +703,7 @@ export async function syncStandardBrandToDomain(
       finishedAt: new Date(),
     });
 
-    return { dailyIngested, campaignCount: uniqueCampaigns.size };
+    return { dailyIngested, campaignCount: warehouse.campaignCount + gmvMax.campaignCount };
   } catch (err) {
     console.warn(`[Sync] Warning syncing standard brand "${brand.name}":`, err);
     return { dailyIngested: 0, campaignCount: 0 };
@@ -418,33 +726,68 @@ export async function fetchSanitizeAndSeed(options: FetchSanitizeOptions = {}) {
 
   const handle = getDb();
   const db = handle.db;
-  let pglite = options.pglite ?? (options.pgliteDir ? undefined : handle.pglite);
+  let pglite: PGlite | null = options.pglite ?? (options.pgliteDir ? null : (handle.pglite ?? null));
   let shouldClosePglite = false;
+  let pgliteDir = '';
 
   if (!pglite) {
-    const dbDir = options.pgliteDir ?? resolvePgliteDir();
-    mkdirSync(dbDir, { recursive: true });
-    pglite = new PGlite(dbDir);
+    pgliteDir = options.pgliteDir ?? resolvePgliteDir();
+    mkdirSync(pgliteDir, { recursive: true });
+    pglite = new PGlite(pgliteDir);
     shouldClosePglite = options.closeOnComplete ?? false;
   }
 
-  // Ensure table exists in PGlite
-  await pglite.exec(`
-    CREATE TABLE IF NOT EXISTS brand_hourly_tempo (
-      brand VARCHAR(32) NOT NULL,
-      campaign_id VARCHAR(64) NOT NULL,
-      date DATE NOT NULL,
-      adgroup_id VARCHAR(64) NOT NULL DEFAULT '',
-      metrics VARCHAR(128) NOT NULL,
-      campaign_name VARCHAR(512),
-      adgroup_name VARCHAR(512),
-      h00 NUMERIC, h01 NUMERIC, h02 NUMERIC, h03 NUMERIC, h04 NUMERIC, h05 NUMERIC,
-      h06 NUMERIC, h07 NUMERIC, h08 NUMERIC, h09 NUMERIC, h10 NUMERIC, h11 NUMERIC,
-      h12 NUMERIC, h13 NUMERIC, h14 NUMERIC, h15 NUMERIC, h16 NUMERIC, h17 NUMERIC,
-      h18 NUMERIC, h19 NUMERIC, h20 NUMERIC, h21 NUMERIC, h22 NUMERIC, h23 NUMERIC, h24 NUMERIC,
-      PRIMARY KEY (brand, campaign_id, date, adgroup_id, metrics)
+  /**
+   * Whatever stopped PGlite from opening, or `null` if it opened fine.
+   *
+   * When a live PostgreSQL source is configured, PGlite is only a staging
+   * mirror of the raw hourly rows (`brand_hourly_tempo`) — written below and
+   * read back solely by the offline fallback. It must therefore never be able
+   * to take the whole ingest down with it, and it used to: this data directory
+   * started aborting inside `_pg_initdb` on 9 Sep, and because the open
+   * happened here, before any real work, *every* sync path threw at startup —
+   * the nightly `tempo-sanitizer-cron`, `pnpm db:sanitize`, and the web app's
+   * `triggerAutoSyncIfStale`, which only `console.warn`s what it catches. The
+   * dashboard went on serving 8 Sep figures for three weeks with the fresher
+   * warehouse rows sitting right there unread, and nothing surfaced it.
+   *
+   * So a failure here degrades to "no staging mirror" and the live source
+   * carries the sync on its own. It is only fatal when there is no live source
+   * either — then PGlite was the data, not a cache, and the caller is told so
+   * (see the discovery fallback below) rather than left with a silent no-op.
+   */
+  let pgliteError: unknown = null;
+
+  // `new PGlite()` is lazy — a corrupt data directory surfaces on first use,
+  // which makes this `exec`, not the constructor above, where it actually
+  // fails.
+  try {
+    await pglite.exec(`
+      CREATE TABLE IF NOT EXISTS brand_hourly_tempo (
+        brand VARCHAR(32) NOT NULL,
+        campaign_id VARCHAR(64) NOT NULL,
+        date DATE NOT NULL,
+        adgroup_id VARCHAR(64) NOT NULL DEFAULT '',
+        metrics VARCHAR(128) NOT NULL,
+        campaign_name VARCHAR(512),
+        adgroup_name VARCHAR(512),
+        h00 NUMERIC, h01 NUMERIC, h02 NUMERIC, h03 NUMERIC, h04 NUMERIC, h05 NUMERIC,
+        h06 NUMERIC, h07 NUMERIC, h08 NUMERIC, h09 NUMERIC, h10 NUMERIC, h11 NUMERIC,
+        h12 NUMERIC, h13 NUMERIC, h14 NUMERIC, h15 NUMERIC, h16 NUMERIC, h17 NUMERIC,
+        h18 NUMERIC, h19 NUMERIC, h20 NUMERIC, h21 NUMERIC, h22 NUMERIC, h23 NUMERIC, h24 NUMERIC,
+        PRIMARY KEY (brand, campaign_id, date, adgroup_id, metrics)
+      );
+    `);
+  } catch (err) {
+    pgliteError = err;
+    if (shouldClosePglite) await pglite.close().catch(() => {});
+    pglite = null;
+    shouldClosePglite = false;
+    console.warn(
+      `⚠️ Could not open the PGlite staging cache${pgliteDir ? ` at ${pgliteDir}` : ''} — continuing without it:`,
+      err,
     );
-  `);
+  }
 
   let postgresPool: pg.Pool | null = null;
   let discoveredBrands: DiscoveredBrand[] = [];
@@ -466,15 +809,28 @@ export async function fetchSanitizeAndSeed(options: FetchSanitizeOptions = {}) {
 
   // If live PostgreSQL is unavailable or returned no tables, fall back to offline discovery
   if (discoveredBrands.length === 0) {
+    if (!pglite) {
+      // Nothing left to read: no live source produced brands and the staging
+      // cache never opened. Throwing is the point — a silent `return` here is
+      // indistinguishable from "already up to date", which is how three weeks
+      // of staleness went unnoticed.
+      if (postgresPool) await postgresPool.end().catch(() => {});
+      throw new Error(
+        'No brand source available: the live PostgreSQL source produced no brands and the PGlite ' +
+          `staging cache could not be opened${pgliteDir ? ` (${pgliteDir})` : ''}. Repair or remove that ` +
+          `data directory and retry. Cause: ${pgliteError instanceof Error ? pgliteError.message : String(pgliteError)}`,
+      );
+    }
     console.log('ℹ️ Running in offline/cached mode — discovering brands from local database...');
     discoveredBrands = await discoverSanitizedBrands(pglite);
   }
 
   if (discoveredBrands.length === 0) {
     console.warn('⚠️ No brand tables or sanitized data found to ingest.');
-    if (options.closeOnComplete) {
+    if (options.closeOnComplete && pglite) {
       await pglite.close();
     }
+    if (postgresPool) await postgresPool.end().catch(() => {});
     return;
   }
 
@@ -535,15 +891,18 @@ export async function fetchSanitizeAndSeed(options: FetchSanitizeOptions = {}) {
           });
         }
 
-        // Batch insert active rows into brand_hourly_tempo
-        if (allActiveRows.length > 0) {
+        // Batch insert active rows into brand_hourly_tempo. Skipped when the
+        // staging cache is unavailable — these rows came from the live source
+        // and are already on their way into the domain tables below; mirroring
+        // them is only what lets a later offline run replay this brand.
+        if (allActiveRows.length > 0 && pglite) {
           await batchInsertSanitizedRows(pglite, brand.brandKey, allActiveRows);
         }
 
         console.log(
           `  ✓ Sanitized: ${totalFetched} raw rows -> ${allActiveRows.length} active rows (dropped ${totalFetched - allActiveRows.length} zero rows).`,
         );
-      } else {
+      } else if (pglite) {
         // Read directly from cached brand_hourly_tempo
         const cachedRes = await pglite.query<{
           metrics: string;
@@ -573,11 +932,17 @@ export async function fetchSanitizeAndSeed(options: FetchSanitizeOptions = {}) {
         }
 
         console.log(`  ✓ Loaded ${allActiveRows.length} active rows from local database.`);
+      } else {
+        // No live table for this brand and no staging cache to replay it from.
+        // Its warehouse campaign-days below are unaffected, so carry on.
+        console.warn(
+          `  ⚠️ No hourly source for "${brand.name}" — the live table is unavailable and the staging cache is not open.`,
+        );
       }
 
       // Sync active rows into domain tables for web application
       if (allActiveRows.length > 0) {
-        const stats = await syncBrandToDomain(db, brand, allActiveRows);
+        const stats = await syncBrandToDomain(db, brand, allActiveRows, postgresPool);
         console.log(
           `  🚀 Synced to website: ${stats.dateCount} dates, ${stats.hourlyIngested} hourly points, ${stats.dailyIngested} daily rows.`,
         );

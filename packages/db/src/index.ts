@@ -95,5 +95,40 @@ export {
 } from './repositories/report-spec.js';
 export type { StoredReportSpec } from './repositories/report-spec.js';
 
+export {
+  listBenchmarks,
+  upsertBenchmark,
+  deleteBenchmark,
+} from './repositories/report-benchmark.js';
+export type { StoredBenchmark } from './repositories/report-benchmark.js';
+
+export { getPaidTiktokAdAccountId, getPaidTiktokAdAccountIds } from './repositories/tiktok-account.js';
+export { fetchTemplateReportRawData, createSourcePool } from './ingest/template-report-data.js';
+export { fetchNorthStarRawData } from './ingest/north-star-data.js';
+export type {
+  NorthStarRawData,
+  NorthStarTotals,
+  NorthStarCampaignRow,
+  NorthStarCreativeRow,
+} from './ingest/north-star-data.js';
+export { listCandidateBrandAccounts, type CandidateBrandAccount } from './ingest/industry-peers.js';
+export {
+  upsertBrandIndustryTags,
+  getBrandIndustry,
+  listPeersByIndustry,
+  listTaggedIndustries,
+  clearBrandIndustryTags,
+  type BrandIndustryTagInput,
+} from './repositories/brand-industry.js';
+export type {
+  TemplateReportRawData,
+  TemplateReportPeriodTotals,
+  TemplateReportGmvMaxTotals,
+  TemplateReportGmvMaxCampaignRow,
+  TemplateReportCampaignRow,
+  TemplateReportProductRow,
+  TemplateReportCreativeRow,
+} from './ingest/template-report-data.js';
+
 export { recentSyncRuns } from './repositories/sync.js';
 export { getSetting, setSetting, SETTINGS_KEYS } from './repositories/settings.js';

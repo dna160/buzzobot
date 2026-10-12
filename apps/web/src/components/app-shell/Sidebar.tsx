@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useParams } from 'next/navigation';
-import { BarChart3, Clock, LayoutDashboard, Radio, Settings, SlidersHorizontal, Sparkles, TrendingUp, Video } from 'lucide-react';
+import { BarChart3, Clock, FileText, LayoutDashboard, Radio, Settings, SlidersHorizontal, Sparkles, TrendingUp, Video } from 'lucide-react';
 import { cn } from '@tempo/ui';
 import { trpc } from '@/trpc/client';
 import { ClientSwitcher } from './ClientSwitcher';
@@ -46,6 +46,11 @@ export function Sidebar() {
       label: 'Deck config',
       icon: SlidersHorizontal,
       href: `/clients/${slug}/deck`,
+    },
+    {
+      label: 'Template Report',
+      icon: FileText,
+      href: `/clients/${slug}/template-report`,
     },
     {
       label: 'Paid Campaigns',

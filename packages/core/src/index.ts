@@ -8,6 +8,7 @@
 
 export * from './domain/enums.js';
 export * from './domain/entities.js';
+export * from './domain/report-layout.js';
 export * from './metrics/catalog.js';
 export * from './metrics/derive.js';
 export * from './utils/format.js';

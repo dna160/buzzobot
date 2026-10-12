@@ -24,6 +24,58 @@ export { BriefObjective, OBJECTIVE_NORTH_STAR, NORTH_STAR_OBJECTIVE, isBriefObje
 export { comboChart, type ComboPoint, type ComboOptions } from './charts.js';
 export { renderHourlyHtml, type HourlyReportOptions } from './hourly.js';
 
+export * from './template-report/rubric.js';
+export type * from './template-report/model.js';
+export { renderTemplateReportHtml } from './template-report/render.js';
+export { buildPeriodInfo, formatIdDate, formatPeriodRange, inclusiveEnd, type ReportPeriodInfo } from './template-report/period.js';
+export { elaborateArea, shortName, type AreaItem, type ElaboratedArea } from './template-report/area.js';
+export {
+  rankSources,
+  buildSourceBreakdown,
+  type PerformanceSource,
+  type RankedSource,
+  type SourceRanking,
+  type SourceBreakdownModel,
+  type BreakdownFormatters,
+} from './template-report/breakdown.js';
+export {
+  buildRecommendations,
+  proposeFunnelAllocation,
+  PLAYBOOK,
+  type RecMetric,
+  type RecSourceContext,
+  type RecommendationInput,
+  type RecommendationSet,
+  type RecommendationRow,
+  type FunnelPlanRow,
+  type Priority,
+} from './template-report/recommendations.js';
+export { buildRisks, RISK_IMPACT } from './template-report/risk.js';
+export { cleanNarrative, stableSeed, ungroundedNumbers } from './template-report/grounding.js';
+export { buildLegend, METRIC_LEGEND, type LegendEntry, type LegendGroup } from './template-report/legend.js';
+export type * from './north-star/model.js';
+export { renderNorthStarReportHtml } from './north-star/render.js';
+export {
+  northStarMetricValue,
+  defaultFunnelRanges,
+  spendByFunnelStage,
+  funnelPctFromSpend,
+  computeNorthStarMetrics,
+  averageNorthStarPeers,
+  northStarPreviousPeriodBenchmarks,
+  type NorthStarPeerMetrics,
+  type AveragedBenchmarkEntry,
+} from './north-star/metrics.js';
+export {
+  computePeerAccountMetrics,
+  averagePeerMetrics,
+  previousPeriodBenchmarks,
+  PEER_MATERIALITY_FLOOR,
+  type BenchmarkTarget,
+  type PeerAccountMetrics,
+  type AveragedPeerBenchmarks,
+} from './template-report/peer-benchmark.js';
+
 export {
   parseEngineContent,
   selectedFindings,
