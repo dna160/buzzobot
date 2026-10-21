@@ -381,7 +381,12 @@ export const reportBenchmarks = pgTable(
   (t) => [uniqueIndex('report_benchmarks_client_obj_metric_uq').on(t.clientId, t.objective, t.metric)],
 );
 
-/** One row per Template Report generation — the ledger, mirroring `reportRuns`. */
+/**
+ * One row per Template Report generation — the ledger, mirroring `reportRuns`.
+ * The shared report link (`/r/:token`) is what writes it: a run is the cache
+ * entry for one (client, template, benchmark, window), and its rendered HTML
+ * lives on disk at `artifactPath`, same as a deck.
+ */
 export const templateReportRuns = pgTable(
   'template_report_runs',
   {
@@ -389,7 +394,13 @@ export const templateReportRuns = pgTable(
     clientId: uuid('client_id')
       .notNull()
       .references(() => clients.id, { onDelete: 'cascade' }),
+    /** 'shop' | 'vtr' | 'app_install' — which template was rendered. */
+    template: text('template').notNull().default('shop'),
+    /** 'industry' | 'previous_period' — what §2/§3 were graded against. */
+    benchmarkMode: text('benchmark_mode').notNull().default('industry'),
+    /** First day covered. */
     periodStart: date('period_start', { mode: 'string' }),
+    /** Last day covered — inclusive, as a person picked it ("1–31 Aug"). */
     periodEnd: date('period_end', { mode: 'string' }),
     status: text('status').notNull().default('running'),
     artifactPath: text('artifact_path'),
@@ -398,7 +409,42 @@ export const templateReportRuns = pgTable(
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
   },
-  (t) => [index('template_report_runs_lookup_idx').on(t.clientId, t.periodEnd)],
+  (t) => [
+    index('template_report_runs_lookup_idx').on(t.clientId, t.periodEnd),
+    // At most one generation in flight per key: two viewers opening the same
+    // link at once must share one LM Studio run, not start two.
+    uniqueIndex('template_report_runs_running_uq')
+      .on(t.clientId, t.template, t.benchmarkMode, t.periodStart, t.periodEnd)
+      .where(sql`${t.status} = 'running'`),
+  ],
+);
+
+/**
+ * Shareable, unauthenticated links to a client's Template Report
+ * (`/r/:token`). The token is the only credential — 32 random bytes, so it
+ * cannot be guessed — and it is stored as issued so the portal's "Generate
+ * Report" can hand back the same stable link every time rather than minting a
+ * new one per click. It never expires on its own; `revokedAt` kills it, and the
+ * next request for that client issues a fresh token.
+ */
+export const reportLinks = pgTable(
+  'report_links',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    token: text('token').notNull(),
+    /** Who asked for it, as the caller described them (e.g. "portal:user:42"). */
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('report_links_token_uq').on(t.token),
+    // One live link per client — what makes "create or return" well defined.
+    uniqueIndex('report_links_client_active_uq').on(t.clientId).where(sql`${t.revokedAt} IS NULL`),
+  ],
 );
 
 /**

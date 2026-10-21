@@ -102,6 +102,24 @@ export {
 } from './repositories/report-benchmark.js';
 export type { StoredBenchmark } from './repositories/report-benchmark.js';
 
+export {
+  getActiveReportLink,
+  issueReportLink,
+  revokeReportLink,
+  resolveReportLink,
+} from './repositories/report-link.js';
+export type { ReportLinkRow } from './repositories/report-link.js';
+
+export {
+  latestCompletedTemplateReportRun,
+  latestTemplateReportRun,
+  claimTemplateReportRun,
+  countRunningTemplateReportRuns,
+  completeTemplateReportRun,
+  failTemplateReportRun,
+} from './repositories/template-report-run.js';
+export type { TemplateReportRunKey, TemplateReportRunRow } from './repositories/template-report-run.js';
+
 export { getPaidTiktokAdAccountId, getPaidTiktokAdAccountIds } from './repositories/tiktok-account.js';
 export { fetchTemplateReportRawData, createSourcePool } from './ingest/template-report-data.js';
 export { fetchNorthStarRawData } from './ingest/north-star-data.js';
