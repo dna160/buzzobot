@@ -27,7 +27,19 @@ export { renderHourlyHtml, type HourlyReportOptions } from './hourly.js';
 export * from './template-report/rubric.js';
 export type * from './template-report/model.js';
 export { renderTemplateReportHtml } from './template-report/render.js';
-export { buildPeriodInfo, formatIdDate, formatPeriodRange, inclusiveEnd, type ReportPeriodInfo } from './template-report/period.js';
+export { esc } from './template-report/html.js';
+export {
+  buildPeriodInfo,
+  defaultReportRange,
+  formatIdDate,
+  formatPeriodRange,
+  inclusiveEnd,
+  jakartaYesterday,
+  monthReportRange,
+  reportRangeIssue,
+  type ReportDateRange,
+  type ReportPeriodInfo,
+} from './template-report/period.js';
 export { elaborateArea, shortName, type AreaItem, type ElaboratedArea } from './template-report/area.js';
 export {
   rankSources,
