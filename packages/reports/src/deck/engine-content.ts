@@ -1,4 +1,13 @@
 import { z } from 'zod';
+import {
+  EngineActionItemSchema,
+  EngineActionMeasuredSchema,
+  EngineClassificationSchema,
+  EngineGoalPaceSchema,
+  EngineSignalSchema,
+  EngineStrategyChartsSchema,
+  EngineStrategyMetaSchema,
+} from '../strategy-report/engine-content.js';
 
 /**
  * The TypeScript mirror of `tempo-engine`'s `BriefContentV2`
@@ -41,6 +50,11 @@ export const EngineLevelSchema = z.enum([
   'product',
   'creator',
   'session',
+  // Strategy Report: TTMS is brand-level (the client's own TTMS account, a
+  // Top-N benchmark, or a competitor from the ranking list).
+  'brand',
+  'benchmark',
+  'competitor',
 ]);
 export const EngineTierSchema = z.enum(['instant', 'full']);
 
@@ -218,6 +232,16 @@ export const EngineBriefContentV2Schema = z.object({
     rounds_used: 0,
     log: [],
   }),
+  // Strategy Report (brief_type "strategy", Strategy Report PRD §10): additive
+  // and optional, so the deck ignores them and an older engine sends none.
+  // Sections T1–T9 and Lampiran A ride in `sections` under "101"–"110".
+  report_class: EngineClassificationSchema.nullable().optional(),
+  action_plan: z.array(EngineActionItemSchema).nullable().optional(),
+  signals: z.array(EngineSignalSchema).nullable().optional(),
+  goal_pace: EngineGoalPaceSchema.nullable().optional(),
+  action_log: z.array(EngineActionMeasuredSchema).nullable().optional(),
+  charts: EngineStrategyChartsSchema.nullable().optional(),
+  meta: EngineStrategyMetaSchema.nullable().optional(),
 });
 
 /**

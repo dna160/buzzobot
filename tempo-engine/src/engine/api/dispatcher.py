@@ -19,8 +19,10 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 
 from engine.contracts.content import BriefContentV2, CardCopy, CoverageAudit, ProbeLoopExport, SectionEntry, SectionRankingExport, SynthesisEntry, Tier
+from engine.contracts.strategy import ReportClass
 from engine.contracts.presets import OBJECTIVE_CONTRACTS
 from engine.graphs.persistence import fetch_brief, upsert_brief
+from engine.ports.strategy_read import build_strategy_frame
 from engine.ports.tempo_read import build_awareness_metric_frame, build_gmv_metric_frame, build_install_metric_frame
 from engine.version import ENGINE_VERSION
 
@@ -86,8 +88,18 @@ def _content_from_state(state: dict) -> dict:
             rounds_used=int(state.get("probe_rounds_used", 0) or 0),
             log=state.get("probe_log") or [],
         ),
+        report_class=state.get("report_class"),
+        action_plan=(
+            [a for a in (state.get("strategy_actions") or []) if int(a.get("rank", 99)) <= 3]
+            if brief_type == "strategy" else None
+        ),
+        signals=state.get("signals"),
+        goal_pace=state.get("goal_pace"),
+        action_log=state.get("action_log"),
+        charts=state.get("charts"),
+        meta=state.get("strategy_meta"),
     )
-    return content.model_dump(mode="json")
+    return content.model_dump(mode="json", by_alias=True)
 
 
 async def start_brief_run(
@@ -99,7 +111,13 @@ async def start_brief_run(
     window_days: int = 7,
     end_date: date | None = None,
     tier: Tier = "full",
+    report_class: ReportClass | None = None,
 ) -> dict:
+    if brief_type == "strategy":
+        return await _start_strategy_run(
+            graph=graph, read_conn=read_conn, client_slug=client_slug, window_days=window_days,
+            end_date=end_date, tier=tier, report_class=report_class,
+        )
     build_frame = _FRAME_BUILDERS.get(brief_type)
     if build_frame is None:
         raise ClientNotEligibleError(f"brief_type {brief_type!r} not supported (expected one of {sorted(_FRAME_BUILDERS)})")
@@ -129,6 +147,40 @@ async def start_brief_run(
     return {"run_id": run_id, "tenant_id": frame.tenant_id, "status": "pending_review", "tier": tier}
 
 
+async def _start_strategy_run(
+    *,
+    graph: CompiledStateGraph,
+    read_conn: asyncpg.Connection,
+    client_slug: str,
+    window_days: int,
+    end_date: date | None,
+    tier: Tier,
+    report_class: ReportClass | None,
+) -> dict:
+    """Strategy Report (PRD §7.1): eligibility is a mirrored TTMS account with
+    ≥ 14 days of audience — north star is deliberately not a gate."""
+    frame = await build_strategy_frame(
+        read_conn, client_slug, end_date=end_date, window_days=window_days, report_class=report_class,
+    )
+    if frame is None:
+        raise ClientNotEligibleError(f"'{client_slug}' has no Market Scope account with at least 14 days of data")
+    run_id = f"run_{uuid.uuid4().hex[:16]}"
+    config = {"configurable": {"thread_id": run_id}}
+    initial_state = {
+        "tenant_id": frame.tenant_id,
+        "brief_type": "strategy",
+        "run_id": run_id,
+        "strategy_frame": frame.model_dump(mode="json"),
+        "tier": tier,
+    }
+    result = await graph.ainvoke(initial_state, config=config)
+    await upsert_brief(
+        read_conn, run_id=run_id, tenant_id=frame.tenant_id, brief_type="strategy",
+        status="pending_review", content=_content_from_state(result),
+    )
+    return {"run_id": run_id, "tenant_id": frame.tenant_id, "status": "pending_review", "tier": tier}
+
+
 async def run_brief_sync(
     *,
     graph: CompiledStateGraph,
@@ -138,6 +190,7 @@ async def run_brief_sync(
     window_days: int = 7,
     end_date: date | None = None,
     tier: Tier = "full",
+    report_class: ReportClass | None = None,
 ) -> dict:
     """`start_brief_run` followed immediately by an auto-approve `resume_
     brief_review` — for callers (Tempo LM's brief buttons) that want a
@@ -150,7 +203,7 @@ async def run_brief_sync(
     """
     started = await start_brief_run(
         graph=graph, read_conn=read_conn, client_slug=client_slug,
-        brief_type=brief_type, window_days=window_days, end_date=end_date, tier=tier,
+        brief_type=brief_type, window_days=window_days, end_date=end_date, tier=tier, report_class=report_class,
     )
     await resume_brief_review(
         graph=graph, read_conn=read_conn, run_id=started["run_id"],

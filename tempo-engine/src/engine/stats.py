@@ -229,3 +229,119 @@ def benjamini_hochberg(p_values: list[float]) -> list[float]:
         adjusted[i] = min(1.0, running_min)
 
     return adjusted
+
+
+# --- Strategy Report (T02, T03) ---------------------------------------------
+
+
+def theil_sen_slope(xs: list[float], ys: list[float]) -> tuple[float, float, float] | None:
+    """Theil-Sen estimator: (median slope, 25th-pct slope, 75th-pct slope)
+    over all pairwise slopes. Robust to the odd outlier week, which a weekly
+    rank series has plenty of (P0 §7: BARDI jumped 44 → 36 in one week)."""
+    slopes = [
+        (ys[j] - ys[i]) / (xs[j] - xs[i])
+        for i in range(len(xs))
+        for j in range(i + 1, len(xs))
+        if xs[j] != xs[i]
+    ]
+    if not slopes:
+        return None
+    slopes.sort()
+
+    def pct(p: float) -> float:
+        k = (len(slopes) - 1) * p
+        lo, hi = math.floor(k), math.ceil(k)
+        return slopes[lo] + (slopes[hi] - slopes[lo]) * (k - lo)
+
+    return pct(0.5), pct(0.25), pct(0.75)
+
+
+def pearson_r(xs: list[float], ys: list[float]) -> float | None:
+    n = len(xs)
+    if n < 3:
+        return None
+    mx, my = sum(xs) / n, sum(ys) / n
+    sxy = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+    sxx = sum((x - mx) ** 2 for x in xs)
+    syy = sum((y - my) ** 2 for y in ys)
+    if sxx == 0 or syy == 0:
+        return None
+    return sxy / math.sqrt(sxx * syy)
+
+
+def _ranks(values: list[float]) -> list[float]:
+    order = sorted(range(len(values)), key=lambda i: values[i])
+    ranks = [0.0] * len(values)
+    i = 0
+    while i < len(order):
+        j = i
+        while j + 1 < len(order) and values[order[j + 1]] == values[order[i]]:
+            j += 1
+        for k in range(i, j + 1):
+            ranks[order[k]] = (i + j) / 2 + 1
+        i = j + 1
+    return ranks
+
+
+def spearman_rho(xs: list[float], ys: list[float]) -> float | None:
+    return pearson_r(_ranks(xs), _ranks(ys))
+
+
+@dataclass(frozen=True)
+class SaturatingFit:
+    """`y = a·(1 − e^(−s/b))` — the response of new audience to daily spend."""
+
+    a: float
+    b: float
+    r2: float
+    n: int
+
+    def predict(self, s: float) -> float:
+        return self.a * (1 - math.exp(-s / self.b))
+
+    @property
+    def knee(self) -> float:
+        """Spend where the marginal response dy/ds = (a/b)·e^(−s/b) has fallen
+        to half its initial value a/b: s = b·ln 2."""
+        return self.b * math.log(2)
+
+
+def fit_saturating(spend: list[float], response: list[float]) -> SaturatingFit | None:
+    """Least squares over `b` by a log-spaced grid (for fixed `b`, `a` has the
+    closed form Σy·g / Σg², g = 1 − e^(−s/b)), then one refinement pass around
+    the best grid point. Deterministic, no optimiser dependency. None when the
+    sample cannot support a fit (fewer than 5 points, or no spend variation)."""
+    pts = [(s, y) for s, y in zip(spend, response) if s > 0]
+    if len(pts) < 5:
+        return None
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    lo, hi = min(xs), max(xs)
+    if hi <= lo:
+        return None
+    mean_y = sum(ys) / len(ys)
+    ss_tot = sum((y - mean_y) ** 2 for y in ys)
+    if ss_tot == 0:
+        return None
+
+    def evaluate(b: float) -> tuple[float, float]:
+        g = [1 - math.exp(-x / b) for x in xs]
+        gg = sum(v * v for v in g)
+        if gg == 0:
+            return 0.0, -math.inf
+        a = sum(y * v for y, v in zip(ys, g)) / gg
+        ss_res = sum((y - a * v) ** 2 for y, v in zip(ys, g))
+        return a, 1 - ss_res / ss_tot
+
+    def search(b_lo: float, b_hi: float, steps: int) -> tuple[float, float, float]:
+        best = (0.0, 0.0, -math.inf)
+        for k in range(steps + 1):
+            b = b_lo * (b_hi / b_lo) ** (k / steps)
+            a, r2 = evaluate(b)
+            if r2 > best[2]:
+                best = (a, b, r2)
+        return best
+
+    a, b, r2 = search(lo / 20, hi * 20, 240)
+    a, b, r2 = search(b / 1.05, b * 1.05, 60)
+    return SaturatingFit(a=a, b=b, r2=max(r2, 0.0), n=len(pts))

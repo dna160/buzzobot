@@ -27,6 +27,15 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from engine.contracts.finding import Finding
+from engine.contracts.strategy import (
+    ActionItem,
+    ActionMeasured,
+    Classification,
+    GoalPace,
+    Signal,
+    StrategyCharts,
+    StrategyMeta,
+)
 
 Tier = Literal["instant", "full"]
 
@@ -179,3 +188,13 @@ class BriefContentV2(BaseModel):
     rankings: dict[str, SectionRankingExport] = Field(default_factory=dict)
     coverage: CoverageAudit | None = None
     probe_loop: ProbeLoopExport = Field(default_factory=ProbeLoopExport)
+    # Strategy Report (brief_type "strategy", PRD §10) — additive and optional,
+    # like `card_copy`: a deck consumer ignores them, `content_version` stays 2.
+    # Sections T1–T9 and Lampiran A ride in `sections`, keyed "101"–"110".
+    report_class: Classification | None = None
+    action_plan: list[ActionItem] | None = None
+    signals: list[Signal] | None = None
+    goal_pace: GoalPace | None = None
+    action_log: list[ActionMeasured] | None = None
+    charts: StrategyCharts | None = None
+    meta: StrategyMeta | None = None

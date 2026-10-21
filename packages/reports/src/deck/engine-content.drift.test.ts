@@ -15,6 +15,15 @@ import {
   EngineSectionSignalsSchema,
   parseEngineContent,
 } from './engine-content.js';
+import {
+  EngineActionItemSchema,
+  EngineActionMeasuredSchema,
+  EngineClassificationSchema,
+  EngineGoalPaceSchema,
+  EngineSignalSchema,
+  EngineStrategyChartsSchema,
+  EngineStrategyMetaSchema,
+} from '../strategy-report/engine-content.js';
 
 /**
  * The TypeScript half of the deck boundary's drift check (Brief Deck PRD §3.1).
@@ -59,6 +68,14 @@ const MIRRORED: Array<[string, z.ZodObject<z.ZodRawShape>, JsonSchemaObject | un
   ['SectionRankingExport', EngineSectionRankingSchema, defs.SectionRankingExport],
   ['ProbeLoopExport', EngineProbeLoopSchema, defs.ProbeLoopExport],
   ['SectionEntry', EngineSectionEntrySchema, defs.SectionEntry],
+  // Strategy Report blocks (PRD §10)
+  ['Classification', EngineClassificationSchema, defs.Classification],
+  ['ActionItem', EngineActionItemSchema, defs.ActionItem],
+  ['Signal', EngineSignalSchema, defs.Signal],
+  ['GoalPace', EngineGoalPaceSchema, defs.GoalPace],
+  ['ActionMeasured', EngineActionMeasuredSchema, defs.ActionMeasured],
+  ['StrategyCharts', EngineStrategyChartsSchema, defs.StrategyCharts],
+  ['StrategyMeta', EngineStrategyMetaSchema, defs.StrategyMeta],
 ];
 
 describe('engine content v2 mirror', () => {

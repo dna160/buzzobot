@@ -1,0 +1,2489 @@
+{
+ "action_log": [],
+ "action_plan": [
+  {
+   "basis": "benchmark_top10",
+   "confidence": "medium",
+   "copy": {
+    "cara": "Tujukan kampanye ke audiens Consideration dengan penawaran TikTok Shop pada produk terlaris.",
+    "dasar": "Rata-rata Top 10 15,68%; saat ini 5.801 orang di Conversion dari 129.635 di Consideration.",
+    "gagal_jika": "Klik kartu produk tidak naik dalam 14 hari.",
+    "langkah": "Naikkan ukuran tahap Conversion dari 4,47% → 9,47% ukuran tahap Consideration dalam 4 minggu."
+   },
+   "current": {
+    "as_of": "2026-10-10",
+    "by": null,
+    "format": "percent",
+    "value": 0.0447
+   },
+   "delta": {
+    "abs": 0.05,
+    "pct": 1.1186
+   },
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196",
+    "level": "brand"
+   },
+   "evidence_refs": [
+    "t01_leak_consideration"
+   ],
+   "horizon_days": 28,
+   "id": "act_01",
+   "kill_signal": {
+    "condition": "no_rise_within_days",
+    "days": 14,
+    "metric_key": "ttms.product_card_clicks"
+   },
+   "lever": "stage_targeting",
+   "metric_key": "ttms.audience.consideration.size_ratio",
+   "priority": "P0",
+   "rank": 1,
+   "stake": {
+    "range": [
+     4537.0,
+     8426.0
+    ],
+    "unit": "people",
+    "value": 6482.0
+   },
+   "subject": "audiens tahap Consideration menuju Conversion",
+   "target": {
+    "as_of": null,
+    "by": "2026-11-07",
+    "format": "percent",
+    "value": 0.0947
+   }
+  },
+  {
+   "basis": "benchmark_top10",
+   "confidence": "medium",
+   "copy": {
+    "cara": "Tambah produksi konten BGC internal (organik) setiap minggu dan pantau porsinya tiap pekan.",
+    "dasar": "Rata-rata Top 10 19,1%; BARDI Smart Home 4,3%. Setiap impresi berbayar baru menghasilkan 0,06 impresi gratis.",
+    "gagal_jika": "Porsi impresi dari konten BGC internal (organik) tidak naik dalam 14 hari.",
+    "langkah": "Naikkan porsi impresi dari konten BGC internal (organik) dari 4,3% → 12,3% dalam 4 minggu."
+   },
+   "current": {
+    "as_of": "2026-10-10",
+    "by": null,
+    "format": "percent",
+    "value": 0.0435
+   },
+   "delta": {
+    "abs": 0.08,
+    "pct": 1.8391
+   },
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196",
+    "level": "brand"
+   },
+   "evidence_refs": [
+    "t04_halo",
+    "t04_mix"
+   ],
+   "horizon_days": 28,
+   "id": "act_02",
+   "kill_signal": {
+    "condition": "no_rise_within_days",
+    "days": 14,
+    "metric_key": "ttms.impressions.share.bgc_organic"
+   },
+   "lever": "content_mix",
+   "metric_key": "ttms.impressions.share.bgc_organic",
+   "priority": "P1",
+   "rank": 2,
+   "stake": {
+    "range": [
+     212228.0,
+     394138.0
+    ],
+    "unit": "impressions",
+    "value": 303183.0
+   },
+   "subject": "konten BGC internal (organik)",
+   "target": {
+    "as_of": null,
+    "by": "2026-11-07",
+    "format": "percent",
+    "value": 0.1235
+   }
+  },
+  {
+   "basis": "defensive",
+   "confidence": "high",
+   "copy": {
+    "cara": "Periksa listing TikTok Shop dan unggahan kreator mereka minggu ini; catat produk dan kampanye yang mereka dorong.",
+    "dasar": "TikTok hanya membagikan peringkat pesaing, bukan angkanya.",
+    "gagal_jika": "Peringkat mereka kembali turun dalam 7 hari — kemungkinan lonjakan kampanye sesaat.",
+    "langkah": "Selidiki TP-Link Indonesia: dari #41 ke #32 di tahap Awareness dalam 14 hari."
+   },
+   "current": null,
+   "delta": null,
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196",
+    "level": "brand"
+   },
+   "evidence_refs": [
+    "t06_awareness_tp_link_indonesia"
+   ],
+   "horizon_days": 7,
+   "id": "act_03",
+   "kill_signal": null,
+   "lever": "investigate",
+   "metric_key": "ttms.audience.awareness.rank",
+   "priority": "P2",
+   "rank": 3,
+   "stake": null,
+   "subject": "TP-Link Indonesia",
+   "target": null
+  }
+ ],
+ "brief_type": "strategy",
+ "card_copy": {
+  "t01_leak_consideration": {
+   "action": "",
+   "headline": "Tahap Consideration → Conversion adalah titik bocor utama.",
+   "mechanism": "Ukuran tahap Conversion hanya 4,47% dari tahap Consideration, sedangkan rata-rata Top 10 15,68% — selisih 11,21 poin. Saat ini 129.635 orang ada di Consideration dan 5.801 di Conversion."
+  },
+  "t01_offset_awareness": {
+   "action": "",
+   "headline": "Audiens baru Awareness sebagian besar tertutup oleh yang keluar.",
+   "mechanism": "Dalam 28 hari, 3.383.835 orang masuk tahap Awareness dan 2.871.034 keluar: 84,9% audiens baru tertutup oleh yang keluar, sehingga bersihnya 512.801 orang."
+  },
+  "t01_ok_awareness": {
+   "action": "",
+   "headline": "Tahap Awareness → Consideration sejalan dengan kategori.",
+   "mechanism": "Ukuran tahap Consideration setara 7,00% dari tahap Awareness, dekat dengan rata-rata Top 10 (8,79%)."
+  },
+  "t02_spend_response": {
+   "action": "",
+   "headline": "Belanja dan audiens baru belum bergerak bersama.",
+   "mechanism": "Dari 48 hari, belanja harian dan audiens baru Consideration 2 hari kemudian belum bergerak bersama (R² 0,00), jadi batas belanja belum bisa ditarik. Rata-rata biayanya Rp209.718 per 1.000 audiens baru: Rp48.596.564 untuk 231.723 orang."
+  },
+  "t03_no_goal": {
+   "action": "",
+   "headline": "Belum ada target untuk dipantau.",
+   "mechanism": "Belum ada target untuk dipantau. Tetapkan target — peringkat, pangsa, rasio ukuran tahap, atau biaya per 1.000 audiens baru — di panel Strategy Report."
+  },
+  "t04_halo": {
+   "action": "",
+   "headline": "Efek tular konten jauh di bawah kategori.",
+   "mechanism": "Setiap impresi berbayar menghasilkan 0,06 impresi gratis; rata-rata Top 10 0,64. Porsi konten BGC internal (organik) hanya 4,3% vs 19,1% di Top 10."
+  },
+  "t04_mix": {
+   "action": "",
+   "headline": "Jangkauan merek sangat bergantung pada konten berbayar.",
+   "mechanism": "94,5% impresi konten yang menyebut BARDI Smart Home berasal dari konten berbayar; non-berbayar 5,5% dari 3.789.788 impresi."
+  },
+  "t05_growth_engagements": {
+   "action": "",
+   "headline": "Merek tumbuh lebih cepat daripada kategori.",
+   "mechanism": "Interaksi BARDI Smart Home tumbuh 185,8% dibanding periode sebelumnya, sementara kategori 15,6%."
+  },
+  "t05_growth_impressions": {
+   "action": "",
+   "headline": "Merek tumbuh lebih cepat daripada kategori.",
+   "mechanism": "Impresi BARDI Smart Home tumbuh 194,1% dibanding periode sebelumnya, sementara kategori 28,5%."
+  },
+  "t05_rank_consideration": {
+   "action": "",
+   "headline": "Peringkat Consideration bergerak minggu ini.",
+   "mechanism": "Peringkat Consideration turun dari #36 ke #38 dari 56 merek dalam 7 hari."
+  },
+  "t05_sov_engagements": {
+   "action": "",
+   "headline": "Pangsa kategori sedang naik.",
+   "mechanism": "Pangsa kategori untuk interaksi naik dari 0,123% ke 0,304% (rata-rata Top 10 5,57%)."
+  },
+  "t05_sov_impressions": {
+   "action": "",
+   "headline": "Pangsa kategori sedang naik.",
+   "mechanism": "Pangsa kategori untuk impresi naik dari 0,107% ke 0,245% (rata-rata Top 10 6,75%)."
+  },
+  "t05_sov_product_card_clicks": {
+   "action": "",
+   "headline": "Pangsa kategori sedang naik.",
+   "mechanism": "Pangsa kategori untuk klik kartu produk naik dari 0,173% ke 0,300% (rata-rata Top 10 5,88%)."
+  },
+  "t05_sov_video_views_6s": {
+   "action": "",
+   "headline": "Pangsa kategori sedang naik.",
+   "mechanism": "Pangsa kategori untuk tontonan 6 detik naik dari 0,063% ke 0,320% (rata-rata Top 10 5,40%)."
+  },
+  "t06_awareness_distributor_laptop": {
+   "action": "",
+   "headline": "Pesaing turun di tahap Awareness.",
+   "mechanism": "Distributor Laptop turun dari #27 ke #40 di tahap Awareness dalam 14 hari (BARDI Smart Home #36)."
+  },
+  "t06_awareness_kotak_katik": {
+   "action": "",
+   "headline": "Pesaing naik cepat di tahap Awareness.",
+   "mechanism": "Kotak Katik naik dari #37 ke #26 di tahap Awareness dalam 14 hari (BARDI Smart Home #36). TikTok hanya membagikan peringkatnya, bukan angkanya."
+  },
+  "t06_awareness_tp_link_indonesia": {
+   "action": "",
+   "headline": "Pesaing menyalip di tahap Awareness.",
+   "mechanism": "TP-Link Indonesia menyalip di tahap Awareness: dari #41 ke #32, kini di atas BARDI Smart Home (#36)."
+  },
+  "t06_consideration_astra_foto": {
+   "action": "",
+   "headline": "Pesaing turun di tahap Consideration.",
+   "mechanism": "Astra Foto turun dari #23 ke #34 di tahap Consideration dalam 14 hari (BARDI Smart Home #38)."
+  },
+  "t06_consideration_fifine_indonesia": {
+   "action": "",
+   "headline": "Pesaing menyalip di tahap Consideration.",
+   "mechanism": "Fifine Indonesia menyalip di tahap Consideration: dari #38 ke #37, kini di atas BARDI Smart Home (#38)."
+  },
+  "t06_consideration_gochek_indonesia": {
+   "action": "",
+   "headline": "Pesaing menyalip di tahap Consideration.",
+   "mechanism": "Gochek Indonesia menyalip di tahap Consideration: dari #44 ke #35, kini di atas BARDI Smart Home (#38)."
+  },
+  "t06_conversion_mito_electronic": {
+   "action": "",
+   "headline": "Pesaing naik cepat di tahap Conversion.",
+   "mechanism": "MITO Electronic naik dari #31 ke #28 di tahap Conversion dalam 14 hari (BARDI Smart Home #38). TikTok hanya membagikan peringkatnya, bukan angkanya."
+  },
+  "t06_conversion_nubia_indonesia": {
+   "action": "",
+   "headline": "Pesaing turun di tahap Conversion.",
+   "mechanism": "nubia Indonesia turun dari #29 ke #32 di tahap Conversion dalam 14 hari (BARDI Smart Home #38)."
+  },
+  "t07_locked_nsr": {
+   "action": "",
+   "headline": "Sentimen bersih (NSR) terkunci di paket Lite.",
+   "mechanism": "Sentimen bersih (NSR) membutuhkan paket TTMS penuh; akun ini memakai paket Lite."
+  },
+  "t07_locked_search_volume": {
+   "action": "",
+   "headline": "Pangsa pencarian merek terkunci di paket Lite.",
+   "mechanism": "Pangsa pencarian merek membutuhkan paket TTMS penuh; akun ini memakai paket Lite."
+  },
+  "t08_consideration": {
+   "action": "",
+   "headline": "Audiens keluar Consideration melonjak minggu ini.",
+   "mechanism": "Audiens keluar tahap Consideration pada 2026-10-09 mencapai 11.186 orang, 1,58× rata-rata 14 hari sebelumnya (7.077)."
+  },
+  "t09_act_01": {
+   "action": "",
+   "headline": "Ringkasan data dan cakupan.",
+   "mechanism": "Temuan pada BARDI Smart Home."
+  },
+  "t09_act_02": {
+   "action": "",
+   "headline": "Ringkasan data dan cakupan.",
+   "mechanism": "Temuan pada BARDI Smart Home."
+  },
+  "t09_act_03": {
+   "action": "",
+   "headline": "Ringkasan data dan cakupan.",
+   "mechanism": "Temuan pada BARDI Smart Home."
+  },
+  "t10_coverage": {
+   "action": "",
+   "headline": "Ringkasan data dan cakupan.",
+   "mechanism": "Data per 2026-10-10: riwayat 84 hari, belanja tercatat 28 dari 28 hari, paket Lite, benchmark Top 5,Top 10,Top 25,Top 50."
+  }
+ },
+ "charts": {
+  "content_mix": [
+   {
+    "bench_share": 0.6568815581292985,
+    "content_type": "paid",
+    "share": 0.9447539018013672
+   },
+   {
+    "bench_share": 0.4183220265828826,
+    "content_type": "non_paid",
+    "share": 0.05524609819863275
+   },
+   {
+    "bench_share": 0.5325841902631555,
+    "content_type": "ads",
+    "share": 1.018253263770955
+   },
+   {
+    "bench_share": 0.1907298009631993,
+    "content_type": "bgc_organic",
+    "share": 0.04352407047570999
+   },
+   {
+    "bench_share": 0.13001796894507003,
+    "content_type": "bgc_boosted",
+    "share": 0.7362359055440568
+   },
+   {
+    "bench_share": 0.18447521663026184,
+    "content_type": "creator_organic",
+    "share": 0.15224281674858858
+   },
+   {
+    "bench_share": 0.3782636436720807,
+    "content_type": "creator_boosted",
+    "share": 0.05424366745580492
+   },
+   {
+    "bench_share": 0.2506562529126381,
+    "content_type": "ugc_organic",
+    "share": 0.01172202772292276
+   },
+   {
+    "bench_share": 0.06703670809739626,
+    "content_type": "ugc_boosted",
+    "share": 0.0020315120529169443
+   }
+  ],
+  "funnel": [
+   {
+    "bench_total": 24319075.0,
+    "rank": 36,
+    "rank_n": 56,
+    "stage": "awareness",
+    "total": 1852491.0
+   },
+   {
+    "bench_total": 2136754.0,
+    "rank": 38,
+    "rank_n": 56,
+    "stage": "consideration",
+    "total": 129635.0
+   },
+   {
+    "bench_total": 335068.0,
+    "rank": 38,
+    "rank_n": 56,
+    "stage": "conversion",
+    "total": 5801.0
+   }
+  ],
+  "rank_list": {
+   "as_of": "2026-10-10",
+   "n": 56,
+   "rows": [
+    {
+     "brand": "Infinix Indonesia",
+     "own": false,
+     "rank": 1,
+     "rank_7d": 1
+    },
+    {
+     "brand": "Goto Living",
+     "own": false,
+     "rank": 2,
+     "rank_7d": 3
+    },
+    {
+     "brand": "Robot Indonesia",
+     "own": false,
+     "rank": 3,
+     "rank_7d": 2
+    },
+    {
+     "brand": "Acome Indonesia",
+     "own": false,
+     "rank": 4,
+     "rank_7d": 4
+    },
+    {
+     "brand": "Vivan Indonesia",
+     "own": false,
+     "rank": 5,
+     "rank_7d": 5
+    },
+    {
+     "brand": "Real Me",
+     "own": false,
+     "rank": 6,
+     "rank_7d": 6
+    },
+    {
+     "brand": "nubia Indonesia",
+     "own": false,
+     "rank": 7,
+     "rank_7d": 7
+    },
+    {
+     "brand": "RAPA tech Indonesia",
+     "own": false,
+     "rank": 8,
+     "rank_7d": 13
+    },
+    {
+     "brand": "Kelontongunik",
+     "own": false,
+     "rank": 9,
+     "rank_7d": 8
+    },
+    {
+     "brand": "JETE Indonesia",
+     "own": false,
+     "rank": 10,
+     "rank_7d": 9
+    },
+    {
+     "brand": "Mamalyfe.id",
+     "own": false,
+     "rank": 33,
+     "rank_7d": 27
+    },
+    {
+     "brand": "Astra Foto",
+     "own": false,
+     "rank": 34,
+     "rank_7d": 29
+    },
+    {
+     "brand": "Gochek Indonesia",
+     "own": false,
+     "rank": 35,
+     "rank_7d": 38
+    },
+    {
+     "brand": "Genxus",
+     "own": false,
+     "rank": 36,
+     "rank_7d": 35
+    },
+    {
+     "brand": "Fifine Indonesia",
+     "own": false,
+     "rank": 37,
+     "rank_7d": 37
+    },
+    {
+     "brand": "BARDI Smart Home",
+     "own": true,
+     "rank": 38,
+     "rank_7d": null
+    },
+    {
+     "brand": "Spigen Indonesia",
+     "own": false,
+     "rank": 39,
+     "rank_7d": 40
+    },
+    {
+     "brand": "Asteros Official",
+     "own": false,
+     "rank": 40,
+     "rank_7d": 41
+    },
+    {
+     "brand": "Aibro Smartwatch",
+     "own": false,
+     "rank": 41,
+     "rank_7d": 39
+    },
+    {
+     "brand": "ACMIC Official Store",
+     "own": false,
+     "rank": 42,
+     "rank_7d": 42
+    },
+    {
+     "brand": "TP-Link Indonesia",
+     "own": false,
+     "rank": 43,
+     "rank_7d": 43
+    }
+   ],
+   "stage": "consideration"
+  },
+  "rank_weekly": [
+   {
+    "date": "2026-07-19",
+    "rank": 43,
+    "stage": "awareness"
+   },
+   {
+    "date": "2026-07-26",
+    "rank": 42,
+    "stage": "awareness"
+   },
+   {
+    "date": "2026-08-02",
+    "rank": 44,
+    "stage": "awareness"
+   },
+   {
+    "date": "2026-08-09",
+    "rank": 44,
+    "stage": "awareness"
+   },
+   {
+    "date": "2026-08-16",
+    "rank": 44,
+    "stage": "awareness"
+   },
+   {
+    "date": "2026-08-23",
+    "rank": 45,
+    "stage": "awareness"
+   },
+   {
+    "date": "2026-08-30",
+    "rank": 44,
+    "stage": "awareness"
+   },
+   {
+    "date": "2026-09-06",
+    "rank": 43,
+    "stage": "awareness"
+   },
+   {
+    "date": "2026-09-13",
+    "rank": 41,
+    "stage": "awareness"
+   },
+   {
+    "date": "2026-09-20",
+    "rank": 39,
+    "stage": "awareness"
+   },
+   {
+    "date": "2026-09-27",
+    "rank": 37,
+    "stage": "awareness"
+   },
+   {
+    "date": "2026-10-04",
+    "rank": 37,
+    "stage": "awareness"
+   },
+   {
+    "date": "2026-10-10",
+    "rank": 36,
+    "stage": "awareness"
+   },
+   {
+    "date": "2026-07-19",
+    "rank": 41,
+    "stage": "consideration"
+   },
+   {
+    "date": "2026-07-26",
+    "rank": 41,
+    "stage": "consideration"
+   },
+   {
+    "date": "2026-08-02",
+    "rank": 40,
+    "stage": "consideration"
+   },
+   {
+    "date": "2026-08-09",
+    "rank": 42,
+    "stage": "consideration"
+   },
+   {
+    "date": "2026-08-16",
+    "rank": 43,
+    "stage": "consideration"
+   },
+   {
+    "date": "2026-08-23",
+    "rank": 44,
+    "stage": "consideration"
+   },
+   {
+    "date": "2026-08-30",
+    "rank": 41,
+    "stage": "consideration"
+   },
+   {
+    "date": "2026-09-06",
+    "rank": 42,
+    "stage": "consideration"
+   },
+   {
+    "date": "2026-09-13",
+    "rank": 43,
+    "stage": "consideration"
+   },
+   {
+    "date": "2026-09-20",
+    "rank": 42,
+    "stage": "consideration"
+   },
+   {
+    "date": "2026-09-27",
+    "rank": 36,
+    "stage": "consideration"
+   },
+   {
+    "date": "2026-10-04",
+    "rank": 35,
+    "stage": "consideration"
+   },
+   {
+    "date": "2026-10-10",
+    "rank": 38,
+    "stage": "consideration"
+   },
+   {
+    "date": "2026-07-19",
+    "rank": 35,
+    "stage": "conversion"
+   },
+   {
+    "date": "2026-07-26",
+    "rank": 35,
+    "stage": "conversion"
+   },
+   {
+    "date": "2026-08-02",
+    "rank": 36,
+    "stage": "conversion"
+   },
+   {
+    "date": "2026-08-09",
+    "rank": 37,
+    "stage": "conversion"
+   },
+   {
+    "date": "2026-08-16",
+    "rank": 37,
+    "stage": "conversion"
+   },
+   {
+    "date": "2026-08-23",
+    "rank": 38,
+    "stage": "conversion"
+   },
+   {
+    "date": "2026-08-30",
+    "rank": 38,
+    "stage": "conversion"
+   },
+   {
+    "date": "2026-09-06",
+    "rank": 38,
+    "stage": "conversion"
+   },
+   {
+    "date": "2026-09-13",
+    "rank": 38,
+    "stage": "conversion"
+   },
+   {
+    "date": "2026-09-20",
+    "rank": 38,
+    "stage": "conversion"
+   },
+   {
+    "date": "2026-09-27",
+    "rank": 38,
+    "stage": "conversion"
+   },
+   {
+    "date": "2026-10-04",
+    "rank": 38,
+    "stage": "conversion"
+   },
+   {
+    "date": "2026-10-10",
+    "rank": 38,
+    "stage": "conversion"
+   }
+  ],
+  "spend_response": {
+   "fit": {
+    "a": 7090.619930812996,
+    "b": 238264.13273120526,
+    "knee": 165152.1118311955,
+    "r2": 0.0007097413031788014
+   },
+   "lag_days": 2,
+   "points": [
+    {
+     "new": 4796.0,
+     "spend": 1461675.0
+    },
+    {
+     "new": 6203.0,
+     "spend": 842696.0
+    },
+    {
+     "new": 5144.0,
+     "spend": 1838880.0
+    },
+    {
+     "new": 6028.0,
+     "spend": 2949879.0
+    },
+    {
+     "new": 5239.0,
+     "spend": 2433897.0
+    },
+    {
+     "new": 5602.0,
+     "spend": 2305454.0
+    },
+    {
+     "new": 5355.0,
+     "spend": 1851081.0
+    },
+    {
+     "new": 5723.0,
+     "spend": 1326908.0
+    },
+    {
+     "new": 5142.0,
+     "spend": 1667760.0
+    },
+    {
+     "new": 5119.0,
+     "spend": 2121367.0
+    },
+    {
+     "new": 5166.0,
+     "spend": 3460935.0
+    },
+    {
+     "new": 4712.0,
+     "spend": 2252442.0
+    },
+    {
+     "new": 4709.0,
+     "spend": 1657751.0
+    },
+    {
+     "new": 4682.0,
+     "spend": 1605266.0
+    },
+    {
+     "new": 5122.0,
+     "spend": 1396848.0
+    },
+    {
+     "new": 6617.0,
+     "spend": 1151792.0
+    },
+    {
+     "new": 6741.0,
+     "spend": 2198052.0
+    },
+    {
+     "new": 5541.0,
+     "spend": 2098938.0
+    },
+    {
+     "new": 5171.0,
+     "spend": 4455073.0
+    },
+    {
+     "new": 5145.0,
+     "spend": 1735211.0
+    },
+    {
+     "new": 4940.0,
+     "spend": 1620621.0
+    },
+    {
+     "new": 5344.0,
+     "spend": 1658647.0
+    },
+    {
+     "new": 4865.0,
+     "spend": 1238498.0
+    },
+    {
+     "new": 4870.0,
+     "spend": 1970929.0
+    },
+    {
+     "new": 5834.0,
+     "spend": 1854005.0
+    },
+    {
+     "new": 5667.0,
+     "spend": 1703823.0
+    },
+    {
+     "new": 5667.0,
+     "spend": 2178379.0
+    },
+    {
+     "new": 8885.0,
+     "spend": 1828116.0
+    },
+    {
+     "new": 12638.0,
+     "spend": 1848374.0
+    },
+    {
+     "new": 13116.0,
+     "spend": 1667567.0
+    },
+    {
+     "new": 10289.0,
+     "spend": 1539704.0
+    },
+    {
+     "new": 11195.0,
+     "spend": 1936561.0
+    },
+    {
+     "new": 8829.0,
+     "spend": 1840715.0
+    },
+    {
+     "new": 9831.0,
+     "spend": 1733706.0
+    },
+    {
+     "new": 11823.0,
+     "spend": 1528158.0
+    },
+    {
+     "new": 10032.0,
+     "spend": 1719770.0
+    },
+    {
+     "new": 9447.0,
+     "spend": 1319619.0
+    },
+    {
+     "new": 6731.0,
+     "spend": 2025421.0
+    },
+    {
+     "new": 8393.0,
+     "spend": 1727703.0
+    },
+    {
+     "new": 8392.0,
+     "spend": 1151677.0
+    },
+    {
+     "new": 8339.0,
+     "spend": 1894608.0
+    },
+    {
+     "new": 9421.0,
+     "spend": 1904345.0
+    },
+    {
+     "new": 7424.0,
+     "spend": 1277858.0
+    },
+    {
+     "new": 8306.0,
+     "spend": 1498984.0
+    },
+    {
+     "new": 7919.0,
+     "spend": 1291360.0
+    },
+    {
+     "new": 8398.0,
+     "spend": 2034920.0
+    },
+    {
+     "new": 8164.0,
+     "spend": 1674179.0
+    },
+    {
+     "new": 6964.0,
+     "spend": 1970941.0
+    }
+   ],
+   "stage": "consideration"
+  },
+  "stage_table": [
+   {
+    "bench_total": 26667110.0,
+    "new": 3368527.0,
+    "outflow": 2807468.0,
+    "rank": 36,
+    "rank_n": 56,
+    "stage": "acc",
+    "total": 1987927.0
+   },
+   {
+    "bench_total": 24319075.0,
+    "new": 3383835.0,
+    "outflow": 2871034.0,
+    "rank": 36,
+    "rank_n": 56,
+    "stage": "awareness",
+    "total": 1852491.0
+   },
+   {
+    "bench_total": 2136754.0,
+    "new": 231723.0,
+    "outflow": 183071.0,
+    "rank": 38,
+    "rank_n": 56,
+    "stage": "consideration",
+    "total": 129635.0
+   },
+   {
+    "bench_total": 335068.0,
+    "new": 0.0,
+    "outflow": 0.0,
+    "rank": 38,
+    "rank_n": 56,
+    "stage": "conversion",
+    "total": 5801.0
+   }
+  ]
+ },
+ "content_version": 2,
+ "coverage": null,
+ "engine_version": "0.1.0",
+ "findings": [
+  {
+   "actionability": "low",
+   "brief_type": "strategy",
+   "caveats": [],
+   "claim_frame": "data_coverage_gap",
+   "comparison": null,
+   "confidence": "high",
+   "direction": "neutral",
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196"
+   },
+   "evidence": {
+    "as_of": "2026-10-10",
+    "benchmark_levels": "top5,top10,top25,top50",
+    "confidence_tier": "high",
+    "history_days": 84,
+    "locked_metrics": "SEARCH_VOLUME,NSR",
+    "plan": "lite",
+    "spend_coverage_pct": 100.0,
+    "spend_days_in_window": 28,
+    "stages_with_flow": "acc,awareness,consideration",
+    "window_days": 28
+   },
+   "generator": "T10",
+   "id": "t10_coverage",
+   "level": "brand",
+   "magnitude_pct": 0.05,
+   "materiality": 0.089443,
+   "origin": "generator",
+   "provenance": [],
+   "section_affinity": [
+    110
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "low",
+   "brief_type": "strategy",
+   "caveats": [
+    "Rasio ukuran dua tahap pada hari yang sama, bukan persentase orang yang berpindah tahap."
+   ],
+   "claim_frame": "stage_healthy",
+   "comparison": {
+    "baseline_value": 0.0879,
+    "basis": "cohort_median",
+    "current_value": 0.07,
+    "delta_abs": -0.0179,
+    "delta_pct": -0.2035,
+    "label": "rata-rata Top 10"
+   },
+   "confidence": "high",
+   "direction": "neutral",
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196"
+   },
+   "evidence": {
+    "bench_next_total": 2136754.0,
+    "bench_size_ratio": 0.0879,
+    "bench_stage_total": 24319075.0,
+    "gap_pt": -1.79,
+    "next_stage": "consideration",
+    "next_total": 129635.0,
+    "rank": 38,
+    "rank_n": 56,
+    "size_ratio": 0.07,
+    "stage": "awareness",
+    "stage_total": 1852491.0
+   },
+   "generator": "T01",
+   "id": "t01_ok_awareness",
+   "level": "brand",
+   "magnitude_pct": 0.1,
+   "materiality": 0.126491,
+   "origin": "generator",
+   "provenance": [
+    "market_scope_audience_daily:awareness:2026-10-10",
+    "market_scope_audience_daily:consideration:2026-10-10"
+   ],
+   "section_affinity": [
+    103
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "high",
+   "brief_type": "strategy",
+   "caveats": [
+    "Rasio ukuran dua tahap pada hari yang sama, bukan persentase orang yang berpindah tahap."
+   ],
+   "claim_frame": "stage_leak",
+   "comparison": {
+    "baseline_value": 0.1568,
+    "basis": "cohort_median",
+    "current_value": 0.0447,
+    "delta_abs": -0.1121,
+    "delta_pct": -0.7146,
+    "label": "rata-rata Top 10"
+   },
+   "confidence": "high",
+   "direction": "negative",
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196"
+   },
+   "evidence": {
+    "bench_next_total": 335068.0,
+    "bench_size_ratio": 0.1568,
+    "bench_stage_total": 2136754.0,
+    "gap_pt": -11.21,
+    "next_stage": "conversion",
+    "next_total": 5801.0,
+    "rank": 38,
+    "rank_n": 56,
+    "size_ratio": 0.0447,
+    "stage": "consideration",
+    "stage_total": 129635.0
+   },
+   "generator": "T01",
+   "id": "t01_leak_consideration",
+   "level": "brand",
+   "magnitude_pct": 0.7146,
+   "materiality": 0.591738,
+   "origin": "generator",
+   "provenance": [
+    "market_scope_audience_daily:consideration:2026-10-10",
+    "market_scope_audience_daily:conversion:2026-10-10"
+   ],
+   "section_affinity": [
+    103,
+    106
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "medium",
+   "brief_type": "strategy",
+   "caveats": [],
+   "claim_frame": "stage_inflow_offset",
+   "comparison": null,
+   "confidence": "high",
+   "direction": "negative",
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196"
+   },
+   "evidence": {
+    "net_change": 512801.0,
+    "new_total": 3383835.0,
+    "offset_ratio": 0.8485,
+    "outflow_total": 2871034.0,
+    "stage": "awareness",
+    "window_days": 28
+   },
+   "generator": "T01",
+   "id": "t01_offset_awareness",
+   "level": "brand",
+   "magnitude_pct": 0.3485,
+   "materiality": 0.413237,
+   "origin": "generator",
+   "provenance": [
+    "market_scope_audience_daily:awareness:2026-09-13..2026-10-10"
+   ],
+   "section_affinity": [
+    103
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "low",
+   "brief_type": "strategy",
+   "caveats": [
+    "Korelasi, bukan sebab-akibat: belanja dan audiens baru bergerak bersama, tetapi data ini tidak membuktikan belanja penyebabnya.",
+    "Hari TTMS memakai UTC, hari iklan memakai waktu lokal akun (WIB); keduanya dicocokkan per tanggal."
+   ],
+   "claim_frame": "spend_response_unrelated",
+   "comparison": null,
+   "confidence": "low",
+   "direction": "neutral",
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196"
+   },
+   "evidence": {
+    "cost_per_1k_new": 209718,
+    "lag_days": 2,
+    "n_days": 48,
+    "r2": 0.0,
+    "spearman_rho": -0.1,
+    "spend_max_day": 4455073,
+    "spend_min_day": 842696,
+    "stage": "consideration",
+    "window_new": 231723.0,
+    "window_spend": 48596564
+   },
+   "generator": "T02",
+   "id": "t02_spend_response",
+   "level": "brand",
+   "magnitude_pct": 0.15,
+   "materiality": 0.07746,
+   "origin": "generator",
+   "provenance": [
+    "paid_hourly_metrics:spend:2026-08-16..2026-10-10"
+   ],
+   "section_affinity": [
+    104
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "low",
+   "brief_type": "strategy",
+   "caveats": [
+    "Belum ada target: tetapkan target di panel Strategy Report."
+   ],
+   "claim_frame": "data_coverage_gap",
+   "comparison": null,
+   "confidence": "high",
+   "direction": "neutral",
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196"
+   },
+   "evidence": {
+    "reason": "no_goal",
+    "signal": "goal"
+   },
+   "generator": "T03",
+   "id": "t03_no_goal",
+   "level": "brand",
+   "magnitude_pct": 0.05,
+   "materiality": 0.089443,
+   "origin": "generator",
+   "provenance": [],
+   "section_affinity": [
+    105
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "medium",
+   "brief_type": "strategy",
+   "caveats": [
+    "Jenis konten saling tumpang tindih kecuali berbayar + non-berbayar; porsi tidak pernah dijumlahkan."
+   ],
+   "claim_frame": "content_mix_paid_heavy",
+   "comparison": null,
+   "confidence": "high",
+   "direction": "negative",
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196"
+   },
+   "evidence": {
+    "ads_share": 1.0183,
+    "impressions_all": 3789788.0,
+    "non_paid_share": 0.0552,
+    "paid_share": 0.9448,
+    "weakest_bench_share": 0.1907,
+    "weakest_share": 0.0435,
+    "weakest_type": "bgc_organic"
+   },
+   "generator": "T04",
+   "id": "t04_mix",
+   "level": "brand",
+   "magnitude_pct": 0.4448,
+   "materiality": 0.466853,
+   "origin": "generator",
+   "provenance": [],
+   "section_affinity": [
+    107
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "high",
+   "brief_type": "strategy",
+   "caveats": [],
+   "claim_frame": "halo_below_benchmark",
+   "comparison": {
+    "baseline_value": 0.6368,
+    "basis": "cohort_median",
+    "current_value": 0.0585,
+    "delta_abs": -0.5784,
+    "delta_pct": -0.9082,
+    "label": "rata-rata Top 10"
+   },
+   "confidence": "high",
+   "direction": "negative",
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196"
+   },
+   "evidence": {
+    "ads_share": 1.0183,
+    "bench_halo": 0.6368,
+    "halo": 0.0585,
+    "impressions_all": 3789788.0,
+    "non_paid_share": 0.0552,
+    "paid_share": 0.9448,
+    "weakest_bench_share": 0.1907,
+    "weakest_share": 0.0435,
+    "weakest_type": "bgc_organic"
+   },
+   "generator": "T04",
+   "id": "t04_halo",
+   "level": "brand",
+   "magnitude_pct": 0.9082,
+   "materiality": 0.952995,
+   "origin": "generator",
+   "provenance": [],
+   "section_affinity": [
+    107
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "low",
+   "brief_type": "strategy",
+   "caveats": [],
+   "claim_frame": "sov_gaining",
+   "comparison": {
+    "baseline_value": 0.001072,
+    "basis": "prior_period",
+    "current_value": 0.002454,
+    "delta_abs": 0.001382,
+    "delta_pct": 1.2885,
+    "label": "periode sebelumnya"
+   },
+   "confidence": "high",
+   "direction": "positive",
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196"
+   },
+   "evidence": {
+    "bench_share": 0.067489,
+    "brand_growth": 1.9411,
+    "category_growth": 0.2852,
+    "metric": "impressions",
+    "share_change_rel": 1.2885,
+    "share_now": 0.002454,
+    "share_prior": 0.001072
+   },
+   "generator": "T05",
+   "id": "t05_sov_impressions",
+   "level": "brand",
+   "magnitude_pct": 0.6442,
+   "materiality": 0.321048,
+   "origin": "generator",
+   "provenance": [],
+   "section_affinity": [
+    106,
+    108
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "low",
+   "brief_type": "strategy",
+   "caveats": [],
+   "claim_frame": "growing_faster_than_category",
+   "comparison": null,
+   "confidence": "high",
+   "direction": "positive",
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196"
+   },
+   "evidence": {
+    "bench_share": 0.067489,
+    "brand_growth": 1.9411,
+    "category_growth": 0.2852,
+    "metric": "impressions",
+    "share_change_rel": 1.2885,
+    "share_now": 0.002454,
+    "share_prior": 0.001072
+   },
+   "generator": "T05",
+   "id": "t05_growth_impressions",
+   "level": "brand",
+   "magnitude_pct": 0.828,
+   "materiality": 0.363978,
+   "origin": "generator",
+   "provenance": [],
+   "section_affinity": [
+    106,
+    108
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "low",
+   "brief_type": "strategy",
+   "caveats": [],
+   "claim_frame": "sov_gaining",
+   "comparison": {
+    "baseline_value": 0.00123,
+    "basis": "prior_period",
+    "current_value": 0.00304,
+    "delta_abs": 0.00181,
+    "delta_pct": 1.4716,
+    "label": "periode sebelumnya"
+   },
+   "confidence": "high",
+   "direction": "positive",
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196"
+   },
+   "evidence": {
+    "bench_share": 0.05573,
+    "brand_growth": 1.8575,
+    "category_growth": 0.1561,
+    "metric": "engagements",
+    "share_change_rel": 1.4716,
+    "share_now": 0.00304,
+    "share_prior": 0.00123
+   },
+   "generator": "T05",
+   "id": "t05_sov_engagements",
+   "level": "brand",
+   "magnitude_pct": 0.7358,
+   "materiality": 0.343115,
+   "origin": "generator",
+   "provenance": [],
+   "section_affinity": [
+    106,
+    108
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "low",
+   "brief_type": "strategy",
+   "caveats": [],
+   "claim_frame": "growing_faster_than_category",
+   "comparison": null,
+   "confidence": "high",
+   "direction": "positive",
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196"
+   },
+   "evidence": {
+    "bench_share": 0.05573,
+    "brand_growth": 1.8575,
+    "category_growth": 0.1561,
+    "metric": "engagements",
+    "share_change_rel": 1.4716,
+    "share_now": 0.00304,
+    "share_prior": 0.00123
+   },
+   "generator": "T05",
+   "id": "t05_growth_engagements",
+   "level": "brand",
+   "magnitude_pct": 0.8507,
+   "materiality": 0.368934,
+   "origin": "generator",
+   "provenance": [],
+   "section_affinity": [
+    106,
+    108
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "low",
+   "brief_type": "strategy",
+   "caveats": [],
+   "claim_frame": "sov_gaining",
+   "comparison": {
+    "baseline_value": 0.000633,
+    "basis": "prior_period",
+    "current_value": 0.003204,
+    "delta_abs": 0.002571,
+    "delta_pct": 4.062,
+    "label": "periode sebelumnya"
+   },
+   "confidence": "high",
+   "direction": "positive",
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196"
+   },
+   "evidence": {
+    "bench_share": 0.053984,
+    "brand_growth": 4.985,
+    "category_growth": 0.1823,
+    "metric": "video_views_6s",
+    "share_change_rel": 4.062,
+    "share_now": 0.003204,
+    "share_prior": 0.000633
+   },
+   "generator": "T05",
+   "id": "t05_sov_video_views_6s",
+   "level": "brand",
+   "magnitude_pct": 1.0,
+   "materiality": 0.4,
+   "origin": "generator",
+   "provenance": [],
+   "section_affinity": [
+    106,
+    108
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "low",
+   "brief_type": "strategy",
+   "caveats": [],
+   "claim_frame": "sov_gaining",
+   "comparison": {
+    "baseline_value": 0.00173,
+    "basis": "prior_period",
+    "current_value": 0.003004,
+    "delta_abs": 0.001273,
+    "delta_pct": 0.736,
+    "label": "periode sebelumnya"
+   },
+   "confidence": "high",
+   "direction": "positive",
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196"
+   },
+   "evidence": {
+    "bench_share": 0.058789,
+    "brand_growth": 0.8953,
+    "category_growth": 0.0918,
+    "metric": "product_card_clicks",
+    "share_change_rel": 0.736,
+    "share_now": 0.003004,
+    "share_prior": 0.00173
+   },
+   "generator": "T05",
+   "id": "t05_sov_product_card_clicks",
+   "level": "brand",
+   "magnitude_pct": 0.368,
+   "materiality": 0.242652,
+   "origin": "generator",
+   "provenance": [],
+   "section_affinity": [
+    106
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "low",
+   "brief_type": "strategy",
+   "caveats": [],
+   "claim_frame": "rank_moved",
+   "comparison": null,
+   "confidence": "high",
+   "direction": "negative",
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196"
+   },
+   "evidence": {
+    "rank_7d": 36,
+    "rank_change": -2,
+    "rank_n": 56,
+    "rank_now": 38,
+    "stage": "consideration"
+   },
+   "generator": "T05",
+   "id": "t05_rank_consideration",
+   "level": "brand",
+   "magnitude_pct": 0.2,
+   "materiality": 0.178885,
+   "origin": "generator",
+   "provenance": [],
+   "section_affinity": [
+    106,
+    108
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "medium",
+   "brief_type": "strategy",
+   "caveats": [
+    "TikTok hanya membagikan peringkat pesaing, bukan angka mereka."
+   ],
+   "claim_frame": "brand_overtaken",
+   "comparison": null,
+   "confidence": "high",
+   "direction": "negative",
+   "entity": {
+    "display_name": "TP-Link Indonesia",
+    "id": "competitor:TP-Link Indonesia"
+   },
+   "evidence": {
+    "competitor": "TP-Link Indonesia",
+    "list_size": 56,
+    "own_rank": 36,
+    "rank_14d": 41,
+    "rank_7d": 39,
+    "rank_change_14d": 9,
+    "rank_now": 32,
+    "stage": "awareness"
+   },
+   "generator": "T06",
+   "id": "t06_awareness_tp_link_indonesia",
+   "level": "competitor",
+   "magnitude_pct": 0.6,
+   "materiality": 0.542218,
+   "origin": "generator",
+   "provenance": [
+    "market_scope_rankings_daily:awareness:2026-10-10"
+   ],
+   "section_affinity": [
+    106,
+    108
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "low",
+   "brief_type": "strategy",
+   "caveats": [
+    "TikTok hanya membagikan peringkat pesaing, bukan angka mereka."
+   ],
+   "claim_frame": "competitor_falling",
+   "comparison": null,
+   "confidence": "high",
+   "direction": "positive",
+   "entity": {
+    "display_name": "Distributor Laptop",
+    "id": "competitor:Distributor Laptop"
+   },
+   "evidence": {
+    "competitor": "Distributor Laptop",
+    "list_size": 56,
+    "own_rank": 36,
+    "rank_14d": 27,
+    "rank_7d": 37,
+    "rank_change_14d": -13,
+    "rank_now": 40,
+    "stage": "awareness"
+   },
+   "generator": "T06",
+   "id": "t06_awareness_distributor_laptop",
+   "level": "competitor",
+   "magnitude_pct": 0.8667,
+   "materiality": 0.372387,
+   "origin": "generator",
+   "provenance": [
+    "market_scope_rankings_daily:awareness:2026-10-10"
+   ],
+   "section_affinity": [
+    106,
+    108
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "medium",
+   "brief_type": "strategy",
+   "caveats": [
+    "TikTok hanya membagikan peringkat pesaing, bukan angka mereka."
+   ],
+   "claim_frame": "competitor_climbing",
+   "comparison": null,
+   "confidence": "high",
+   "direction": "negative",
+   "entity": {
+    "display_name": "Kotak Katik",
+    "id": "competitor:Kotak Katik"
+   },
+   "evidence": {
+    "competitor": "Kotak Katik",
+    "list_size": 56,
+    "own_rank": 36,
+    "rank_14d": 37,
+    "rank_7d": 27,
+    "rank_change_14d": 11,
+    "rank_now": 26,
+    "stage": "awareness"
+   },
+   "generator": "T06",
+   "id": "t06_awareness_kotak_katik",
+   "level": "competitor",
+   "magnitude_pct": 0.7333,
+   "materiality": 0.599431,
+   "origin": "generator",
+   "provenance": [
+    "market_scope_rankings_daily:awareness:2026-10-10"
+   ],
+   "section_affinity": [
+    106,
+    108
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "medium",
+   "brief_type": "strategy",
+   "caveats": [
+    "TikTok hanya membagikan peringkat pesaing, bukan angka mereka."
+   ],
+   "claim_frame": "brand_overtaken",
+   "comparison": null,
+   "confidence": "high",
+   "direction": "negative",
+   "entity": {
+    "display_name": "Gochek Indonesia",
+    "id": "competitor:Gochek Indonesia"
+   },
+   "evidence": {
+    "competitor": "Gochek Indonesia",
+    "list_size": 56,
+    "own_rank": 38,
+    "rank_14d": 44,
+    "rank_7d": 38,
+    "rank_change_14d": 9,
+    "rank_now": 35,
+    "stage": "consideration"
+   },
+   "generator": "T06",
+   "id": "t06_consideration_gochek_indonesia",
+   "level": "competitor",
+   "magnitude_pct": 0.6,
+   "materiality": 0.542218,
+   "origin": "generator",
+   "provenance": [
+    "market_scope_rankings_daily:consideration:2026-10-10"
+   ],
+   "section_affinity": [
+    106,
+    108
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "medium",
+   "brief_type": "strategy",
+   "caveats": [
+    "TikTok hanya membagikan peringkat pesaing, bukan angka mereka."
+   ],
+   "claim_frame": "brand_overtaken",
+   "comparison": null,
+   "confidence": "high",
+   "direction": "negative",
+   "entity": {
+    "display_name": "Fifine Indonesia",
+    "id": "competitor:Fifine Indonesia"
+   },
+   "evidence": {
+    "competitor": "Fifine Indonesia",
+    "list_size": 56,
+    "own_rank": 38,
+    "rank_14d": 38,
+    "rank_7d": 37,
+    "rank_change_14d": 1,
+    "rank_now": 37,
+    "stage": "consideration"
+   },
+   "generator": "T06",
+   "id": "t06_consideration_fifine_indonesia",
+   "level": "competitor",
+   "magnitude_pct": 0.0667,
+   "materiality": 0.180784,
+   "origin": "generator",
+   "provenance": [
+    "market_scope_rankings_daily:consideration:2026-10-10"
+   ],
+   "section_affinity": [
+    106,
+    108
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "low",
+   "brief_type": "strategy",
+   "caveats": [
+    "TikTok hanya membagikan peringkat pesaing, bukan angka mereka."
+   ],
+   "claim_frame": "competitor_falling",
+   "comparison": null,
+   "confidence": "high",
+   "direction": "positive",
+   "entity": {
+    "display_name": "Astra Foto",
+    "id": "competitor:Astra Foto"
+   },
+   "evidence": {
+    "competitor": "Astra Foto",
+    "list_size": 56,
+    "own_rank": 38,
+    "rank_14d": 23,
+    "rank_7d": 29,
+    "rank_change_14d": -11,
+    "rank_now": 34,
+    "stage": "consideration"
+   },
+   "generator": "T06",
+   "id": "t06_consideration_astra_foto",
+   "level": "competitor",
+   "magnitude_pct": 0.7333,
+   "materiality": 0.342532,
+   "origin": "generator",
+   "provenance": [
+    "market_scope_rankings_daily:consideration:2026-10-10"
+   ],
+   "section_affinity": [
+    106,
+    108
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "medium",
+   "brief_type": "strategy",
+   "caveats": [
+    "TikTok hanya membagikan peringkat pesaing, bukan angka mereka."
+   ],
+   "claim_frame": "competitor_climbing",
+   "comparison": null,
+   "confidence": "high",
+   "direction": "negative",
+   "entity": {
+    "display_name": "MITO Electronic",
+    "id": "competitor:MITO Electronic"
+   },
+   "evidence": {
+    "competitor": "MITO Electronic",
+    "list_size": 56,
+    "own_rank": 38,
+    "rank_14d": 31,
+    "rank_7d": 29,
+    "rank_change_14d": 3,
+    "rank_now": 28,
+    "stage": "conversion"
+   },
+   "generator": "T06",
+   "id": "t06_conversion_mito_electronic",
+   "level": "competitor",
+   "magnitude_pct": 0.2,
+   "materiality": 0.31305,
+   "origin": "generator",
+   "provenance": [
+    "market_scope_rankings_daily:conversion:2026-10-10"
+   ],
+   "section_affinity": [
+    106,
+    108
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "low",
+   "brief_type": "strategy",
+   "caveats": [
+    "TikTok hanya membagikan peringkat pesaing, bukan angka mereka."
+   ],
+   "claim_frame": "competitor_falling",
+   "comparison": null,
+   "confidence": "high",
+   "direction": "positive",
+   "entity": {
+    "display_name": "nubia Indonesia",
+    "id": "competitor:nubia Indonesia"
+   },
+   "evidence": {
+    "competitor": "nubia Indonesia",
+    "list_size": 56,
+    "own_rank": 38,
+    "rank_14d": 29,
+    "rank_7d": 31,
+    "rank_change_14d": -3,
+    "rank_now": 32,
+    "stage": "conversion"
+   },
+   "generator": "T06",
+   "id": "t06_conversion_nubia_indonesia",
+   "level": "competitor",
+   "magnitude_pct": 0.2,
+   "materiality": 0.178885,
+   "origin": "generator",
+   "provenance": [
+    "market_scope_rankings_daily:conversion:2026-10-10"
+   ],
+   "section_affinity": [
+    106,
+    108
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "low",
+   "brief_type": "strategy",
+   "caveats": [],
+   "claim_frame": "data_coverage_gap",
+   "comparison": null,
+   "confidence": "high",
+   "direction": "neutral",
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196"
+   },
+   "evidence": {
+    "locked_reason": "plan_lite",
+    "signal": "search_volume"
+   },
+   "generator": "T07",
+   "id": "t07_locked_search_volume",
+   "level": "brand",
+   "magnitude_pct": 0.05,
+   "materiality": 0.089443,
+   "origin": "generator",
+   "provenance": [],
+   "section_affinity": [
+    108
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "low",
+   "brief_type": "strategy",
+   "caveats": [],
+   "claim_frame": "data_coverage_gap",
+   "comparison": null,
+   "confidence": "high",
+   "direction": "neutral",
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196"
+   },
+   "evidence": {
+    "locked_reason": "plan_lite",
+    "signal": "nsr"
+   },
+   "generator": "T07",
+   "id": "t07_locked_nsr",
+   "level": "brand",
+   "magnitude_pct": 0.05,
+   "materiality": 0.089443,
+   "origin": "generator",
+   "provenance": [],
+   "section_affinity": [
+    108
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "medium",
+   "brief_type": "strategy",
+   "caveats": [],
+   "claim_frame": "outflow_spike",
+   "comparison": null,
+   "confidence": "medium",
+   "direction": "negative",
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196"
+   },
+   "evidence": {
+    "date": "2026-10-09",
+    "mean_14d": 7077,
+    "outflow": 11186.0,
+    "ratio_to_mean": 1.58,
+    "robust_z": 7.88,
+    "stage": "consideration"
+   },
+   "generator": "T08",
+   "id": "t08_consideration",
+   "level": "brand",
+   "magnitude_pct": 0.1935,
+   "materiality": 0.23094,
+   "origin": "generator",
+   "provenance": [],
+   "section_affinity": [
+    103,
+    108
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "high",
+   "brief_type": "strategy",
+   "caveats": [],
+   "claim_frame": "action_proposed",
+   "comparison": null,
+   "confidence": "medium",
+   "direction": "neutral",
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196"
+   },
+   "evidence": {
+    "action_rank": 1,
+    "basis": "benchmark_top10",
+    "current": 0.0447,
+    "horizon_days": 28,
+    "kill_days": 14,
+    "lever": "stage_targeting",
+    "metric_key": "ttms.audience.consideration.size_ratio",
+    "stake": 6482.0,
+    "stake_high": 8426.0,
+    "stake_low": 4537.0,
+    "stake_unit": "people",
+    "target": 0.0947
+   },
+   "generator": "T09",
+   "id": "t09_act_01",
+   "level": "brand",
+   "magnitude_pct": 0.8,
+   "materiality": 0.67082,
+   "origin": "generator",
+   "provenance": [
+    "t01_leak_consideration"
+   ],
+   "section_affinity": [
+    102
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "high",
+   "brief_type": "strategy",
+   "caveats": [],
+   "claim_frame": "action_proposed",
+   "comparison": null,
+   "confidence": "medium",
+   "direction": "neutral",
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196"
+   },
+   "evidence": {
+    "action_rank": 2,
+    "basis": "benchmark_top10",
+    "current": 0.0435,
+    "horizon_days": 28,
+    "kill_days": 14,
+    "lever": "content_mix",
+    "metric_key": "ttms.impressions.share.bgc_organic",
+    "stake": 303183.0,
+    "stake_high": 394138.0,
+    "stake_low": 212228.0,
+    "stake_unit": "impressions",
+    "target": 0.1235
+   },
+   "generator": "T09",
+   "id": "t09_act_02",
+   "level": "brand",
+   "magnitude_pct": 0.6,
+   "materiality": 0.580948,
+   "origin": "generator",
+   "provenance": [
+    "t04_halo",
+    "t04_mix"
+   ],
+   "section_affinity": [
+    102
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  },
+  {
+   "actionability": "high",
+   "brief_type": "strategy",
+   "caveats": [],
+   "claim_frame": "action_proposed",
+   "comparison": null,
+   "confidence": "high",
+   "direction": "neutral",
+   "entity": {
+    "display_name": "BARDI Smart Home",
+    "id": "ttms:7522417104012722196"
+   },
+   "evidence": {
+    "action_rank": 3,
+    "basis": "defensive",
+    "horizon_days": 7,
+    "lever": "investigate",
+    "metric_key": "ttms.audience.awareness.rank"
+   },
+   "generator": "T09",
+   "id": "t09_act_03",
+   "level": "brand",
+   "magnitude_pct": 0.4,
+   "materiality": 0.632456,
+   "origin": "generator",
+   "provenance": [
+    "t06_awareness_tp_link_indonesia"
+   ],
+   "section_affinity": [
+    102
+   ],
+   "tenant_id": "fixture-bardi-tiktok"
+  }
+ ],
+ "goal_pace": null,
+ "meta": {
+  "as_of": "2026-10-10",
+  "benchmark": "top10",
+  "brand_name": "BARDI Smart Home",
+  "degraded": [],
+  "eval": {},
+  "is_lite": true,
+  "plan": "TTS Purchase(Lite)",
+  "prompt_version": "strategy-1",
+  "section_order": [
+   101,
+   102,
+   106,
+   103,
+   105,
+   104,
+   107,
+   108,
+   109,
+   110
+  ],
+  "ttms_account_id": "7522417104012722196",
+  "vertical": "Consumer Electronics",
+  "window_end": "2026-10-10",
+  "window_start": "2026-09-13"
+ },
+ "probe_loop": {
+  "enabled": false,
+  "log": [],
+  "probes_executed": 0,
+  "rounds_used": 0,
+  "yield_rate": 0.0
+ },
+ "rankings": {
+  "102": {
+   "below_cut": [],
+   "selected": [
+    "t09_act_01",
+    "t09_act_02",
+    "t09_act_03"
+   ]
+  },
+  "103": {
+   "below_cut": [
+    {
+     "id": "t01_ok_awareness",
+     "materiality": 0.126491
+    }
+   ],
+   "selected": [
+    "t01_leak_consideration",
+    "t01_offset_awareness",
+    "t08_consideration"
+   ]
+  },
+  "104": {
+   "below_cut": [],
+   "selected": [
+    "t02_spend_response"
+   ]
+  },
+  "105": {
+   "below_cut": [],
+   "selected": [
+    "t03_no_goal"
+   ]
+  },
+  "106": {
+   "below_cut": [
+    {
+     "id": "t06_consideration_gochek_indonesia",
+     "materiality": 0.542218
+    },
+    {
+     "id": "t06_awareness_distributor_laptop",
+     "materiality": 0.372387
+    },
+    {
+     "id": "t05_growth_impressions",
+     "materiality": 0.363978
+    },
+    {
+     "id": "t05_sov_engagements",
+     "materiality": 0.343115
+    },
+    {
+     "id": "t06_consideration_astra_foto",
+     "materiality": 0.342532
+    },
+    {
+     "id": "t05_sov_impressions",
+     "materiality": 0.321048
+    },
+    {
+     "id": "t06_conversion_mito_electronic",
+     "materiality": 0.31305
+    },
+    {
+     "id": "t06_consideration_fifine_indonesia",
+     "materiality": 0.180784
+    },
+    {
+     "id": "t05_rank_consideration",
+     "materiality": 0.178885
+    },
+    {
+     "id": "t06_conversion_nubia_indonesia",
+     "materiality": 0.178885
+    }
+   ],
+   "selected": [
+    "t06_awareness_kotak_katik",
+    "t06_awareness_tp_link_indonesia",
+    "t05_sov_video_views_6s",
+    "t05_growth_engagements"
+   ]
+  },
+  "107": {
+   "below_cut": [],
+   "selected": [
+    "t04_halo",
+    "t04_mix"
+   ]
+  },
+  "108": {
+   "below_cut": [
+    {
+     "id": "t05_sov_impressions",
+     "materiality": 0.321048
+    },
+    {
+     "id": "t06_conversion_mito_electronic",
+     "materiality": 0.31305
+    },
+    {
+     "id": "t06_consideration_fifine_indonesia",
+     "materiality": 0.180784
+    },
+    {
+     "id": "t05_rank_consideration",
+     "materiality": 0.178885
+    },
+    {
+     "id": "t06_conversion_nubia_indonesia",
+     "materiality": 0.178885
+    },
+    {
+     "id": "t07_locked_search_volume",
+     "materiality": 0.089443
+    },
+    {
+     "id": "t07_locked_nsr",
+     "materiality": 0.089443
+    }
+   ],
+   "selected": [
+    "t06_consideration_gochek_indonesia",
+    "t06_awareness_distributor_laptop",
+    "t05_growth_impressions",
+    "t05_sov_engagements",
+    "t06_consideration_astra_foto"
+   ]
+  },
+  "109": {
+   "below_cut": [],
+   "selected": []
+  },
+  "110": {
+   "below_cut": [],
+   "selected": [
+    "t10_coverage"
+   ]
+  }
+ },
+ "report_class": {
+  "inferred_class": "shop",
+  "inputs": {
+   "conversion_to_consideration": 0.0447,
+   "gmv_share": 0.7714,
+   "north_star": "shop"
+  },
+  "overridden": true,
+  "report_class": "brand",
+  "score": 4
+ },
+ "s1": null,
+ "s6": null,
+ "sections": {
+  "101": {
+   "critic_approved": null,
+   "critic_notes": null,
+   "critic_ok": null,
+   "draft": {
+    "chips": [
+     {
+      "finding_id": "t05_sov_video_views_6s",
+      "label": "Pangsa kategori",
+      "status": "good",
+      "value": "0,063% → 0,320%"
+     },
+     {
+      "finding_id": "t02_spend_response",
+      "label": "Efisiensi belanja",
+      "status": "unknown",
+      "value": "Belum terbaca (R² 0,00)"
+     },
+     {
+      "finding_id": "t03_no_goal",
+      "label": "Laju target",
+      "status": "unknown",
+      "value": "Belum ada target"
+     }
+    ],
+    "headline": "Pangsa kategori sedang naik.",
+    "paragraph": "Pangsa kategori untuk tontonan 6 detik naik dari 0,063% ke 0,320% (rata-rata Top 10 5,40%). Prioritas: Naikkan ukuran tahap Conversion dari 4,47% → 9,47% ukuran tahap Consideration dalam 4 minggu."
+   },
+   "narration_attempts": 0,
+   "narration_source": "template"
+  },
+  "103": {
+   "critic_approved": null,
+   "critic_notes": null,
+   "critic_ok": null,
+   "draft": {
+    "headline": "Tahap Consideration → Conversion adalah titik bocor utama.",
+    "implication": null,
+    "paragraphs": [
+     {
+      "evidence_refs": [
+       "t01_leak_consideration"
+      ],
+      "text": "Ukuran tahap Conversion hanya 4,47% dari tahap Consideration, sedangkan rata-rata Top 10 15,68% — selisih 11,21 poin. Saat ini 129.635 orang ada di Consideration dan 5.801 di Conversion."
+     },
+     {
+      "evidence_refs": [
+       "t01_offset_awareness"
+      ],
+      "text": "Dalam 28 hari, 3.383.835 orang masuk tahap Awareness dan 2.871.034 keluar: 84,9% audiens baru tertutup oleh yang keluar, sehingga bersihnya 512.801 orang."
+     },
+     {
+      "evidence_refs": [
+       "t08_consideration"
+      ],
+      "text": "Audiens keluar tahap Consideration pada 2026-10-09 mencapai 11.186 orang, 1,58× rata-rata 14 hari sebelumnya (7.077)."
+     }
+    ]
+   },
+   "narration_attempts": 0,
+   "narration_source": "template"
+  },
+  "104": {
+   "critic_approved": null,
+   "critic_notes": null,
+   "critic_ok": null,
+   "draft": {
+    "headline": "Belanja dan audiens baru belum bergerak bersama.",
+    "implication": null,
+    "paragraphs": [
+     {
+      "evidence_refs": [
+       "t02_spend_response"
+      ],
+      "text": "Dari 48 hari, belanja harian dan audiens baru Consideration 2 hari kemudian belum bergerak bersama (R² 0,00), jadi batas belanja belum bisa ditarik. Rata-rata biayanya Rp209.718 per 1.000 audiens baru: Rp48.596.564 untuk 231.723 orang."
+     }
+    ]
+   },
+   "narration_attempts": 0,
+   "narration_source": "template"
+  },
+  "105": {
+   "critic_approved": null,
+   "critic_notes": null,
+   "critic_ok": null,
+   "draft": {
+    "headline": "Belum ada target untuk dipantau.",
+    "implication": null,
+    "paragraphs": [
+     {
+      "evidence_refs": [
+       "t03_no_goal"
+      ],
+      "text": "Belum ada target untuk dipantau. Tetapkan target — peringkat, pangsa, rasio ukuran tahap, atau biaya per 1.000 audiens baru — di panel Strategy Report."
+     }
+    ]
+   },
+   "narration_attempts": 0,
+   "narration_source": "template"
+  },
+  "106": {
+   "critic_approved": null,
+   "critic_notes": null,
+   "critic_ok": null,
+   "draft": {
+    "headline": "Pesaing naik cepat di tahap Awareness.",
+    "implication": null,
+    "paragraphs": [
+     {
+      "evidence_refs": [
+       "t06_awareness_kotak_katik"
+      ],
+      "text": "Kotak Katik naik dari #37 ke #26 di tahap Awareness dalam 14 hari (BARDI Smart Home #36). TikTok hanya membagikan peringkatnya, bukan angkanya."
+     },
+     {
+      "evidence_refs": [
+       "t06_awareness_tp_link_indonesia"
+      ],
+      "text": "TP-Link Indonesia menyalip di tahap Awareness: dari #41 ke #32, kini di atas BARDI Smart Home (#36)."
+     },
+     {
+      "evidence_refs": [
+       "t05_sov_video_views_6s"
+      ],
+      "text": "Pangsa kategori untuk tontonan 6 detik naik dari 0,063% ke 0,320% (rata-rata Top 10 5,40%)."
+     }
+    ]
+   },
+   "narration_attempts": 0,
+   "narration_source": "template"
+  },
+  "107": {
+   "critic_approved": null,
+   "critic_notes": null,
+   "critic_ok": null,
+   "draft": {
+    "headline": "Efek tular konten jauh di bawah kategori.",
+    "implication": null,
+    "paragraphs": [
+     {
+      "evidence_refs": [
+       "t04_halo"
+      ],
+      "text": "Setiap impresi berbayar menghasilkan 0,06 impresi gratis; rata-rata Top 10 0,64. Porsi konten BGC internal (organik) hanya 4,3% vs 19,1% di Top 10."
+     },
+     {
+      "evidence_refs": [
+       "t04_mix"
+      ],
+      "text": "94,5% impresi konten yang menyebut BARDI Smart Home berasal dari konten berbayar; non-berbayar 5,5% dari 3.789.788 impresi."
+     }
+    ]
+   },
+   "narration_attempts": 0,
+   "narration_source": "template"
+  },
+  "108": {
+   "critic_approved": null,
+   "critic_notes": null,
+   "critic_ok": null,
+   "draft": {
+    "headline": "Pesaing menyalip di tahap Consideration.",
+    "implication": null,
+    "paragraphs": [
+     {
+      "evidence_refs": [
+       "t06_consideration_gochek_indonesia"
+      ],
+      "text": "Gochek Indonesia menyalip di tahap Consideration: dari #44 ke #35, kini di atas BARDI Smart Home (#38)."
+     },
+     {
+      "evidence_refs": [
+       "t06_awareness_distributor_laptop"
+      ],
+      "text": "Distributor Laptop turun dari #27 ke #40 di tahap Awareness dalam 14 hari (BARDI Smart Home #36)."
+     },
+     {
+      "evidence_refs": [
+       "t05_growth_impressions"
+      ],
+      "text": "Impresi BARDI Smart Home tumbuh 194,1% dibanding periode sebelumnya, sementara kategori 28,5%."
+     }
+    ]
+   },
+   "narration_attempts": 0,
+   "narration_source": "template"
+  },
+  "109": {
+   "critic_approved": null,
+   "critic_notes": null,
+   "critic_ok": null,
+   "draft": {
+    "headline": "Belum ada tindakan yang diterima. Terima keputusan di atas untuk mulai mengukurnya.",
+    "implication": null,
+    "paragraphs": [
+     {
+      "evidence_refs": [
+       "t10_coverage"
+      ],
+      "text": "Belum ada tindakan yang diterima. Terima keputusan di atas untuk mulai mengukurnya."
+     }
+    ]
+   },
+   "narration_attempts": 0,
+   "narration_source": "template"
+  },
+  "110": {
+   "critic_approved": null,
+   "critic_notes": null,
+   "critic_ok": null,
+   "draft": {
+    "headline": "Ringkasan data dan cakupan.",
+    "implication": null,
+    "paragraphs": [
+     {
+      "evidence_refs": [
+       "t10_coverage"
+      ],
+      "text": "Data per 2026-10-10: riwayat 84 hari, belanja tercatat 28 dari 28 hari, paket Lite, benchmark Top 5,Top 10,Top 25,Top 50."
+     }
+    ]
+   },
+   "narration_attempts": 0,
+   "narration_source": "template"
+  }
+ },
+ "signals": [
+  {
+   "detail": "Gochek Indonesia menyalip di tahap Consideration: dari #44 ke #35, kini di atas BARDI Smart Home (#38).",
+   "finding_id": "t06_consideration_gochek_indonesia",
+   "kind": "brand_overtaken",
+   "status": "investigate",
+   "title": "Pesaing menyalip di tahap Consideration."
+  },
+  {
+   "detail": "Distributor Laptop turun dari #27 ke #40 di tahap Awareness dalam 14 hari (BARDI Smart Home #36).",
+   "finding_id": "t06_awareness_distributor_laptop",
+   "kind": "competitor_falling",
+   "status": "good",
+   "title": "Pesaing turun di tahap Awareness."
+  },
+  {
+   "detail": "Impresi BARDI Smart Home tumbuh 194,1% dibanding periode sebelumnya, sementara kategori 28,5%.",
+   "finding_id": "t05_growth_impressions",
+   "kind": "growing_faster_than_category",
+   "status": "good",
+   "title": "Merek tumbuh lebih cepat daripada kategori."
+  },
+  {
+   "detail": "Pangsa kategori untuk interaksi naik dari 0,123% ke 0,304% (rata-rata Top 10 5,57%).",
+   "finding_id": "t05_sov_engagements",
+   "kind": "sov_gaining",
+   "status": "good",
+   "title": "Pangsa kategori sedang naik."
+  },
+  {
+   "detail": "Astra Foto turun dari #23 ke #34 di tahap Consideration dalam 14 hari (BARDI Smart Home #38).",
+   "finding_id": "t06_consideration_astra_foto",
+   "kind": "competitor_falling",
+   "status": "good",
+   "title": "Pesaing turun di tahap Consideration."
+  }
+ ],
+ "tier": "instant"
+}

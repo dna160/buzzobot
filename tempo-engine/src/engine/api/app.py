@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import os
 from contextlib import asynccontextmanager
+from datetime import date
 from typing import Literal
 
 from dotenv import load_dotenv
@@ -74,9 +75,17 @@ app = FastAPI(title="Tempo Intelligence Engine — Review API", lifespan=lifespa
 
 class CreateBriefRequest(BaseModel):
     client_slug: str
-    brief_type: Literal["gmv", "awareness", "install"] = "gmv"
-    window_days: int = 7
+    brief_type: Literal["gmv", "awareness", "install", "strategy"] = "gmv"
+    #: Default 7 days for the deck's briefs, 28 for the Strategy Report (PRD §7.1).
+    window_days: int | None = None
     tier: Tier = "full"
+    #: Last day of the window. Absent = latest ingested (briefs) / latest settled TTMS day (strategy).
+    end_date: date | None = None
+    #: Strategy Report only: preview a class without saving an override (PRD §9.4 `class=`).
+    report_class: Literal["brand", "shop"] | None = None
+
+    def window(self) -> int:
+        return self.window_days or (28 if self.brief_type == "strategy" else 7)
 
 
 class ReviewRequest(BaseModel):
@@ -89,8 +98,8 @@ async def create_brief(req: CreateBriefRequest, request: Request) -> dict:
     try:
         return await start_brief_run(
             graph=request.app.state.graph, read_conn=request.app.state.read_conn,
-            client_slug=req.client_slug, brief_type=req.brief_type, window_days=req.window_days,
-            tier=req.tier,
+            client_slug=req.client_slug, brief_type=req.brief_type, window_days=req.window(),
+            end_date=req.end_date, tier=req.tier, report_class=req.report_class,
         )
     except ClientNotEligibleError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -101,8 +110,8 @@ async def create_brief_sync(req: CreateBriefRequest, request: Request) -> dict:
     try:
         return await run_brief_sync(
             graph=request.app.state.graph, read_conn=request.app.state.read_conn,
-            client_slug=req.client_slug, brief_type=req.brief_type, window_days=req.window_days,
-            tier=req.tier,
+            client_slug=req.client_slug, brief_type=req.brief_type, window_days=req.window(),
+            end_date=req.end_date, tier=req.tier, report_class=req.report_class,
         )
     except ClientNotEligibleError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
