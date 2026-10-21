@@ -63,6 +63,28 @@ export interface MarketScopeAccountSummary {
   syncedAt: Date;
 }
 
+/**
+ * The window a Strategy Report run for this client will cover, without
+ * calling the engine: the same rule as `strategy_read.py` — the report's TTMS
+ * account (the spec's choice, else the primary), `as_of` = its settled day,
+ * clamped to `endDate`. The route keys its warm cache on this. Null when the
+ * client has no mirrored account, which is also the engine's 404.
+ */
+export async function resolveStrategyWindow(
+  db: Database,
+  clientId: string,
+  { endDate, days = 28 }: { endDate?: string; days?: number } = {},
+): Promise<{ ttmsAccountId: string; asOf: string; periodStart: string; periodEnd: string } | null> {
+  const spec = await getStrategySpec(db, clientId);
+  const accounts = await listMarketScopeAccounts(db, clientId);
+  const account = accounts.find((a) => a.ttmsAccountId === spec?.ttmsAccountId) ?? accounts[0];
+  if (!account?.lastDataDate) return null;
+  const asOf = endDate && endDate < account.lastDataDate ? endDate : account.lastDataDate;
+  const start = new Date(`${asOf}T00:00:00Z`);
+  start.setUTCDate(start.getUTCDate() - (days - 1));
+  return { ttmsAccountId: account.ttmsAccountId, asOf, periodStart: start.toISOString().slice(0, 10), periodEnd: asOf };
+}
+
 /** A client's mirrored TTMS accounts, primary first — the spec editor's account picker. */
 export async function listMarketScopeAccounts(db: Database, clientId: string): Promise<MarketScopeAccountSummary[]> {
   return db

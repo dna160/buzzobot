@@ -161,12 +161,12 @@
   "t02_spend_response": {
    "action": "",
    "headline": "Belanja dan audiens baru belum bergerak bersama.",
-   "mechanism": "Dari 48 hari, belanja harian dan audiens baru Consideration 2 hari kemudian belum bergerak bersama (R² 0,00), jadi batas belanja belum bisa ditarik. Rata-rata biayanya Rp209.718 per 1.000 audiens baru: Rp48.596.564 untuk 231.723 orang."
+   "mechanism": "Dari 48 hari, belanja harian dan audiens baru Consideration 2 hari kemudian belum bergerak bersama (R² 0,00), jadi batas belanja belum bisa ditarik. Rata-rata biayanya Rp209.718 per seribu audiens baru: Rp48.596.564 untuk 231.723 orang."
   },
   "t03_no_goal": {
    "action": "",
    "headline": "Belum ada target untuk dipantau.",
-   "mechanism": "Belum ada target untuk dipantau. Tetapkan target — peringkat, pangsa, rasio ukuran tahap, atau biaya per 1.000 audiens baru — di panel Strategy Report."
+   "mechanism": "Belum ada target untuk dipantau. Tetapkan target — peringkat, pangsa, rasio ukuran tahap, atau biaya per seribu audiens baru — di panel Strategy Report."
   },
   "t04_halo": {
    "action": "",
@@ -181,12 +181,12 @@
   "t05_growth_engagements": {
    "action": "",
    "headline": "Merek tumbuh lebih cepat daripada kategori.",
-   "mechanism": "Interaksi BARDI Smart Home tumbuh 185,8% dibanding periode sebelumnya, sementara kategori 15,6%."
+   "mechanism": "Interaksi BARDI Smart Home naik 185,8% dibanding periode sebelumnya, sementara kategori naik 15,6%."
   },
   "t05_growth_impressions": {
    "action": "",
    "headline": "Merek tumbuh lebih cepat daripada kategori.",
-   "mechanism": "Impresi BARDI Smart Home tumbuh 194,1% dibanding periode sebelumnya, sementara kategori 28,5%."
+   "mechanism": "Impresi BARDI Smart Home naik 194,1% dibanding periode sebelumnya, sementara kategori naik 28,5%."
   },
   "t05_rank_consideration": {
    "action": "",
@@ -286,7 +286,7 @@
   "t10_coverage": {
    "action": "",
    "headline": "Ringkasan data dan cakupan.",
-   "mechanism": "Data per 2026-10-10: riwayat 84 hari, belanja tercatat 28 dari 28 hari, paket Lite, benchmark Top 5,Top 10,Top 25,Top 50."
+   "mechanism": "Data per 2026-10-10: riwayat 84 hari, belanja tercatat 28 dari 28 hari, paket Lite, benchmark tersedia di 4 tingkat."
   }
  },
  "charts": {
@@ -2117,8 +2117,12 @@
   "108": {
    "below_cut": [
     {
-     "id": "t05_growth_engagements",
-     "materiality": 0.258254
+     "id": "t06_consideration_gochek_indonesia",
+     "materiality": 0.379552
+    },
+    {
+     "id": "t06_awareness_distributor_laptop",
+     "materiality": 0.260671
     },
     {
      "id": "t05_growth_impressions",
@@ -2151,22 +2155,15 @@
     {
      "id": "t06_conversion_nubia_indonesia",
      "materiality": 0.12522
-    },
-    {
-     "id": "t07_locked_search_volume",
-     "materiality": 0.089443
-    },
-    {
-     "id": "t07_locked_nsr",
-     "materiality": 0.089443
     }
    ],
    "selected": [
     "t06_awareness_kotak_katik",
     "t06_awareness_tp_link_indonesia",
-    "t06_consideration_gochek_indonesia",
     "t05_sov_video_views_6s",
-    "t06_awareness_distributor_laptop"
+    "t05_growth_engagements",
+    "t07_locked_search_volume",
+    "t07_locked_nsr"
    ]
   },
   "109": {
@@ -2268,7 +2265,7 @@
       "evidence_refs": [
        "t02_spend_response"
       ],
-      "text": "Dari 48 hari, belanja harian dan audiens baru Consideration 2 hari kemudian belum bergerak bersama (R² 0,00), jadi batas belanja belum bisa ditarik. Rata-rata biayanya Rp209.718 per 1.000 audiens baru: Rp48.596.564 untuk 231.723 orang."
+      "text": "Dari 48 hari, belanja harian dan audiens baru Consideration 2 hari kemudian belum bergerak bersama (R² 0,00), jadi batas belanja belum bisa ditarik. Rata-rata biayanya Rp209.718 per seribu audiens baru: Rp48.596.564 untuk 231.723 orang."
      }
     ]
    },
@@ -2287,7 +2284,7 @@
       "evidence_refs": [
        "t03_no_goal"
       ],
-      "text": "Belum ada target untuk dipantau. Tetapkan target — peringkat, pangsa, rasio ukuran tahap, atau biaya per 1.000 audiens baru — di panel Strategy Report."
+      "text": "Belum ada target untuk dipantau. Tetapkan target — peringkat, pangsa, rasio ukuran tahap, atau biaya per seribu audiens baru — di panel Strategy Report."
      }
     ]
    },
@@ -2360,9 +2357,9 @@
      },
      {
       "evidence_refs": [
-       "t06_consideration_gochek_indonesia"
+       "t05_sov_video_views_6s"
       ],
-      "text": "Gochek Indonesia menyalip di tahap Consideration: dari #44 ke #35, kini di atas BARDI Smart Home (#38)."
+      "text": "Pangsa kategori untuk tontonan 6 detik naik dari 0,063% ke 0,320% (rata-rata Top 10 5,40%)."
      }
     ]
    },
@@ -2400,7 +2397,7 @@
       "evidence_refs": [
        "t10_coverage"
       ],
-      "text": "Data per 2026-10-10: riwayat 84 hari, belanja tercatat 28 dari 28 hari, paket Lite, benchmark Top 5,Top 10,Top 25,Top 50."
+      "text": "Data per 2026-10-10: riwayat 84 hari, belanja tercatat 28 dari 28 hari, paket Lite, benchmark tersedia di 4 tingkat."
      }
     ]
    },
@@ -2424,13 +2421,6 @@
    "title": "Pesaing menyalip di tahap Awareness."
   },
   {
-   "detail": "Gochek Indonesia menyalip di tahap Consideration: dari #44 ke #35, kini di atas BARDI Smart Home (#38).",
-   "finding_id": "t06_consideration_gochek_indonesia",
-   "kind": "brand_overtaken",
-   "status": "investigate",
-   "title": "Pesaing menyalip di tahap Consideration."
-  },
-  {
    "detail": "Pangsa kategori untuk tontonan 6 detik naik dari 0,063% ke 0,320% (rata-rata Top 10 5,40%).",
    "finding_id": "t05_sov_video_views_6s",
    "kind": "sov_gaining",
@@ -2438,11 +2428,25 @@
    "title": "Pangsa kategori sedang naik."
   },
   {
-   "detail": "Distributor Laptop turun dari #27 ke #40 di tahap Awareness dalam 14 hari (BARDI Smart Home #36).",
-   "finding_id": "t06_awareness_distributor_laptop",
-   "kind": "competitor_falling",
+   "detail": "Interaksi BARDI Smart Home naik 185,8% dibanding periode sebelumnya, sementara kategori naik 15,6%.",
+   "finding_id": "t05_growth_engagements",
+   "kind": "growing_faster_than_category",
    "status": "good",
-   "title": "Pesaing turun di tahap Awareness."
+   "title": "Merek tumbuh lebih cepat daripada kategori."
+  },
+  {
+   "detail": "Pangsa pencarian merek membutuhkan paket TTMS penuh; akun ini memakai paket Lite.",
+   "finding_id": "t07_locked_search_volume",
+   "kind": "data_coverage_gap",
+   "status": "locked",
+   "title": "Pangsa pencarian merek terkunci di paket Lite."
+  },
+  {
+   "detail": "Sentimen bersih (NSR) membutuhkan paket TTMS penuh; akun ini memakai paket Lite.",
+   "finding_id": "t07_locked_nsr",
+   "kind": "data_coverage_gap",
+   "status": "locked",
+   "title": "Sentimen bersih (NSR) terkunci di paket Lite."
   }
  ],
  "tier": "instant"

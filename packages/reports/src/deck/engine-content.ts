@@ -7,6 +7,8 @@ import {
   EngineSignalSchema,
   EngineStrategyChartsSchema,
   EngineStrategyMetaSchema,
+  EngineStrategySectionDraftSchema,
+  EngineVerdictDraftSchema,
 } from '../strategy-report/engine-content.js';
 
 /**
@@ -245,6 +247,21 @@ export const EngineBriefContentV2Schema = z.object({
 });
 
 /**
+ * Strategy Report content: identical to v2 except that its `sections` carry
+ * the strategy drafts — T3–T8 / Lampiran A paragraphs and the T1 verdict —
+ * rather than the deck's `headline/mechanism/action` shape. The engine's
+ * `SectionEntry.draft` is an untyped dict for exactly this reason; the deck
+ * keeps its strict draft schema, and strategy content is checked against its
+ * own shapes instead.
+ */
+export const EngineStrategySectionEntrySchema = EngineSectionEntrySchema.extend({
+  draft: z.union([EngineStrategySectionDraftSchema, EngineVerdictDraftSchema]),
+});
+export const EngineStrategyContentSchema = EngineBriefContentV2Schema.extend({
+  sections: z.record(EngineStrategySectionEntrySchema).default({}),
+});
+
+/**
  * Pre-M0 content: the four narrated keys, no version discriminator. Kept so a
  * brief already sitting in `insight.brief` can still be re-rendered — with
  * prose only, since a v1 payload carries no findings to build cards from.
@@ -302,8 +319,13 @@ const EMPTY_PROBE_LOOP: EngineProbeLoop = {
  * something to paper over with defaults.
  */
 export function parseEngineContent(raw: unknown): ParsedEngineContent {
-  const record = raw as { content_version?: unknown } | null | undefined;
+  const record = raw as { content_version?: unknown; brief_type?: unknown } | null | undefined;
   if (record && typeof record === 'object' && record.content_version !== undefined) {
+    if (record.brief_type === 'strategy') {
+      // Validated against the strategy draft shapes; `buildStrategyReportModel`
+      // re-reads each draft through its own schema, never as a deck draft.
+      return { version: 2, content: EngineStrategyContentSchema.parse(raw) as unknown as EngineBriefContentV2 };
+    }
     return { version: 2, content: EngineBriefContentV2Schema.parse(raw) };
   }
   const v1 = EngineBriefContentV1Schema.parse(raw ?? {});

@@ -38,6 +38,11 @@ export {
   type StrategySpec,
   type StrategySpecIssue,
 } from './strategy-report/spec.js';
+export { buildStrategyReportModel, NotAStrategyReportError, SECTION as STRATEGY_SECTION } from './strategy-report/build.js';
+export type { BuildContext as StrategyBuildContext } from './strategy-report/build.js';
+export type * from './strategy-report/model.js';
+export { renderStrategyReportHtml } from './strategy-report/render.js';
+export type * from './strategy-report/engine-content.js';
 
 export * from './template-report/rubric.js';
 export type * from './template-report/model.js';

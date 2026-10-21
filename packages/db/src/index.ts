@@ -125,12 +125,14 @@ export {
   deleteStrategySpec,
   getStrategySpec,
   listMarketScopeAccounts,
+  resolveStrategyWindow,
   upsertStrategySpec,
 } from './repositories/strategy-spec.js';
 export type { MarketScopeAccountSummary, StoredStrategySpec, StrategySpecRow } from './repositories/strategy-spec.js';
 export {
   acceptStrategyAction,
   insertProposedActions,
+  insertProposedActionsOnce,
   listStrategyActions,
   snoozeStrategyAction,
 } from './repositories/strategy-action.js';

@@ -26,7 +26,7 @@ MAX_PER_GENERATOR = 2
 SECTION_CAPS = {T.T2_ACTIONS: 3, T.T8_WARNINGS: 5, T.T9_ACTION_LOG: 6, T.LAMPIRAN_A: 50}
 ROUTED = (T.T2_ACTIONS, T.T3_FUNNEL, T.T4_SPEND, T.T5_PACE, T.T6_CLASS, T.T7_CONTENT, T.T8_WARNINGS, T.T9_ACTION_LOG, T.LAMPIRAN_A)
 #: Sections that show every finding that names them, not a ranked few per generator.
-UNCAPPED_PER_GENERATOR = {T.T2_ACTIONS, T.T9_ACTION_LOG, T.LAMPIRAN_A, T.T8_WARNINGS}
+UNCAPPED_PER_GENERATOR = {T.T2_ACTIONS, T.T9_ACTION_LOG, T.LAMPIRAN_A}
 
 BRAND_T6 = {
     ClaimFrame.SOV_GAINING.value, ClaimFrame.SOV_LOSING.value, ClaimFrame.SOV_STABLE.value, ClaimFrame.RANK_MOVED.value,
@@ -88,6 +88,11 @@ def route_strategy(findings: list[Finding], cls: ReportClass) -> dict[StrategySe
         ranked, picked = [], 0
         for i, f in enumerate(pool, start=1):
             n = per_gen.get(f.generator, 0)
+            # A Lite lock row is information, not a ranked signal: T8 always shows
+            # it (PRD §5.1), and it never takes a slot from a real warning.
+            if sid == T.T8_WARNINGS and f.evidence.get("locked_reason"):
+                ranked.append(RankedFinding(finding=f, rank=i, included=True))
+                continue
             include = picked < cap and (sid in UNCAPPED_PER_GENERATOR or n < MAX_PER_GENERATOR)
             if include:
                 per_gen[f.generator] = n + 1

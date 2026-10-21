@@ -98,6 +98,11 @@ def finding_sentence(f: Finding, brand: str) -> str:
             f"({pct(e['bench_size_ratio'])})."
         )
     if c == CF.STAGE_INFLOW_OFFSET.value:
+        if float(e["offset_ratio"]) > 1:
+            return (
+                f"Dalam {num(e['window_days'])} hari, {num(e['new_total'])} orang masuk tahap {st} dan {num(e['outflow_total'])} keluar — "
+                f"lebih banyak yang keluar, sehingga tahap ini berkurang {num(abs(float(e['net_change'])))} orang."
+            )
         return (
             f"Dalam {num(e['window_days'])} hari, {num(e['new_total'])} orang masuk tahap {st} dan {num(e['outflow_total'])} keluar: "
             f"{pct(e['offset_ratio'], 1)} audiens baru tertutup oleh yang keluar, sehingga bersihnya {num(e['net_change'])} orang."
@@ -159,7 +164,11 @@ def finding_sentence(f: Finding, brand: str) -> str:
         return f"Pangsa kategori untuk {m} stabil di {pct(e['share_now'])}{bench}."
     if c in (CF.GROWING_FASTER_THAN_CATEGORY.value, CF.GROWING_SLOWER_THAN_CATEGORY.value):
         m = METRIC.get(str(e["metric"]), str(e["metric"]))
-        return f"{m.capitalize()} {brand} tumbuh {pct(e['brand_growth'], 1)} dibanding periode sebelumnya, sementara kategori {pct(e['category_growth'], 1)}."
+        def move(g: object) -> str:
+            v = float(g)  # type: ignore[arg-type]
+            return f"{'naik' if v >= 0 else 'turun'} {pct(abs(v), 1)}"
+
+        return f"{m.capitalize()} {brand} {move(e['brand_growth'])} dibanding periode sebelumnya, sementara kategori {move(e['category_growth'])}."
     if c == CF.RANK_MOVED.value:
         verb = "naik" if float(e["rank_change"]) > 0 else "turun"
         return f"Peringkat {STAGE[str(e['stage'])]} {verb} dari #{e['rank_7d']} ke #{e['rank_now']} dari {num(e['rank_n'])} merek dalam 7 hari."
@@ -251,6 +260,8 @@ HEADLINE = {
 def finding_headline(f: Finding) -> str:
     e = f.evidence
     st, nx = STAGE.get(str(e.get("stage")), ""), STAGE.get(str(e.get("next_stage")), "")
+    if f.claim_frame == CF.STAGE_INFLOW_OFFSET.value and float(e.get("offset_ratio", 0)) > 1:
+        return f"Tahap {st} menyusut: lebih banyak yang keluar daripada yang masuk."
     tpl = HEADLINE.get(f.claim_frame)
     if tpl:
         return tpl.format(st=st, nx=nx)

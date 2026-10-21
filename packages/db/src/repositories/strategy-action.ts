@@ -43,6 +43,24 @@ export async function insertProposedActions(
   return rows.map((r) => r.id);
 }
 
+/**
+ * Record a run's proposals unless that run already recorded them — the same
+ * report opened as HTML and then downloaded as PDF must not propose twice.
+ */
+export async function insertProposedActionsOnce(
+  db: Database,
+  clientId: string,
+  runId: string,
+  actions: readonly unknown[],
+): Promise<string[]> {
+  const [existing] = await db
+    .select({ id: strategyActions.id })
+    .from(strategyActions)
+    .where(and(eq(strategyActions.clientId, clientId), eq(strategyActions.runId, runId)))
+    .limit(1);
+  return existing ? [] : insertProposedActions(db, clientId, runId, actions);
+}
+
 /** Newest first. `limit` 6 is what the report's T9 table shows. */
 export async function listStrategyActions(
   db: Database,
