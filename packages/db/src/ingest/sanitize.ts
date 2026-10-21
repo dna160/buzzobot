@@ -25,6 +25,11 @@ import {
   discoverSanitizedBrands,
   type DiscoveredBrand,
 } from './discovery.js';
+import {
+  computeGmvMaxResidual,
+  GMV_MAX_ACCOUNT_TOTAL_NAME,
+  gmvMaxAccountTotalExternalId,
+} from './gmv-max-residual.js';
 
 // Parse PostgreSQL DATE type (OID 1082) as plain string to avoid local timezone offset shifting dates
 pg.types.setTypeParser(1082, (val: string) => val);
@@ -292,14 +297,17 @@ export async function syncBrandToDomain(
   const gmvMax = postgresPool
     ? await ingestGmvMaxCampaigns(db, postgresPool, accountId, adAccountIds, coveredCampaignDays)
     : EMPTY_INGEST;
+  const gmvMaxTotals = postgresPool
+    ? await ingestGmvMaxAccountTotals(db, postgresPool, accountId, adAccountIds)
+    : EMPTY_INGEST;
 
   // 8. Record Sync Run
-  const dates = [...new Set([...parsed.dates, ...warehouse.dates, ...gmvMax.dates])].sort();
+  const dates = [...new Set([...parsed.dates, ...warehouse.dates, ...gmvMax.dates, ...gmvMaxTotals.dates])].sort();
   const windowStart = dates[0] ?? new Date().toISOString().slice(0, 10);
   const windowEnd = dates[dates.length - 1] ?? windowStart;
 
-  const totalHourly = hourlyIngested + warehouse.hourlyIngested + gmvMax.hourlyIngested;
-  const totalDaily = dailyIngested + warehouse.dailyIngested + gmvMax.dailyIngested;
+  const totalHourly = hourlyIngested + warehouse.hourlyIngested + gmvMax.hourlyIngested + gmvMaxTotals.hourlyIngested;
+  const totalDaily = dailyIngested + warehouse.dailyIngested + gmvMax.dailyIngested + gmvMaxTotals.dailyIngested;
 
   await db.insert(syncRuns).values({
     accountId,
@@ -611,6 +619,119 @@ async function ingestGmvMaxCampaigns(
 }
 
 /**
+ * GMV Max spend the campaign table above never reports, booked from the
+ * advertiser-level `tiktok_ads_analytics.gmv_max_cost` (see
+ * `gmv-max-residual.ts` for why and for the tolerance).
+ *
+ * Runs after `ingestGmvMaxCampaigns` and only ever adds the remainder, so a day
+ * the campaign table covers is not counted twice. Analytics carries cost only:
+ * orders and revenue stay 0 rather than being guessed, so a client whose GMV
+ * Max lives only here shows its true spend with no attributed revenue.
+ *
+ * Re-running is idempotent. The day buckets are upserts, and once the campaign
+ * table catches up on a day the remainder disappears and the earlier
+ * account-total row for that day is deleted.
+ */
+export async function ingestGmvMaxAccountTotals(
+  db: Database,
+  postgresPool: pg.Pool,
+  accountId: string,
+  adAccountIds: readonly string[],
+): Promise<IngestResult> {
+  const ids = adAccountIds.filter(Boolean);
+  if (ids.length === 0) return EMPTY_INGEST;
+
+  const [analytics, campaign] = await Promise.all([
+    postgresPool.query<{ ad_account_id: string; date_str: string; gmv_max_cost: string | number; currency: string | null }>(
+      `SELECT ad_account_id, date::text AS date_str, gmv_max_cost, currency
+       FROM tiktok_ads_analytics
+       WHERE ad_account_id = ANY($1) AND gmv_max_cost > 0;`,
+      [ids],
+    ),
+    postgresPool.query<{ ad_account_id: string; date_str: string; cost: string | number }>(
+      `SELECT ad_account_id, date::text AS date_str, SUM(COALESCE(cost, 0)) AS cost
+       FROM tiktok_ads_gmv_max_product_campaign
+       WHERE ad_account_id = ANY($1)
+       GROUP BY ad_account_id, date;`,
+      [ids],
+    ),
+  ]);
+
+  const residual = computeGmvMaxResidual(
+    analytics.rows.map((r) => ({
+      adAccountId: r.ad_account_id,
+      date: r.date_str,
+      gmvMaxCost: Number(r.gmv_max_cost) || 0,
+      currency: r.currency ?? 'IDR',
+    })),
+    campaign.rows.map((r) => ({ adAccountId: r.ad_account_id, date: r.date_str, cost: Number(r.cost) || 0 })),
+  );
+
+  let dailyIngested = 0;
+  let hourlyIngested = 0;
+  const residualAccounts = [...new Set(residual.map((r) => r.adAccountId))];
+  if (residual.length > 0) {
+    const campaignIdMap = await upsertCampaigns(
+      db,
+      accountId,
+      residualAccounts.map((id) => ({
+        externalId: gmvMaxAccountTotalExternalId(id),
+        name: GMV_MAX_ACCOUNT_TOTAL_NAME,
+        objective: CampaignObjective.ProductSales,
+        status: EntityStatus.Active,
+        dailyBudget: null,
+      })),
+    );
+    const metrics = residual.map((r) => ({
+      date: r.date,
+      campaignExternalId: gmvMaxAccountTotalExternalId(r.adAccountId),
+      spend: r.spend,
+      impressions: 0,
+      clicks: 0,
+      conversions: 0,
+      conversionValue: 0,
+      videoViews: 0,
+    }));
+    dailyIngested = await upsertPaidMetrics(db, campaignIdMap, metrics);
+    hourlyIngested = await upsertPaidHourlyMetrics(db, campaignIdMap, new Map(), metrics.map(dayBucket));
+  }
+
+  for (const id of ids) {
+    const keep = residual.filter((r) => r.adAccountId === id).map((r) => r.date);
+    await deleteStaleAccountTotals(db, accountId, gmvMaxAccountTotalExternalId(id), keep);
+  }
+
+  return {
+    campaignCount: residualAccounts.length,
+    dailyIngested,
+    hourlyIngested,
+    dates: Array.from(new Set(residual.map((r) => r.date))).sort(),
+  };
+}
+
+/** Remove account-total rows for days that no longer have a GMV Max remainder. */
+async function deleteStaleAccountTotals(
+  db: Database,
+  accountId: string,
+  externalId: string,
+  keepDates: readonly string[],
+): Promise<void> {
+  const keep = keepDates.length > 0
+    ? sql`AND m.date NOT IN (${sql.join(keepDates.map((d) => sql`${d}::date`), sql`, `)})`
+    : sql``;
+  for (const table of [sql`paid_hourly_metrics`, sql`paid_daily_metrics`]) {
+    await db.execute(sql`
+      DELETE FROM ${table} m
+      USING campaigns c
+      WHERE m.campaign_id = c.id
+        AND c.account_id = ${accountId}::uuid
+        AND c.external_id = ${externalId}
+        ${keep}
+    `);
+  }
+}
+
+/**
  * Ingest daily campaign performance for standard Buzzohero brands (GMV Brief).
  */
 export async function syncStandardBrandToDomain(
@@ -683,13 +804,14 @@ export async function syncStandardBrandToDomain(
   try {
     const warehouse = await ingestWarehouseCampaigns(db, postgresPool, accountId, adAccountIds);
     const gmvMax = await ingestGmvMaxCampaigns(db, postgresPool, accountId, adAccountIds);
+    const gmvMaxTotals = await ingestGmvMaxAccountTotals(db, postgresPool, accountId, adAccountIds);
 
-    if (warehouse.dailyIngested === 0 && gmvMax.dailyIngested === 0) {
+    const dailyIngested = warehouse.dailyIngested + gmvMax.dailyIngested + gmvMaxTotals.dailyIngested;
+    if (dailyIngested === 0) {
       return { dailyIngested: 0, campaignCount: 0 };
     }
 
-    const dailyIngested = warehouse.dailyIngested + gmvMax.dailyIngested;
-    const allDates = [...warehouse.dates, ...gmvMax.dates].sort();
+    const allDates = [...warehouse.dates, ...gmvMax.dates, ...gmvMaxTotals.dates].sort();
     const windowStart = allDates[0] ?? new Date().toISOString().slice(0, 10);
     const windowEnd = allDates[allDates.length - 1] ?? windowStart;
 
@@ -703,7 +825,7 @@ export async function syncStandardBrandToDomain(
       finishedAt: new Date(),
     });
 
-    return { dailyIngested, campaignCount: warehouse.campaignCount + gmvMax.campaignCount };
+    return { dailyIngested, campaignCount: warehouse.campaignCount + gmvMax.campaignCount + gmvMaxTotals.campaignCount };
   } catch (err) {
     console.warn(`[Sync] Warning syncing standard brand "${brand.name}":`, err);
     return { dailyIngested: 0, campaignCount: 0 };
