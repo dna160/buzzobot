@@ -1,0 +1,82 @@
+import { asc, desc, eq } from 'drizzle-orm';
+import type { Database } from '../client.js';
+import { marketScopeAccounts, strategySpecs } from '../schema.js';
+
+/**
+ * Storage for per-client Strategy Report specs (PRD §6.4, §9.5).
+ *
+ * Schema-agnostic like `report-spec.ts`: this module stores the flat row and
+ * `@tempo/reports` (`parseStrategySpec`) owns what a valid spec is, so the
+ * editor and the report never check against two different definitions.
+ */
+
+export interface StrategySpecRow {
+  ttmsAccountId: string | null;
+  reportClassOverride: string | null;
+  goalKind: string | null;
+  goalStage: string | null;
+  goalMetric: string | null;
+  goalValue: number | null;
+  goalDeadline: string | null;
+  creatorFeeMonthly: number | null;
+  bgcCostMonthly: number | null;
+}
+
+export interface StoredStrategySpec extends StrategySpecRow {
+  clientId: string;
+  updatedBy: string | null;
+  updatedAt: Date;
+}
+
+export async function getStrategySpec(db: Database, clientId: string): Promise<StoredStrategySpec | null> {
+  const [row] = await db.select().from(strategySpecs).where(eq(strategySpecs.clientId, clientId)).limit(1);
+  return row ?? null;
+}
+
+/** One row per client — saving twice replaces. */
+export async function upsertStrategySpec(
+  db: Database,
+  clientId: string,
+  row: StrategySpecRow,
+  updatedBy: string | null = null,
+): Promise<void> {
+  const values = { ...row, updatedBy, updatedAt: new Date() };
+  await db
+    .insert(strategySpecs)
+    .values({ clientId, ...values })
+    .onConflictDoUpdate({ target: strategySpecs.clientId, set: values });
+}
+
+/** Back to defaults: inferred class, no goal, no fees. */
+export async function deleteStrategySpec(db: Database, clientId: string): Promise<void> {
+  await db.delete(strategySpecs).where(eq(strategySpecs.clientId, clientId));
+}
+
+export interface MarketScopeAccountSummary {
+  ttmsAccountId: string;
+  brandName: string;
+  vertical: string | null;
+  isLite: boolean;
+  isPrimary: boolean;
+  unavailableMetrics: string[];
+  lastDataDate: string | null;
+  syncedAt: Date;
+}
+
+/** A client's mirrored TTMS accounts, primary first — the spec editor's account picker. */
+export async function listMarketScopeAccounts(db: Database, clientId: string): Promise<MarketScopeAccountSummary[]> {
+  return db
+    .select({
+      ttmsAccountId: marketScopeAccounts.ttmsAccountId,
+      brandName: marketScopeAccounts.brandName,
+      vertical: marketScopeAccounts.vertical,
+      isLite: marketScopeAccounts.isLite,
+      isPrimary: marketScopeAccounts.isPrimary,
+      unavailableMetrics: marketScopeAccounts.unavailableMetrics,
+      lastDataDate: marketScopeAccounts.lastDataDate,
+      syncedAt: marketScopeAccounts.syncedAt,
+    })
+    .from(marketScopeAccounts)
+    .where(eq(marketScopeAccounts.clientId, clientId))
+    .orderBy(desc(marketScopeAccounts.isPrimary), asc(marketScopeAccounts.brandName));
+}

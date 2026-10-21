@@ -121,6 +121,24 @@ export {
 export type { TemplateReportRunKey, TemplateReportRunRow } from './repositories/template-report-run.js';
 
 export { getPaidTiktokAdAccountId, getPaidTiktokAdAccountIds } from './repositories/tiktok-account.js';
+export {
+  deleteStrategySpec,
+  getStrategySpec,
+  listMarketScopeAccounts,
+  upsertStrategySpec,
+} from './repositories/strategy-spec.js';
+export type { MarketScopeAccountSummary, StoredStrategySpec, StrategySpecRow } from './repositories/strategy-spec.js';
+export {
+  acceptStrategyAction,
+  insertProposedActions,
+  listStrategyActions,
+  snoozeStrategyAction,
+} from './repositories/strategy-action.js';
+export type { StrategyActionRow, StrategyActionStatus } from './repositories/strategy-action.js';
+export { syncMarketScope, verifyMarketScopeMirror } from './ingest/market-scope-sync.js';
+export type { MarketScopeSyncResult, MirrorCountMismatch } from './ingest/market-scope-sync.js';
+export { checkSpendParity, defaultParityWindow } from './ingest/spend-parity.js';
+export type { SpendParityRow } from './ingest/spend-parity.js';
 export { fetchTemplateReportRawData, createSourcePool } from './ingest/template-report-data.js';
 export { fetchNorthStarRawData } from './ingest/north-star-data.js';
 export type {

@@ -23,6 +23,21 @@
 export { BriefObjective, OBJECTIVE_NORTH_STAR, NORTH_STAR_OBJECTIVE, isBriefObjective } from '@tempo/core';
 export { comboChart, type ComboPoint, type ComboOptions } from './charts.js';
 export { renderHourlyHtml, type HourlyReportOptions } from './hourly.js';
+export {
+  EMPTY_STRATEGY_SPEC,
+  GOAL_KINDS,
+  GOAL_STAGES,
+  SHARE_GOAL_METRICS,
+  StrategySpecError,
+  StrategySpecSchema,
+  parseStrategySpec,
+  strategySpecFromRow,
+  strategySpecToRow,
+  type GoalKind,
+  type StrategyGoal,
+  type StrategySpec,
+  type StrategySpecIssue,
+} from './strategy-report/spec.js';
 
 export * from './template-report/rubric.js';
 export type * from './template-report/model.js';

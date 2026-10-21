@@ -27,7 +27,8 @@
     "db:inspect-tempo": "tsx --env-file-if-exists=../../.env src/scripts/inspect-tempo.ts",
     "db:sanitize": "tsx --env-file-if-exists=../../.env src/scripts/sanitize.ts",
     "db:scheduler": "tsx --env-file-if-exists=../../.env src/scripts/scheduler.ts",
-    "db:spend-parity": "tsx --env-file-if-exists=../../.env src/scripts/spend-parity.ts"
+    "db:spend-parity": "tsx --env-file-if-exists=../../.env src/scripts/spend-parity.ts",
+    "db:market-scope": "tsx --env-file-if-exists=../../.env src/scripts/market-scope-sync.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",

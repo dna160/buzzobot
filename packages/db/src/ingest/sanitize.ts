@@ -30,6 +30,7 @@ import {
   GMV_MAX_ACCOUNT_TOTAL_NAME,
   gmvMaxAccountTotalExternalId,
 } from './gmv-max-residual.js';
+import { syncMarketScope } from './market-scope-sync.js';
 
 // Parse PostgreSQL DATE type (OID 1082) as plain string to avoid local timezone offset shifting dates
 pg.types.setTypeParser(1082, (val: string) => val);
@@ -1081,6 +1082,20 @@ export async function fetchSanitizeAndSeed(options: FetchSanitizeOptions = {}) {
       }
     }
     console.log(`  ✓ Successfully provisioned ${standardBrands.length} brands (${syncedStandardCount} with active campaign facts).`);
+
+    // 3. Market Scope (TTMS) mirror — Strategy Report PRD §6.3. After the brand
+    // loops because it links TTMS accounts to the clients they just provisioned.
+    // TTMS feeds one report; a failure here must not fail the ads sync.
+    if (postgresPool) {
+      console.log('\n🔭 Mirroring TikTok Market Scope...');
+      try {
+        const ms = await syncMarketScope(db, postgresPool);
+        const rows = ms.accounts.reduce((n, a) => n + a.audienceRows + a.insightRows + a.rankingRows, 0);
+        console.log(`  ✓ ${ms.accounts.length} TTMS account(s) mirrored (${rows} rows); ${ms.unlinked.length} unlinked.`);
+      } catch (err) {
+        console.warn('  ⚠️ Market Scope mirror failed:', err);
+      }
+    }
 
     console.log('\n🎉 All Buzzohero brands and metrics are fully synchronized and available on the website!');
   } finally {

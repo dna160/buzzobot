@@ -75,3 +75,53 @@ describe('metric catalog', () => {
     }
   });
 });
+
+describe('Market Scope keys (Strategy Report PRD §6.5, P0 corrections)', () => {
+  const ttms = entries.filter(([, def]) => def.surface === 'market_scope');
+  const keys = ttms.map(([key]) => key as string);
+
+  it('generates exactly the expected families', () => {
+    expect(keys.filter((k) => k.startsWith('ttms.audience.') && !k.endsWith('size_ratio'))).toHaveLength(16);
+    expect(keys.filter((k) => k.endsWith('.size_ratio'))).toEqual([
+      'ttms.audience.awareness.size_ratio',
+      'ttms.audience.consideration.size_ratio',
+    ]);
+    expect(keys.filter((k) => /^ttms\.[a-z0-9_]+$/.test(k) && k !== 'ttms.halo_ratio')).toHaveLength(11);
+    expect(keys.filter((k) => /^ttms\.[a-z0-9_]+\.share$/.test(k))).toHaveLength(10);
+    expect(keys.filter((k) => k.startsWith('ttms.impressions.share.'))).toHaveLength(9);
+    expect(keys.filter((k) => k.startsWith('strategy.'))).toEqual([
+      'strategy.cost_per_1k_new.awareness',
+      'strategy.cost_per_1k_new.consideration',
+      'strategy.spend_cap_daily',
+    ]);
+    expect(ttms).toHaveLength(16 + 2 + 11 + 10 + 9 + 1 + 3);
+  });
+
+  it('carries none of the keys P0 showed the data cannot support', () => {
+    // move_on_rate → size_ratio (P0 §6.2); per-metric insight rank is never
+    // stored (P0 §2); Conversion has no daily flow to cost (P0 §6.3).
+    expect(keys.some((k) => k.includes('move_on'))).toBe(false);
+    expect(keys.filter((k) => /^ttms\.[a-z0-9_]+\.rank$/.test(k))).toEqual([]);
+    expect(keys).not.toContain('strategy.cost_per_1k_new.conversion');
+    expect(keys).not.toContain('ttms.nsr.share');
+  });
+
+  it('never stacks content types: their shares are neutral, not "more is better"', () => {
+    for (const [key, def] of ttms) {
+      if (key.startsWith('ttms.impressions.share.')) expect(def.goodDirection, key).toBe('neutral');
+    }
+  });
+
+  it('keeps every Market Scope key out of the deck picker', () => {
+    for (const [key, def] of ttms) expect(def.pickerVisible, key).toBe(false);
+  });
+
+  it('ranks read lower-is-better and format as #n', () => {
+    for (const [key, def] of ttms) {
+      if (key.endsWith('.rank')) {
+        expect(def.format, key).toBe('rank');
+        expect(def.goodDirection, key).toBe('down');
+      }
+    }
+  });
+});
