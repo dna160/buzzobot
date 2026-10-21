@@ -12,7 +12,7 @@ import {
 import { authenticate, corsHeaders, preflight } from '@/lib/api-auth';
 import { htmlToPdf } from '@/lib/report-pdf';
 import { assembleStrategyReport, requestStrategyRun, StrategyEngineError } from '@/lib/strategy-report-pipeline';
-import { recordProposedActions } from '@/lib/strategy-actions';
+import { recordStrategyRun } from '@/lib/strategy-actions';
 
 /**
  * `GET /api/reports/:slug/strategy-report` — the Tempo Strategy Report
@@ -114,9 +114,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
     return new Response('Strategy report content did not match the engine contract', { status: 502, headers: cors });
   }
 
-  // PRD §5.6 / Q3: every client-facing run records its actions as `proposed`;
-  // only an explicit accept starts the loop. A class preview proposes nothing.
-  if (!reportClass) await recordProposedActions(db, client.id, result.runId, result.content);
+  // PRD §5.6 / Q3: every client-facing run records its actions as `proposed`
+  // (only an explicit accept starts the loop) and writes its T11 measurements of
+  // running actions back. A class preview writes nothing.
+  if (!reportClass) await recordStrategyRun(db, client.id, result.runId, result.content);
 
   const baseHeaders = { ...cors, 'X-Engine-Run-Id': result.runId, 'Cache-Control': 'no-store' };
   if (format === 'json') {

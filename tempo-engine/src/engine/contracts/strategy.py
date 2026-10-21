@@ -151,6 +151,21 @@ class OpenAction(BaseModel):
     status: str = "running"
 
 
+class ClosedAction(BaseModel):
+    """An action an earlier run already judged (PRD §5.6): shown in the T9 log
+    with its stored verdict, never re-measured."""
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str
+    action: dict
+    started_at: date | None = None
+    status: Literal["worked", "weak", "failed"]
+    measured_value: float | None = None
+    category_delta: float | None = None
+    measured_at: date | None = None
+
+
 class Classification(BaseModel):
     """PRD §5.2 — resolved once per run by code, exported so the AM sees why."""
 
@@ -196,6 +211,7 @@ class StrategyFrame(BaseModel):
     creator_fee_monthly: float | None = None
     bgc_cost_monthly: float | None = None
     open_actions: list[OpenAction] = Field(default_factory=list)
+    closed_actions: list[ClosedAction] = Field(default_factory=list)
     classification: Classification
     generated_at: datetime
 

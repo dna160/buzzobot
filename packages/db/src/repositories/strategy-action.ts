@@ -115,3 +115,33 @@ export function acceptStrategyAction(
 export function snoozeStrategyAction(db: Database, clientId: string, id: string): Promise<StrategyActionRow | null> {
   return transition(db, clientId, id, ['proposed'], { status: 'snoozed' });
 }
+
+export interface ActionMeasurement {
+  verdict: 'worked' | 'weak' | 'failed' | 'running';
+  measuredValue: number | null;
+  categoryDelta: number | null;
+  measuredRunId: string;
+}
+
+/**
+ * Write one run's T11 measurement back (PRD §5.6, P5). A final verdict moves a
+ * `running` action to `worked | weak | failed` — once, guarded in SQL like the
+ * other transitions, so a re-run or a racing cron cannot judge it twice. A
+ * `running` verdict only refreshes the latest measured value. An action that is
+ * no longer running is left alone (returns `null`).
+ */
+export async function recordActionMeasurement(
+  db: Database,
+  clientId: string,
+  id: string,
+  m: ActionMeasurement,
+): Promise<StrategyActionRow | null> {
+  const fields = {
+    measuredValue: m.measuredValue,
+    categoryDelta: m.categoryDelta,
+    measuredRunId: m.measuredRunId,
+    measuredAt: new Date(),
+  };
+  if (m.verdict === 'running') return transition(db, clientId, id, ['running'], { status: 'running', ...fields });
+  return transition(db, clientId, id, ['running'], { status: m.verdict, ...fields });
+}

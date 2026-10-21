@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Check, Download, FileText, Loader2, RotateCcw, Save, Clock } from 'lucide-react';
+import { Check, Clock, Download, FileText, Loader2, RotateCcw, Save, Sparkles } from 'lucide-react';
 import { Button, Card, CardBody, CardHeader } from '@tempo/ui';
 import { trpc } from '@/trpc/client';
 
@@ -66,6 +66,8 @@ export function StrategyReportPanel({ slug }: { slug: string }) {
   const [preview, setPreview] = useState<'' | 'brand' | 'shop'>('');
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<string | null>(null);
+  const warm = trpc.strategySpec.warm.useQuery({ slug, days }, { enabled: !!slug });
 
   useEffect(() => {
     const s = spec.data?.spec;
@@ -136,11 +138,51 @@ export function StrategyReportPanel({ slug }: { slug: string }) {
     return `/api/reports/${encodeURIComponent(slug)}/strategy-report?${q.toString()}`;
   };
 
+  /**
+   * Full tier without a class preview runs asynchronously (PRD §9.4): start the
+   * run, poll until the engine has finished and the PDF is stored, then fetch
+   * the stored file. Returns the URL to download.
+   */
+  const runFullTier = async (): Promise<string> => {
+    const base = `/api/reports/${encodeURIComponent(slug)}/strategy-report/full`;
+    const started = await fetch(`${base}?days=${days}`, { method: 'POST' });
+    if (!started.ok) throw new Error(await started.text());
+    const { runId } = (await started.json()) as { runId: string };
+    const t0 = Date.now();
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 4000));
+      const poll = await fetch(`${base}?runId=${encodeURIComponent(runId)}`);
+      const body = (await poll.json()) as { status: string; downloadUrl?: string; error?: string };
+      if (body.status === 'ready' && body.downloadUrl) return body.downloadUrl;
+      if (body.status === 'failed') throw new Error(body.error ?? 'Tier penuh gagal');
+      setProgress(`Tier penuh berjalan… ${Math.round((Date.now() - t0) / 1000)} detik`);
+    }
+  };
+
+  /** Regenerate the stored full-tier report for this window without downloading it. */
+  const runFullNow = async () => {
+    setBusy('full');
+    setError(null);
+    try {
+      await runFullTier();
+      await warm.refetch();
+      void utils.strategyAction.list.invalidate({ slug });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+      setProgress(null);
+    }
+  };
+
   const download = async () => {
     setBusy('pdf');
     setError(null);
+    setProgress(null);
     try {
-      const res = await fetch(reportUrl('pdf'));
+      const url = tier === 'full' && !preview ? await runFullTier() : reportUrl('pdf');
+      if (tier === 'full' && !preview) void warm.refetch();
+      const res = await fetch(url);
       if (!res.ok) throw new Error(await res.text());
       const blob = await res.blob();
       const a = document.createElement('a');
@@ -153,6 +195,7 @@ export function StrategyReportPanel({ slug }: { slug: string }) {
       setError((e as Error).message);
     } finally {
       setBusy(null);
+      setProgress(null);
     }
   };
 
@@ -309,6 +352,15 @@ export function StrategyReportPanel({ slug }: { slug: string }) {
             <Button onClick={download} disabled={busy === 'pdf'}>
               {busy === 'pdf' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Unduh PDF
             </Button>
+            <Button variant="ghost" onClick={runFullNow} disabled={busy !== null}>
+              {busy === 'full' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Jalankan tier penuh
+            </Button>
+            {progress ? <span className="text-xs text-muted">{progress}</span> : null}
+            {!progress && warm.data ? (
+              <span className="rounded bg-surface-alt px-2 py-0.5 text-xs text-secondary">
+                Dibuat {new Date(warm.data.generatedAt).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · tier penuh
+              </span>
+            ) : null}
           </div>
         </CardBody>
       </Card>

@@ -71,6 +71,14 @@ async def connect(database_url: str) -> asyncpg.Connection:
     return await asyncpg.connect(**parse_database_url(database_url))
 
 
+async def create_pool(database_url: str, *, max_size: int = 4) -> asyncpg.Pool:
+    """The API's handle (Strategy Report PRD §13 #1). A pool answers the same
+    `fetch`/`fetchrow`/`fetchval`/`execute` calls as a connection, so every
+    port and repository takes either; unlike one shared connection it lets a
+    poll run while a background run is mid-query."""
+    return await asyncpg.create_pool(**parse_database_url(database_url), min_size=1, max_size=max_size)
+
+
 @dataclass(frozen=True)
 class TempoClient:
     id: str

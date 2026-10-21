@@ -9,12 +9,14 @@ import {
   acceptStrategyAction,
   insertProposedActions,
   listStrategyActions,
+  recordActionMeasurement,
   snoozeStrategyAction,
 } from './strategy-action.js';
 import {
   deleteStrategySpec,
   getStrategySpec,
   listMarketScopeAccounts,
+  listMarketScopeClientIds,
   upsertStrategySpec,
   type StrategySpecRow,
 } from './strategy-spec.js';
@@ -112,5 +114,27 @@ describe('strategy actions', () => {
     expect(running).toHaveLength(2);
     const all = await listStrategyActions(db, clientId, { limit: 6 });
     expect(all[0]!.runId).toBe('run_2');
+  });
+});
+
+describe('closing the loop (P5)', () => {
+  it('refreshes a running action, then closes it once with its verdict', async () => {
+    const [id] = await insertProposedActions(db, clientId, 'run_m', [{ id: 'act_09' }]);
+    // Not accepted yet: a measurement cannot judge a proposal.
+    expect(await recordActionMeasurement(db, clientId, id!, { verdict: 'worked', measuredValue: 1, categoryDelta: 0, measuredRunId: 'r' })).toBeNull();
+    await acceptStrategyAction(db, clientId, id!, { acceptedBy: 'am:jo', startedAt: '2026-10-01' });
+
+    const still = await recordActionMeasurement(db, clientId, id!, { verdict: 'running', measuredValue: 0.05, categoryDelta: 0.01, measuredRunId: 'run_n' });
+    expect(still).toMatchObject({ status: 'running', measuredValue: 0.05, categoryDelta: 0.01, measuredRunId: 'run_n' });
+    expect(still!.measuredAt).toBeInstanceOf(Date);
+
+    const closed = await recordActionMeasurement(db, clientId, id!, { verdict: 'weak', measuredValue: 0.06, categoryDelta: 0.02, measuredRunId: 'run_o' });
+    expect(closed).toMatchObject({ status: 'weak', measuredValue: 0.06, measuredRunId: 'run_o' });
+    // A later run (or a racing cron) cannot judge it again.
+    expect(await recordActionMeasurement(db, clientId, id!, { verdict: 'failed', measuredValue: 0, categoryDelta: 0, measuredRunId: 'run_p' })).toBeNull();
+  });
+
+  it('lists the clients the weekly job makes a Strategy Report for', async () => {
+    expect(await listMarketScopeClientIds(db)).toEqual(new Set([clientId]));
   });
 });

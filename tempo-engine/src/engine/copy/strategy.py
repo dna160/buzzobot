@@ -287,6 +287,13 @@ EMPTY = {
 
 
 def instant_section_draft(sid: StrategySectionId, selected: list[Finding], frame: StrategyFrame, fallback_ref: str) -> StrategySectionDraft:
+    if sid == T.T9_ACTION_LOG and not selected and frame.closed_actions:
+        # Nothing running to measure, but earlier runs judged actions: T9's
+        # table shows them, so the text must not say none were accepted.
+        counts = {v: sum(1 for a in frame.closed_actions if a.status == v) for v in ("worked", "weak", "failed")}
+        tally = ", ".join(f"{n} {VERDICT[v].lower()}" for v, n in counts.items() if n)
+        text = f"Tidak ada tindakan yang sedang berjalan. Tindakan yang sudah dinilai sebelumnya: {tally}."
+        return StrategySectionDraft(headline="Belum ada tindakan baru yang berjalan.", paragraphs=[_p(text, fallback_ref)])
     if not selected:
         return StrategySectionDraft(headline=EMPTY[sid] if len(EMPTY[sid]) <= 200 else EMPTY[sid][:197] + "…", paragraphs=[_p(EMPTY[sid], fallback_ref)])
     lead = selected[0]

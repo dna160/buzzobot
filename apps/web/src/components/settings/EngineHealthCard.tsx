@@ -3,6 +3,7 @@
 import { CheckCircle2, Loader2, RefreshCw, TriangleAlert, XCircle } from 'lucide-react';
 import { Button, Card, CardBody, CardHeader, cn } from '@tempo/ui';
 import { trpc } from '@/trpc/client';
+import type { EngineStrategyRun } from '@/server/routers/settings';
 
 /**
  * Engine health (Brief Deck PRD §7, K6).
@@ -43,6 +44,20 @@ function ago(iso: string | null): string {
   const hours = Math.round(minutes / 60);
   if (Math.abs(hours) < 48) return RELATIVE.format(hours, 'hour');
   return RELATIVE.format(Math.round(hours / 24), 'day');
+}
+
+function strategyTone(run: EngineStrategyRun): 'ok' | 'warn' | 'bad' {
+  if (run.status === 'failed' || run.status === 'rejected') return 'bad';
+  if (run.status === 'running' || run.degraded.length || run.fallbacks > 0) return 'warn';
+  return 'ok';
+}
+
+/** The AI KPI (PRD §11.3): narrator share, then action phraser and chip gate first-attempt passes. */
+function passLabel(run: EngineStrategyRun): string {
+  const p = run.pass_at_1 ?? {};
+  const yes = (v: boolean | null | undefined) => (v ? '✓' : '✗');
+  const narr = p.narrator != null ? `${Math.round(p.narrator * 100)}%` : '—';
+  return `narasi ${narr} · aksi ${yes(p.action_phraser)} · chip ${yes(p.chip_gate)}`;
 }
 
 const STATUS_TONE: Record<string, 'ok' | 'warn' | 'bad'> = {
@@ -130,6 +145,11 @@ export function EngineHealthCard() {
                     {engine.db ? 'connected' : 'unavailable'}
                   </span>
                 </Row>
+                {engine.llm?.model && (
+                  <Row label="Local model">
+                    {engine.llm.model} · {engine.llm.max_tokens ?? '—'} tokens · {engine.llm.concurrency ?? 1} at a time
+                  </Row>
+                )}
                 <Row label="Briefs stored">{engine.briefs_total ?? 0}</Row>
                 {engine.last_run && (
                   <Row label="Last engine run">
@@ -142,6 +162,34 @@ export function EngineHealthCard() {
                 )}
               </div>
             )}
+
+            {engine?.strategy_runs?.length ? (
+              <div>
+                <h3 className="text-[13px] font-semibold text-primary">Strategy Report runs</h3>
+                <ul className="mt-2 divide-y divide-border">
+                  {engine.strategy_runs.map((run) => (
+                    <li key={run.run_id} className="flex items-center justify-between gap-3 py-2">
+                      <span className="inline-flex flex-wrap items-center gap-2 text-[13px] text-primary">
+                        <Dot tone={strategyTone(run)} />
+                        <span className="font-medium">{run.tier ?? '—'}</span>
+                        <span className="text-muted">
+                          {run.status}
+                          {run.duration_s != null ? ` · ${Math.round(run.duration_s)} s` : ''}
+                          {run.tier === 'full' ? ` · ${run.fallbacks} fallback${run.fallbacks === 1 ? '' : 's'}` : ''}
+                          {run.pass_at_1?.action_phraser != null ? ` · pass@1 ${passLabel(run)}` : ''}
+                        </span>
+                        {run.degraded.length ? (
+                          <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-600">
+                            degraded: {run.degraded.join(', ')}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="text-[12px] text-muted">{run.error ? run.error.slice(0, 60) : ago(run.updated_at)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
 
             <div>
               <h3 className="text-[13px] font-semibold text-primary">Recent decks</h3>

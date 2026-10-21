@@ -1,10 +1,12 @@
-"""Dump an instant-tier strategy run as engine content (Strategy Report P2/P3).
+"""Dump a strategy run as engine content (Strategy Report P2/P3/P4).
 
 The TypeScript renderer is tested against real engine output, as the deck is
 (`dump_deck_fixture.py`). Instant tier, so it needs no LM Studio:
 
     uv run python scripts/dump_strategy_content.py eval/fixtures/bardi_strategy_frame.json shop \
         ../packages/reports/src/strategy-report/fixtures/engine-content.strategy.shop.json
+
+A fifth argument `full` runs the full tier against LM Studio (`LM_STUDIO_URL`).
 """
 
 import asyncio
@@ -22,7 +24,7 @@ from engine.graphs.brief import build_brief_graph  # noqa: E402
 from engine.ports.strategy_classify import classify  # noqa: E402
 
 
-async def main(frame_path: str, report_class: str, out: str) -> None:
+async def main(frame_path: str, report_class: str, out: str, tier: str = "instant") -> None:
     frame = StrategyFrame.model_validate_json(pathlib.Path(frame_path).read_text(encoding="utf-8"))
     c = frame.classification
     frame = frame.model_copy(update={"classification": classify(
@@ -32,10 +34,10 @@ async def main(frame_path: str, report_class: str, out: str) -> None:
         override=report_class,  # type: ignore[arg-type]
     )})
     graph = build_brief_graph(InMemorySaver())
-    run_id = f"run_fixture_strategy_{report_class}"
+    run_id = f"run_fixture_strategy_{report_class}" + ("_full" if tier == "full" else "")
     state = await graph.ainvoke(
         {"tenant_id": frame.tenant_id, "brief_type": "strategy", "run_id": run_id,
-         "strategy_frame": frame.model_dump(mode="json"), "tier": "instant"},
+         "strategy_frame": frame.model_dump(mode="json"), "tier": tier},
         config={"configurable": {"thread_id": run_id}},
     )
     content = _content_from_state(state)
@@ -46,4 +48,4 @@ async def main(frame_path: str, report_class: str, out: str) -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main(*sys.argv[1:4]))
+    asyncio.run(main(*sys.argv[1:5]))

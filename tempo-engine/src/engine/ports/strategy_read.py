@@ -26,6 +26,7 @@ import asyncpg
 from engine.contracts.strategy import (
     STAGES,
     AudienceDay,
+    ClosedAction,
     CompetitorRank,
     InsightDay,
     OpenAction,
@@ -163,8 +164,23 @@ async def build_strategy_frame(
         "WHERE client_id = $1::uuid AND status = 'running' AND started_at IS NOT NULL ORDER BY created_at",
         client.id,
     )
+    closed = await conn.fetch(
+        "SELECT id::text, action_json, started_at, status, measured_value, category_delta, measured_at::date AS measured_at "
+        "FROM strategy_actions WHERE client_id = $1::uuid AND status IN ('worked', 'weak', 'failed') "
+        "ORDER BY measured_at DESC NULLS LAST, created_at DESC LIMIT 6",
+        client.id,
+    )
     import json
 
+    closed_actions = [
+        ClosedAction(
+            id=a["id"],
+            action=a["action_json"] if isinstance(a["action_json"], dict) else json.loads(a["action_json"]),
+            started_at=a["started_at"], status=a["status"], measured_value=_f(a["measured_value"]),
+            category_delta=_f(a["category_delta"]), measured_at=a["measured_at"],
+        )
+        for a in closed
+    ]
     open_actions = [
         OpenAction(
             id=a["id"],
@@ -217,6 +233,7 @@ async def build_strategy_frame(
         creator_fee_monthly=_f(spec["creator_fee_monthly"]) if spec else None,
         bgc_cost_monthly=_f(spec["bgc_cost_monthly"]) if spec else None,
         open_actions=open_actions,
+        closed_actions=closed_actions,
         classification=classify(north_star=client.north_star, gmv_share=gmv_share, conv_ratio=conv_ratio, override=override),
         generated_at=datetime.now(UTC),
     )

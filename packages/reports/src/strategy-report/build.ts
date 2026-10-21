@@ -47,6 +47,13 @@ const TITLES: Record<number, string> = {
   110: 'Lampiran A — Data & definisi',
 };
 const T6_TITLE: Record<ReportClass, string> = { brand: 'Share of Voice & peringkat', shop: 'Konversi & product card' };
+/** T9's measured column in the metric's own unit: shares and size ratios are fractions, the rest are counts or Rupiah. */
+function logValue(metricKey: string, v: number): string {
+  if (/\.share|share\.|size_ratio/.test(metricKey)) return pct(v, 2);
+  if (metricKey.startsWith('strategy.cost_per_1k_new')) return idr(v);
+  return Math.abs(v) < 10 ? dec(v, 2) : num(v);
+}
+
 const KEY: Record<number, string> = { 103: 'T3', 104: 'T4', 105: 'T5', 106: 'T6', 107: 'T7', 108: 'T8', 109: 'T9', 110: 'Lampiran A' };
 
 const STAGE: Record<string, string> = { acc: 'ACC', awareness: 'Awareness', consideration: 'Consideration', conversion: 'Conversion' };
@@ -266,7 +273,7 @@ export function buildStrategyReportModel(content: EngineBriefContentV2, ctx: Bui
         (l): LogRowModel => ({
           startedAt: idDate(l.started_at),
           langkah: l.langkah ?? l.metric_key,
-          measured: l.start_value != null && l.measured_value != null ? `${dec(l.start_value, 4)} → ${dec(l.measured_value, 4)}` : '—',
+          measured: l.start_value != null && l.measured_value != null ? `${logValue(l.metric_key, l.start_value)} → ${logValue(l.metric_key, l.measured_value)}` : '—',
           category: l.category_delta == null ? '—' : pct(l.category_delta, 1),
           verdict: l.verdict,
         }),

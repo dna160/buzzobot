@@ -1,4 +1,4 @@
-import { asc, desc, eq } from 'drizzle-orm';
+import { asc, desc, eq, isNotNull } from 'drizzle-orm';
 import type { Database } from '../client.js';
 import { marketScopeAccounts, strategySpecs } from '../schema.js';
 
@@ -86,6 +86,15 @@ export async function resolveStrategyWindow(
 }
 
 /** A client's mirrored TTMS accounts, primary first — the spec editor's account picker. */
+/** Clients with at least one mirrored TTMS account — who the weekly cron makes a Strategy Report for. */
+export async function listMarketScopeClientIds(db: Database): Promise<Set<string>> {
+  const rows = await db
+    .selectDistinct({ clientId: marketScopeAccounts.clientId })
+    .from(marketScopeAccounts)
+    .where(isNotNull(marketScopeAccounts.clientId));
+  return new Set(rows.map((r) => r.clientId).filter((id): id is string => id != null));
+}
+
 export async function listMarketScopeAccounts(db: Database, clientId: string): Promise<MarketScopeAccountSummary[]> {
   return db
     .select({

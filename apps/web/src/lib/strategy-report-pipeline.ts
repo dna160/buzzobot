@@ -96,3 +96,51 @@ export function assembleStrategyReport(input: {
     periodEnd: model.meta.windowEnd,
   };
 }
+
+/**
+ * Start a full-tier run without waiting for it (PRD §9.4, §13 #1): the engine
+ * writes its row as `running` and returns the id at once. `auto_approve`
+ * supplies the review gate's decision when the run reaches it, as `/sync` does.
+ */
+export async function startStrategyRun(req: Omit<StrategyEngineRequest, 'tier' | 'reportClass'>): Promise<string> {
+  let res: Response;
+  try {
+    res = await fetch(`${TEMPO_ENGINE_URL}/v1/briefs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_slug: req.slug,
+        brief_type: 'strategy',
+        window_days: req.windowDays,
+        tier: 'full',
+        end_date: req.endDate ?? null,
+        auto_approve: true,
+      }),
+      cache: 'no-store',
+    });
+  } catch (err) {
+    console.error('[strategy-report] starting the full run failed:', err);
+    throw new StrategyEngineError(502, 'Strategy report service is unreachable');
+  }
+  if (res.status === 404) {
+    throw new StrategyEngineError(404, (await res.text()) || `No Market Scope data for "${req.slug}"`);
+  }
+  if (!res.ok) {
+    console.error(`[strategy-report] tempo-engine returned ${res.status}:`, await res.text());
+    throw new StrategyEngineError(502, 'Failed to start the strategy report');
+  }
+  return ((await res.json()) as { run_id: string }).run_id;
+}
+
+/** `GET /v1/briefs/:id` — `null` when the engine is unreachable (the poll just tries again). */
+export async function fetchStrategyRun(engineRunId: string): Promise<StrategyEngineResult | null> {
+  try {
+    const res = await fetch(`${TEMPO_ENGINE_URL}/v1/briefs/${encodeURIComponent(engineRunId)}`, { cache: 'no-store' });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { run_id: string; status: string; content: unknown };
+    return { runId: body.run_id, status: body.status, content: body.content };
+  } catch (err) {
+    console.error('[strategy-report] polling the full run failed:', err);
+    return null;
+  }
+}

@@ -168,22 +168,34 @@ def goal_pace(frame: StrategyFrame, f: Finding | None) -> dict | None:
 
 
 def action_log(frame: StrategyFrame, findings: list[Finding]) -> list[dict]:
+    """T9's table (PRD §5.6): the running actions this run measured (T11) and
+    the actions earlier runs already judged, newest first, at most 6."""
     measured = {str(f.evidence.get("action_id")): f for f in findings if f.generator == "T11"}
-    out = []
+    rows: list[tuple[date, dict]] = []
     for oa in frame.open_actions:
         f = measured.get(oa.id)
         copy = (oa.action.get("copy") or {}) if isinstance(oa.action, dict) else {}
         if f is None:
             continue
         e = f.evidence
-        out.append(
-            ActionMeasured(
-                action_id=oa.id, started_at=oa.started_at, langkah=copy.get("langkah"), metric_key=str(e["metric_key"]),
-                start_value=e.get("start_value"), measured_value=e.get("measured_value"), target_value=e.get("target_value"),
-                category_delta=e.get("category_delta"), verdict=str(e["verdict"]), days_running=int(e["days_running"]),  # type: ignore[arg-type]
-            ).model_dump(mode="json")
-        )
-    return out
+        rows.append((frame.as_of, ActionMeasured(
+            action_id=oa.id, started_at=oa.started_at, langkah=copy.get("langkah"), metric_key=str(e["metric_key"]),
+            start_value=e.get("start_value"), measured_value=e.get("measured_value"), target_value=e.get("target_value"),
+            category_delta=e.get("category_delta"), verdict=str(e["verdict"]), days_running=int(e["days_running"]),  # type: ignore[arg-type]
+        ).model_dump(mode="json")))
+    for ca in frame.closed_actions:
+        if ca.started_at is None:
+            continue
+        a = ca.action if isinstance(ca.action, dict) else {}
+        when = ca.measured_at or frame.as_of
+        rows.append((when, ActionMeasured(
+            action_id=ca.id, started_at=ca.started_at, langkah=(a.get("copy") or {}).get("langkah"),
+            metric_key=str(a.get("metric_key", "")), start_value=(a.get("current") or {}).get("value"),
+            measured_value=ca.measured_value, target_value=(a.get("target") or {}).get("value"),
+            category_delta=ca.category_delta, verdict=ca.status, days_running=max(0, (when - ca.started_at).days),
+        ).model_dump(mode="json")))
+    rows.sort(key=lambda r: r[0], reverse=True)
+    return [r for _, r in rows[:6]]
 
 
 def build_charts(frame: StrategyFrame) -> StrategyCharts:

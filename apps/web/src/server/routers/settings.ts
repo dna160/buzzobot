@@ -19,6 +19,23 @@ export interface EngineHealthz {
     tier?: string | null;
     updated_at?: string | null;
   } | null;
+  brief_types?: string[];
+  llm?: { base_url?: string; model?: string; max_tokens?: number; concurrency?: number };
+  /** Newest Strategy Report runs (Strategy Report PRD §9.5). */
+  strategy_runs?: EngineStrategyRun[];
+}
+
+export interface EngineStrategyRun {
+  run_id: string;
+  status: string;
+  tier: string | null;
+  updated_at: string | null;
+  duration_s?: number | null;
+  llm_calls?: number | null;
+  pass_at_1?: { narrator?: number | null; action_phraser?: boolean | null; synthesist?: boolean | null; chip_gate?: boolean | null } | null;
+  fallbacks: number;
+  degraded: string[];
+  error?: string | null;
 }
 
 export const settingsRouter = router({

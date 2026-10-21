@@ -4,7 +4,10 @@ import {
   deleteStrategySpec,
   getClientBySlug,
   getStrategySpec,
+  latestCompletedRun,
   listMarketScopeAccounts,
+  readArtifact,
+  resolveStrategyWindow,
   upsertStrategySpec,
 } from '@tempo/db';
 import {
@@ -59,6 +62,26 @@ export const strategySpecRouter = router({
       goalOptions: { kinds: GOAL_KINDS, stages: GOAL_STAGES, shareMetrics: SHARE_GOAL_METRICS },
     };
   }),
+
+  /**
+   * The warm-cache badge (PRD §9.3 card 2): is there a stored full-tier PDF for
+   * the window the download would ask for? The same key the route serves from.
+   */
+  warm: publicProcedure
+    .input(z.object({ slug: z.string().min(1), days: z.number().int().min(14).max(90) }))
+    .query(async ({ ctx, input }) => {
+      const client = await requireClient(ctx.db, input.slug);
+      const window = await resolveStrategyWindow(ctx.db, client.id, { days: input.days });
+      if (!window) return null;
+      const run = await latestCompletedRun(ctx.db, { clientId: client.id, objective: 'strategy', tier: 'full', ...window });
+      if (!run?.artifactPath || !(await readArtifact(run.artifactPath))) return null;
+      return {
+        generatedAt: (run.finishedAt ?? run.startedAt).toISOString(),
+        periodStart: window.periodStart,
+        periodEnd: window.periodEnd,
+        runId: run.runId,
+      };
+    }),
 
   save: publicProcedure
     .input(z.object({ slug: z.string().min(1), spec: z.unknown() }))

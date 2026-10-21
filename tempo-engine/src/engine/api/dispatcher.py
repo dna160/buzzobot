@@ -11,17 +11,23 @@ TypeScript side; this boundary chooses nothing.
 
 from __future__ import annotations
 
+import asyncio
+import json
+import logging
 import uuid
-from datetime import date
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
 
 import asyncpg
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 
+from engine.api.edits import Edit, apply_edits, record_edits
 from engine.contracts.content import BriefContentV2, CardCopy, CoverageAudit, ProbeLoopExport, SectionEntry, SectionRankingExport, SynthesisEntry, Tier
 from engine.contracts.strategy import ReportClass
 from engine.contracts.presets import OBJECTIVE_CONTRACTS
 from engine.graphs.persistence import fetch_brief, upsert_brief
+from engine.materiality.persistence import persist_ranking_state
 from engine.ports.strategy_read import build_strategy_frame
 from engine.ports.tempo_read import build_awareness_metric_frame, build_gmv_metric_frame, build_install_metric_frame
 from engine.version import ENGINE_VERSION
@@ -34,6 +40,9 @@ _FRAME_BUILDERS = {
     "awareness": build_awareness_metric_frame,
     "install": build_install_metric_frame,
 }
+
+
+log = logging.getLogger(__name__)
 
 
 class BriefNotFoundError(Exception):
@@ -102,6 +111,73 @@ def _content_from_state(state: dict) -> dict:
     return content.model_dump(mode="json", by_alias=True)
 
 
+@dataclass(frozen=True)
+class PreparedRun:
+    run_id: str
+    tenant_id: str
+    brief_type: str
+    tier: Tier
+    initial_state: dict
+
+
+async def prepare_brief_run(
+    *,
+    read_conn: asyncpg.Connection,
+    client_slug: str,
+    brief_type: str,
+    window_days: int = 7,
+    end_date: date | None = None,
+    tier: Tier = "full",
+    report_class: ReportClass | None = None,
+) -> PreparedRun:
+    """Build the frame and the graph's initial state. Raises
+    `ClientNotEligibleError` before any row is written, so an ineligible
+    client is a 404 at request time, never a failed run in the table."""
+    run_id = f"run_{uuid.uuid4().hex[:16]}"
+    if brief_type == "strategy":
+        # Strategy Report (PRD §7.1): eligibility is a mirrored TTMS account
+        # with ≥ 14 days of audience — north star is deliberately not a gate.
+        sframe = await build_strategy_frame(
+            read_conn, client_slug, end_date=end_date, window_days=window_days, report_class=report_class,
+        )
+        if sframe is None:
+            raise ClientNotEligibleError(f"'{client_slug}' has no Market Scope account with at least 14 days of data")
+        return PreparedRun(run_id, sframe.tenant_id, "strategy", tier, {
+            "tenant_id": sframe.tenant_id, "brief_type": "strategy", "run_id": run_id,
+            "strategy_frame": sframe.model_dump(mode="json"), "tier": tier,
+        })
+
+    build_frame = _FRAME_BUILDERS.get(brief_type)
+    if build_frame is None:
+        raise ClientNotEligibleError(f"brief_type {brief_type!r} not supported (expected one of {sorted(_FRAME_BUILDERS)})")
+    frame = await build_frame(read_conn, client_slug, end_date=end_date, window_days=window_days)
+    if frame is None:
+        raise ClientNotEligibleError(
+            f"'{client_slug}' has no ingested paid data, or its north_star doesn't match the {brief_type!r} brief"
+        )
+    return PreparedRun(run_id, frame.tenant_id, brief_type, tier, {
+        "tenant_id": frame.tenant_id, "brief_type": brief_type, "run_id": run_id,
+        "metric_frame": frame.model_dump(mode="json"),
+        "objective_contract": OBJECTIVE_CONTRACTS[brief_type].model_dump(mode="json"), "tier": tier,
+    })
+
+
+async def execute_brief_run(*, graph: CompiledStateGraph, read_conn: asyncpg.Connection, run: PreparedRun) -> dict:
+    """Run the graph to the review interrupt, persist the brief as
+    `pending_review`, and write the materiality audit rows (PRD §13 #6)."""
+    config = {"configurable": {"thread_id": run.run_id}}
+    result = await graph.ainvoke(run.initial_state, config=config)
+    await upsert_brief(
+        read_conn, run_id=run.run_id, tenant_id=run.tenant_id, brief_type=run.brief_type,
+        status="pending_review", content=_content_from_state(result),
+    )
+    try:
+        await persist_ranking_state(read_conn, run.run_id, run.tenant_id, run.brief_type, result)
+    except Exception as exc:  # noqa: BLE001 - the audit trail must never fail the run it audits
+        log.warning("materiality rankings not persisted for %s: %s", run.run_id, exc)
+    return {"run_id": run.run_id, "tenant_id": run.tenant_id, "status": "pending_review", "tier": run.tier}
+
+
 async def start_brief_run(
     *,
     graph: CompiledStateGraph,
@@ -113,72 +189,65 @@ async def start_brief_run(
     tier: Tier = "full",
     report_class: ReportClass | None = None,
 ) -> dict:
-    if brief_type == "strategy":
-        return await _start_strategy_run(
-            graph=graph, read_conn=read_conn, client_slug=client_slug, window_days=window_days,
-            end_date=end_date, tier=tier, report_class=report_class,
-        )
-    build_frame = _FRAME_BUILDERS.get(brief_type)
-    if build_frame is None:
-        raise ClientNotEligibleError(f"brief_type {brief_type!r} not supported (expected one of {sorted(_FRAME_BUILDERS)})")
-
-    frame = await build_frame(read_conn, client_slug, end_date=end_date, window_days=window_days)
-    if frame is None:
-        raise ClientNotEligibleError(
-            f"'{client_slug}' has no ingested paid data, or its north_star doesn't match the {brief_type!r} brief"
-        )
-
-    run_id = f"run_{uuid.uuid4().hex[:16]}"
-    config = {"configurable": {"thread_id": run_id}}
-    initial_state = {
-        "tenant_id": frame.tenant_id,
-        "brief_type": brief_type,
-        "run_id": run_id,
-        "metric_frame": frame.model_dump(mode="json"),
-        "objective_contract": OBJECTIVE_CONTRACTS[brief_type].model_dump(mode="json"),
-        "tier": tier,
-    }
-    result = await graph.ainvoke(initial_state, config=config)
-
-    await upsert_brief(
-        read_conn, run_id=run_id, tenant_id=frame.tenant_id, brief_type=brief_type,
-        status="pending_review", content=_content_from_state(result),
+    """Blocking start: returns once the run is paused at the review gate.
+    `/v1/briefs/sync` and the tests use it; `POST /v1/briefs` uses
+    `start_brief_run_async`."""
+    run = await prepare_brief_run(
+        read_conn=read_conn, client_slug=client_slug, brief_type=brief_type, window_days=window_days,
+        end_date=end_date, tier=tier, report_class=report_class,
     )
-    return {"run_id": run_id, "tenant_id": frame.tenant_id, "status": "pending_review", "tier": tier}
+    return await execute_brief_run(graph=graph, read_conn=read_conn, run=run)
 
 
-async def _start_strategy_run(
+# Strong references to in-flight background runs: the event loop keeps only
+# weak ones, and a run collected mid-flight would leave its row `running`.
+_BACKGROUND: set[asyncio.Task] = set()
+
+
+async def start_brief_run_async(
     *,
     graph: CompiledStateGraph,
     read_conn: asyncpg.Connection,
     client_slug: str,
-    window_days: int,
-    end_date: date | None,
-    tier: Tier,
-    report_class: ReportClass | None,
+    brief_type: str,
+    window_days: int = 7,
+    end_date: date | None = None,
+    tier: Tier = "full",
+    report_class: ReportClass | None = None,
+    auto_approve: bool = False,
 ) -> dict:
-    """Strategy Report (PRD §7.1): eligibility is a mirrored TTMS account with
-    ≥ 14 days of audience — north star is deliberately not a gate."""
-    frame = await build_strategy_frame(
-        read_conn, client_slug, end_date=end_date, window_days=window_days, report_class=report_class,
+    """PRD §13 #1: write the `insight.brief` row as `running`, start the graph
+    in a background task, and return the run id at once. `GET
+    /v1/briefs/{run_id}` reports `running` → `pending_review` (or `approved`
+    with `auto_approve`) → or `failed` with the error in `content.error`."""
+    run = await prepare_brief_run(
+        read_conn=read_conn, client_slug=client_slug, brief_type=brief_type, window_days=window_days,
+        end_date=end_date, tier=tier, report_class=report_class,
     )
-    if frame is None:
-        raise ClientNotEligibleError(f"'{client_slug}' has no Market Scope account with at least 14 days of data")
-    run_id = f"run_{uuid.uuid4().hex[:16]}"
-    config = {"configurable": {"thread_id": run_id}}
-    initial_state = {
-        "tenant_id": frame.tenant_id,
-        "brief_type": "strategy",
-        "run_id": run_id,
-        "strategy_frame": frame.model_dump(mode="json"),
-        "tier": tier,
-    }
-    result = await graph.ainvoke(initial_state, config=config)
     await upsert_brief(
-        read_conn, run_id=run_id, tenant_id=frame.tenant_id, brief_type="strategy",
-        status="pending_review", content=_content_from_state(result),
+        read_conn, run_id=run.run_id, tenant_id=run.tenant_id, brief_type=run.brief_type, status="running",
+        content={"tier": run.tier, "brief_type": run.brief_type, "started_at": datetime.now(UTC).isoformat()},
     )
-    return {"run_id": run_id, "tenant_id": frame.tenant_id, "status": "pending_review", "tier": tier}
+
+    async def _run() -> None:
+        try:
+            await execute_brief_run(graph=graph, read_conn=read_conn, run=run)
+            if auto_approve:
+                await resume_brief_review(
+                    graph=graph, read_conn=read_conn, run_id=run.run_id,
+                    decision="approved", notes="auto-approved (async run)",
+                )
+        except Exception as exc:  # noqa: BLE001 - recorded on the row; the caller polls for it
+            log.exception("background run %s failed", run.run_id)
+            await upsert_brief(
+                read_conn, run_id=run.run_id, tenant_id=run.tenant_id, brief_type=run.brief_type, status="failed",
+                content={"tier": run.tier, "brief_type": run.brief_type, "error": f"{type(exc).__name__}: {exc}"[:500]},
+            )
+
+    task = asyncio.create_task(_run(), name=f"brief-{run.run_id}")
+    _BACKGROUND.add(task)
+    task.add_done_callback(_BACKGROUND.discard)
+    return {"run_id": run.run_id, "tenant_id": run.tenant_id, "status": "running", "tier": run.tier}
 
 
 async def run_brief_sync(
@@ -216,8 +285,6 @@ async def get_brief_status(read_conn: asyncpg.Connection, run_id: str) -> dict:
     row = await fetch_brief(read_conn, run_id)
     if row is None:
         raise BriefNotFoundError(run_id)
-    import json
-
     return {
         "run_id": row["run_id"],
         "tenant_id": row["tenant_id"],
@@ -234,19 +301,34 @@ async def resume_brief_review(
     run_id: str,
     decision: str,
     notes: str = "",
+    edits: list[Edit] | None = None,
+    editor: str | None = None,
 ) -> dict:
+    """Resume at the review gate. `edits` (approve only) change narrated text
+    before the brief is stored and are recorded in `insight.brief_edits`
+    (Strategy Report PRD §11.4); an invalid edit raises `EditError` before the
+    graph is resumed, so a bad request never half-approves a run."""
     existing = await fetch_brief(read_conn, run_id)
     if existing is None:
         raise BriefNotFoundError(run_id)
     if existing["status"] != "pending_review":
         raise ValueError(f"run {run_id!r} is already {existing['status']!r}, not pending review")
+    edits = edits if decision == "approved" else None
+    if edits:
+        stored = existing["content"] if isinstance(existing["content"], dict) else json.loads(existing["content"])
+        apply_edits(json.loads(json.dumps(stored)), edits)  # validate against a copy
 
     config = {"configurable": {"thread_id": run_id}}
     resumed = await graph.ainvoke(Command(resume={"decision": decision, "notes": notes}), config=config)
 
     status = "approved" if decision == "approved" else "rejected"
+    content = _content_from_state(resumed)
+    applied = apply_edits(content, edits) if edits else []
     await upsert_brief(
         read_conn, run_id=run_id, tenant_id=existing["tenant_id"], brief_type=existing["brief_type"],
-        status=status, content=_content_from_state(resumed),
+        status=status, content=content,
     )
-    return {"run_id": run_id, "status": status}
+    await record_edits(
+        read_conn, run_id=run_id, tenant_id=existing["tenant_id"], brief_type=existing["brief_type"], edits=applied, editor=editor,
+    )
+    return {"run_id": run_id, "status": status, "edits": len(applied)}

@@ -125,6 +125,7 @@ export {
   deleteStrategySpec,
   getStrategySpec,
   listMarketScopeAccounts,
+  listMarketScopeClientIds,
   resolveStrategyWindow,
   upsertStrategySpec,
 } from './repositories/strategy-spec.js';
@@ -134,9 +135,10 @@ export {
   insertProposedActions,
   insertProposedActionsOnce,
   listStrategyActions,
+  recordActionMeasurement,
   snoozeStrategyAction,
 } from './repositories/strategy-action.js';
-export type { StrategyActionRow, StrategyActionStatus } from './repositories/strategy-action.js';
+export type { ActionMeasurement, StrategyActionRow, StrategyActionStatus } from './repositories/strategy-action.js';
 export { syncMarketScope, verifyMarketScopeMirror } from './ingest/market-scope-sync.js';
 export type { MarketScopeSyncResult, MirrorCountMismatch } from './ingest/market-scope-sync.js';
 export { checkSpendParity, defaultParityWindow } from './ingest/spend-parity.js';
