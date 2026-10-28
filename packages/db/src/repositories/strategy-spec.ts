@@ -1,6 +1,6 @@
-import { asc, desc, eq, isNotNull } from 'drizzle-orm';
+import { asc, desc, eq } from 'drizzle-orm';
 import type { Database } from '../client.js';
-import { marketScopeAccounts, strategySpecs } from '../schema.js';
+import { marketScopeAccounts, marketScopeLinks, strategySpecs } from '../schema.js';
 
 /**
  * Storage for per-client Strategy Report specs (PRD §6.4, §9.5).
@@ -85,16 +85,17 @@ export async function resolveStrategyWindow(
   return { ttmsAccountId: account.ttmsAccountId, asOf, periodStart: start.toISOString().slice(0, 10), periodEnd: asOf };
 }
 
-/** A client's mirrored TTMS accounts, primary first — the spec editor's account picker. */
-/** Clients with at least one mirrored TTMS account — who the weekly cron makes a Strategy Report for. */
+/** Clients served by at least one mirrored TTMS account — who the weekly cron makes a Strategy Report for. */
 export async function listMarketScopeClientIds(db: Database): Promise<Set<string>> {
-  const rows = await db
-    .selectDistinct({ clientId: marketScopeAccounts.clientId })
-    .from(marketScopeAccounts)
-    .where(isNotNull(marketScopeAccounts.clientId));
-  return new Set(rows.map((r) => r.clientId).filter((id): id is string => id != null));
+  const rows = await db.selectDistinct({ clientId: marketScopeLinks.clientId }).from(marketScopeLinks);
+  return new Set(rows.map((r) => r.clientId));
 }
 
+/**
+ * A client's mirrored TTMS accounts, primary first — the spec editor's account
+ * picker. An account shared by several clients (one brand, several ad
+ * accounts) appears for each of them, with that client's own primary flag.
+ */
 export async function listMarketScopeAccounts(db: Database, clientId: string): Promise<MarketScopeAccountSummary[]> {
   return db
     .select({
@@ -102,12 +103,13 @@ export async function listMarketScopeAccounts(db: Database, clientId: string): P
       brandName: marketScopeAccounts.brandName,
       vertical: marketScopeAccounts.vertical,
       isLite: marketScopeAccounts.isLite,
-      isPrimary: marketScopeAccounts.isPrimary,
+      isPrimary: marketScopeLinks.isPrimary,
       unavailableMetrics: marketScopeAccounts.unavailableMetrics,
       lastDataDate: marketScopeAccounts.lastDataDate,
       syncedAt: marketScopeAccounts.syncedAt,
     })
-    .from(marketScopeAccounts)
-    .where(eq(marketScopeAccounts.clientId, clientId))
-    .orderBy(desc(marketScopeAccounts.isPrimary), asc(marketScopeAccounts.brandName));
+    .from(marketScopeLinks)
+    .innerJoin(marketScopeAccounts, eq(marketScopeAccounts.ttmsAccountId, marketScopeLinks.ttmsAccountId))
+    .where(eq(marketScopeLinks.clientId, clientId))
+    .orderBy(desc(marketScopeLinks.isPrimary), asc(marketScopeAccounts.brandName));
 }

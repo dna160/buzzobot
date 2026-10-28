@@ -125,3 +125,18 @@ No kill-list rows for this PRD.
 3. **Only linked accounts are mirrored**, and a client may have several. `is_primary` comes from a name match, and `strategy_specs.ttms_account_id` overrides it. The name rule is the portal's plus a 3-character floor, because one- and two-letter slugs matched almost anything in tests.
 4. **No catalog `bands` on Market Scope keys.** PRD §6.5's "brand ÷ benchmark" bands grade a ratio to the benchmark, not a value. P3 grades with `light()` using the benchmark as target (D5: no new grading vocabulary).
 5. **The mirror runs inside the sanitizer after the brand loops,** with no pm2 process of its own (PRD §6.3). Its failure never fails the ads sync.
+
+## Later change — one Market Scope account, several clients (2026-10-28)
+
+`market_scope_accounts.client_id` / `is_primary` moved to a link table, `market_scope_links` (migration `0016`). A TTMS account is a brand, and one brand's account can list ad accounts held by several Tempo clients:
+- TCL's lists `tcl-tiktok-id` and `tcl-tokopedia-id`.
+- NIVEA's lists `nivea-auction` and `nivea-reservation-ad-acc`.
+- Brighty and NadaraHijab are the same.
+
+**Before:** the sync left such an account unlinked unless exactly one client's name matched.
+
+**Now:** it links the account to every client holding one of its ad accounts, with `is_primary` decided per client. Each run rewrites the links of the accounts it reads, so a client whose ad account the portal drops stops being served.
+
+**Live check:** the migration and a re-sync left the 11 existing links unchanged, and the mirror verifies row for row.
+
+**Still waiting on TikTok:** TCL, NIVEA, Brighty and NadaraHijab are still `accessible = false` in the portal. They link on the first sync after TikTok grants their Market Scope data.

@@ -34,8 +34,8 @@ async function main() {
       console.table(
         res.accounts.map((a) => ({
           ttms: a.brandName,
-          client: a.clientSlug,
-          primary: a.isPrimary ? '✓' : '',
+          clients: a.clientSlugs.join(', '),
+          primary: a.primaryFor.join(', '),
           window: a.from ? `${a.from} … ${a.to}` : '—',
           audience: a.audienceRows,
           insights: a.insightRows,

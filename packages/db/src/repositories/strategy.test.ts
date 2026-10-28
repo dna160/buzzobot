@@ -4,7 +4,7 @@ import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Database } from '../client.js';
-import { agencies, clients, marketScopeAccounts, schema } from '../schema.js';
+import { agencies, clients, marketScopeAccounts, marketScopeLinks, schema } from '../schema.js';
 import {
   acceptStrategyAction,
   insertProposedActions,
@@ -54,8 +54,12 @@ beforeAll(async () => {
     .returning({ id: clients.id });
   clientId = client!.id;
   await db.insert(marketScopeAccounts).values([
-    { ttmsAccountId: 'senka', clientId, brandName: 'Senka', isPrimary: false },
-    { ttmsAccountId: 'purbasari', clientId, brandName: 'Purbasari', isPrimary: true },
+    { ttmsAccountId: 'senka', brandName: 'Senka' },
+    { ttmsAccountId: 'purbasari', brandName: 'Purbasari' },
+  ]);
+  await db.insert(marketScopeLinks).values([
+    { ttmsAccountId: 'senka', clientId, isPrimary: false },
+    { ttmsAccountId: 'purbasari', clientId, isPrimary: true },
   ]);
 });
 
@@ -136,5 +140,32 @@ describe('closing the loop (P5)', () => {
 
   it('lists the clients the weekly job makes a Strategy Report for', async () => {
     expect(await listMarketScopeClientIds(db)).toEqual(new Set([clientId]));
+  });
+});
+
+describe('one Market Scope account, several clients (TCL)', () => {
+  it('serves every client it is linked to, each with its own primary flag', async () => {
+    const [agency] = await db.select({ id: agencies.id }).from(agencies).limit(1);
+    const [tiktok, tokopedia] = await db
+      .insert(clients)
+      .values([
+        { agencyId: agency!.id, name: 'TCL - TikTok ID', slug: 'tcl-tiktok-id', northStar: 'shop' },
+        { agencyId: agency!.id, name: 'TCL - Tokopedia ID', slug: 'tcl-tokopedia-id', northStar: 'shop' },
+      ])
+      .returning({ id: clients.id });
+    await db.insert(marketScopeAccounts).values({ ttmsAccountId: 'tcl', brandName: 'TCL' });
+    await db.insert(marketScopeLinks).values([
+      { ttmsAccountId: 'tcl', clientId: tiktok!.id, isPrimary: true },
+      { ttmsAccountId: 'tcl', clientId: tokopedia!.id, isPrimary: true },
+    ]);
+
+    for (const id of [tiktok!.id, tokopedia!.id]) {
+      expect(await listMarketScopeAccounts(db, id)).toEqual([expect.objectContaining({ ttmsAccountId: 'tcl', brandName: 'TCL', isPrimary: true })]);
+    }
+    expect(await listMarketScopeClientIds(db)).toEqual(new Set([clientId, tiktok!.id, tokopedia!.id]));
+    // Either client may pin the shared account in its own spec.
+    const spec = { ...empty, ttmsAccountId: 'tcl' };
+    await upsertStrategySpec(db, tokopedia!.id, spec, 'am:jo');
+    expect(await getStrategySpec(db, tokopedia!.id)).toMatchObject({ ttmsAccountId: 'tcl' });
   });
 });

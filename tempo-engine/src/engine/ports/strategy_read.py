@@ -66,10 +66,11 @@ async def build_strategy_frame(
     spec = await conn.fetchrow("SELECT * FROM strategy_specs WHERE client_id = $1::uuid", client.id)
     account = await conn.fetchrow(
         """
-        SELECT ttms_account_id, brand_name, vertical, plan, is_lite, unavailable_metrics, last_data_date
-        FROM market_scope_accounts
-        WHERE client_id = $1::uuid
-        ORDER BY (ttms_account_id = $2) DESC, is_primary DESC, brand_name
+        SELECT a.ttms_account_id, a.brand_name, a.vertical, a.plan, a.is_lite, a.unavailable_metrics, a.last_data_date
+        FROM market_scope_links l
+        JOIN market_scope_accounts a ON a.ttms_account_id = l.ttms_account_id
+        WHERE l.client_id = $1::uuid
+        ORDER BY (a.ttms_account_id = $2) DESC, l.is_primary DESC, a.brand_name
         LIMIT 1
         """,
         client.id,

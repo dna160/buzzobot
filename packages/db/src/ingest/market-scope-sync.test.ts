@@ -10,6 +10,7 @@ import {
   agencies,
   clients,
   marketScopeAccounts,
+  marketScopeLinks,
   marketScopeAudienceDaily,
   marketScopeInsightsDaily,
   marketScopeRankingsDaily,
@@ -55,24 +56,60 @@ describe('linkMarketScopeAccounts', () => {
       [
         { ttmsAccountId: 'fino', brandName: 'Fino', advertiserIds: [] },
         { ttmsAccountId: 'astra', brandName: 'Astra Foto', advertiserIds: ['adv-x'] },
-        { ttmsAccountId: 'dup', brandName: 'Nobody', advertiserIds: ['adv-shared'] },
       ],
-      [client('alpha-co', 'Alpha', 'adv-shared'), client('beta-co', 'Beta', 'adv-shared')],
+      [client('alpha-co', 'Alpha', 'adv-shared')],
     );
     expect(r.links).toEqual([]);
     expect(r.unlinked.map((u) => [u.ttmsAccountId, u.reason])).toEqual([
       ['fino', 'no linked ad account'],
       ['astra', 'no Tempo client has its ad account'],
-      ['dup', 'ad account shared by 2 clients (alpha-co, beta-co)'],
     ]);
   });
 
-  it('settles an ad account shared by two clients by name', () => {
+  it('serves every client whose ad account a brand account lists (TCL: TikTok Shop + Tokopedia)', () => {
     const r = linkMarketScopeAccounts(
-      [{ ttmsAccountId: 't', brandName: 'Beta Official Shop', advertiserIds: ['adv-shared'] }],
+      [{ ttmsAccountId: 'tcl', brandName: 'TCL', advertiserIds: ['adv-tokopedia', 'adv-tiktok'] }],
+      [
+        client('tcl-tiktok-id', 'TCL - TikTok ID', 'adv-tiktok'),
+        client('tcl-tokopedia-id', 'TCL - Tokopedia ID', 'adv-tokopedia'),
+        client('tcl-id-ac', 'TCL ID - AC', 'adv-ac'), // a TCL client whose ad account the brand account does not list
+      ],
+    );
+    expect(r.links).toEqual([
+      { ttmsAccountId: 'tcl', clientId: 'tcl-tiktok-id', isPrimary: true },
+      { ttmsAccountId: 'tcl', clientId: 'tcl-tokopedia-id', isPrimary: true },
+    ]);
+    expect(r.unlinked).toEqual([]);
+  });
+
+  it('serves both clients that share one ad account, with no name needed', () => {
+    const r = linkMarketScopeAccounts(
+      [{ ttmsAccountId: 't', brandName: 'Nobody', advertiserIds: ['adv-shared'] }],
       [client('alpha-co', 'Alpha', 'adv-shared'), client('beta-co', 'Beta', 'adv-shared')],
     );
-    expect(r.links).toEqual([{ ttmsAccountId: 't', clientId: 'beta-co', isPrimary: true }]);
+    expect(r.links.map((l) => [l.clientId, l.isPrimary])).toEqual([
+      ['alpha-co', true],
+      ['beta-co', true],
+    ]);
+  });
+
+  it("decides primary per client: a shared brand account and a client's own account", () => {
+    // NIVEA's brand account lists both ad accounts; the auction client also has a second account.
+    const r = linkMarketScopeAccounts(
+      [
+        { ttmsAccountId: 'nivea', brandName: 'NIVEA', advertiserIds: ['adv-auction', 'adv-reservation'] },
+        { ttmsAccountId: 'nivea-men', brandName: 'Men Care', advertiserIds: ['adv-auction'] },
+      ],
+      [
+        client('nivea-auction', 'Nivea - Auction', 'adv-auction'),
+        client('nivea-reservation-ad-acc', 'Nivea Reservation Ad Acc', 'adv-reservation'),
+      ],
+    );
+    expect(r.links).toEqual([
+      { ttmsAccountId: 'nivea', clientId: 'nivea-auction', isPrimary: true }, // the name match among its two
+      { ttmsAccountId: 'nivea', clientId: 'nivea-reservation-ad-acc', isPrimary: true }, // its only account
+      { ttmsAccountId: 'nivea-men', clientId: 'nivea-auction', isPrimary: false },
+    ]);
   });
 });
 
@@ -212,7 +249,7 @@ describe('syncMarketScope (PGlite)', () => {
     const r = await syncMarketScope(db, fakePool(portal), { backfillDays: 10 });
     expect(r.unlinked.map((u) => u.ttmsAccountId)).toEqual(['fino']);
     expect(r.accounts).toEqual([
-      expect.objectContaining({ ttmsAccountId: BARDI, clientSlug: 'bardi-tiktok', isPrimary: true, from: day(10), to: day(19) }),
+      expect.objectContaining({ ttmsAccountId: BARDI, clientSlugs: ['bardi-tiktok'], primaryFor: ['bardi-tiktok'], from: day(10), to: day(19) }),
     ]);
     // 10 days × 4 stages; 10 days × 4 known content types (the unknown one is skipped); 10 days × 2 brands.
     expect(r.accounts[0]).toMatchObject({ audienceRows: 40, insightRows: 40, rankingRows: 20 });
@@ -270,5 +307,61 @@ describe('syncMarketScope (PGlite)', () => {
     expect(after.filter((m) => m.table === 'rankings')).toEqual([
       { ttmsAccountId: BARDI, table: 'rankings', date: day(12), source: 2, mirror: 1 },
     ]);
+  });
+});
+
+describe('links rewritten by each sync (PGlite)', () => {
+  it('links a shared account to both clients, then follows the portal when it drops one', async () => {
+    const pglite = new PGlite();
+    const ldb = drizzle(pglite, { schema }) as unknown as Database;
+    await migrate(drizzle(pglite, { schema }), { migrationsFolder });
+    const [agency] = await ldb.insert(agencies).values({ name: 'Buzzo', slug: 'buzzo' }).returning({ id: agencies.id });
+    const made = await ldb
+      .insert(clients)
+      .values([
+        { agencyId: agency!.id, name: 'TCL - TikTok ID', slug: 'tcl-tiktok-id', northStar: 'shop', currency: 'IDR' },
+        { agencyId: agency!.id, name: 'TCL - Tokopedia ID', slug: 'tcl-tokopedia-id', northStar: 'shop', currency: 'IDR' },
+      ])
+      .returning({ id: clients.id, slug: clients.slug });
+    const id = Object.fromEntries(made.map((c) => [c.slug, c.id]));
+    await ldb.insert(tiktokAccounts).values([
+      { clientId: id['tcl-tiktok-id']!, surface: 'paid', externalId: 'adv-tiktok', displayName: 'TCL TikTok' },
+      { clientId: id['tcl-tokopedia-id']!, surface: 'paid', externalId: 'adv-tokopedia', displayName: 'TCL Tokopedia' },
+    ]);
+    const tcl = (advertiserIds: string[]): Portal => ({
+      accounts: [
+        {
+          ttms_account_id: 'tcl', brand_name: 'TCL', industry: 'Consumer Electronics', region_code: 'ID', plan: 'TTS Purchase',
+          is_lite: false, unavailable_metrics: [], advertiser_ids: advertiserIds, last_data_date: day(19),
+        },
+      ],
+      audience: [],
+      insight: [],
+      ranking: [],
+    });
+    const linked = async () =>
+      (await ldb.select({ c: marketScopeLinks.clientId, p: marketScopeLinks.isPrimary }).from(marketScopeLinks))
+        .map((l) => [made.find((m) => m.id === l.c)!.slug, l.p])
+        .sort();
+
+    const first = await syncMarketScope(ldb, fakePool(tcl(['adv-tokopedia', 'adv-tiktok'])), { backfillDays: 5 });
+    expect(first.accounts).toEqual([
+      expect.objectContaining({ ttmsAccountId: 'tcl', clientSlugs: ['tcl-tiktok-id', 'tcl-tokopedia-id'] }),
+    ]);
+    expect(await linked()).toEqual([
+      ['tcl-tiktok-id', true],
+      ['tcl-tokopedia-id', true],
+    ]);
+    expect(await ldb.select().from(marketScopeAccounts)).toHaveLength(1); // one account row, mirrored once
+
+    // The portal drops the Tokopedia ad account from the brand account: that client stops being served.
+    await syncMarketScope(ldb, fakePool(tcl(['adv-tiktok'])), { backfillDays: 5 });
+    expect(await linked()).toEqual([['tcl-tiktok-id', true]]);
+
+    // And none at all: the account keeps its history but serves nobody.
+    const none = await syncMarketScope(ldb, fakePool(tcl(['adv-elsewhere'])), { backfillDays: 5 });
+    expect(none.unlinked.map((u) => u.ttmsAccountId)).toEqual(['tcl']);
+    expect(await linked()).toEqual([]);
+    expect(await ldb.select().from(marketScopeAccounts)).toHaveLength(1);
   });
 });

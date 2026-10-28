@@ -1,9 +1,10 @@
 import type pg from 'pg';
-import { and, eq, max, sql } from 'drizzle-orm';
+import { and, eq, inArray, max, notInArray, sql } from 'drizzle-orm';
 import type { Database } from '../client.js';
 import {
   clients,
   marketScopeAccounts,
+  marketScopeLinks,
   marketScopeAudienceDaily,
   marketScopeInsightsDaily,
   marketScopeRankingsDaily,
@@ -22,8 +23,9 @@ import {
  *
  * - Only TTMS accounts linked to a Tempo client are mirrored. The link is the
  *   ad account: `ttms_accounts.advertiser_ids` ∩ the client's paid
- *   `tiktok_accounts.external_id`. 11 of the 15 accessible accounts linked on
- *   2026-10-21 (P0_DISCOVERY.md §4).
+ *   `tiktok_accounts.external_id`. An account is linked to *every* client
+ *   holding one of its ad accounts (TCL's lists two), in `market_scope_links`,
+ *   which each run rewrites for the accounts it reads.
  * - Incremental: each run re-copies from `MAX(date) − overlapDays` so revised
  *   recent days are refreshed; a first run backfills `backfillDays` up to the
  *   source's settled day. Every write is an upsert on the natural key.
@@ -43,8 +45,10 @@ export interface MarketScopeSyncOptions {
 export interface MarketScopeAccountResult {
   ttmsAccountId: string;
   brandName: string;
-  clientSlug: string;
-  isPrimary: boolean;
+  /** Every Tempo client this account serves. */
+  clientSlugs: string[];
+  /** The clients for which it is the default account. */
+  primaryFor: string[];
   from: string | null;
   to: string | null;
   audienceRows: number;
@@ -126,15 +130,20 @@ export interface MarketScopeLink {
 }
 
 /**
- * Which Tempo client each TTMS account belongs to, and which of a client's
+ * Which Tempo clients each TTMS account serves, and which of a client's
  * accounts is its primary one.
  *
- * An advertiser can list several TTMS accounts (Purbasari's ad account also
- * lists Senka), so one client may get several. The primary is the one whose
- * TikTok name matches the client's name or slug; a client with a single
- * account gets it by default. With several and no single name match, none is
- * primary and the AM picks in `strategy_specs`. An account whose advertisers
- * reach several clients goes to the one it name-matches, or stays unlinked.
+ * An account serves every client holding one of the ad accounts it lists: a
+ * TTMS account is a brand, and one brand's account can list ad accounts of
+ * several Tempo clients (TCL's lists its TikTok Shop and its Tokopedia ad
+ * accounts; NIVEA's its auction and reservation accounts). Each of them gets
+ * the brand's Market Scope data.
+ *
+ * In the other direction an advertiser can list several TTMS accounts
+ * (Purbasari's also lists Senka), so one client may get several. Its primary is
+ * the one whose TikTok name matches the client's name or slug; a client with a
+ * single account gets it by default. With several and no single name match,
+ * none is primary and the AM picks in `strategy_specs`.
  */
 export function linkMarketScopeAccounts(
   accounts: readonly SourceTtmsAccount[],
@@ -146,8 +155,8 @@ export function linkMarketScopeAccounts(
   const links: Omit<MarketScopeLink, 'isPrimary'>[] = [];
   const unlinked: { ttmsAccountId: string; brandName: string; reason: string }[] = [];
   for (const a of accounts) {
-    const candidates = tempo.filter((c) => c.adAccountIds.some((id) => a.advertiserIds.includes(id)));
-    if (candidates.length === 0) {
+    const holders = tempo.filter((c) => c.adAccountIds.some((id) => a.advertiserIds.includes(id)));
+    if (holders.length === 0) {
       unlinked.push({
         ttmsAccountId: a.ttmsAccountId,
         brandName: a.brandName,
@@ -155,31 +164,23 @@ export function linkMarketScopeAccounts(
       });
       continue;
     }
-    const pick = candidates.length === 1 ? candidates : candidates.filter((c) => named(a, c));
-    if (pick.length !== 1) {
-      unlinked.push({
-        ttmsAccountId: a.ttmsAccountId,
-        brandName: a.brandName,
-        reason: `ad account shared by ${candidates.length} clients (${candidates.map((c) => c.slug).join(', ')})`,
-      });
-      continue;
-    }
-    links.push({ ttmsAccountId: a.ttmsAccountId, clientId: pick[0]!.clientId });
+    for (const c of holders) links.push({ ttmsAccountId: a.ttmsAccountId, clientId: c.clientId });
   }
 
   const byClient = new Map<string, Omit<MarketScopeLink, 'isPrimary'>[]>();
   for (const l of links) byClient.set(l.clientId, [...(byClient.get(l.clientId) ?? []), l]);
   const primary = new Set<string>();
+  const key = (l: Omit<MarketScopeLink, 'isPrimary'>) => `${l.ttmsAccountId}|${l.clientId}`;
   for (const [clientId, ls] of byClient) {
     if (ls.length === 1) {
-      primary.add(ls[0]!.ttmsAccountId);
+      primary.add(key(ls[0]!));
       continue;
     }
     const client = tempo.find((c) => c.clientId === clientId)!;
     const matches = ls.filter((l) => named(accounts.find((a) => a.ttmsAccountId === l.ttmsAccountId)!, client));
-    if (matches.length === 1) primary.add(matches[0]!.ttmsAccountId);
+    if (matches.length === 1) primary.add(key(matches[0]!));
   }
-  return { links: links.map((l) => ({ ...l, isPrimary: primary.has(l.ttmsAccountId) })), unlinked };
+  return { links: links.map((l) => ({ ...l, isPrimary: primary.has(key(l)) })), unlinked };
 }
 
 // ─── Sync ────────────────────────────────────────────────────────────────────
@@ -265,14 +266,21 @@ export async function syncMarketScope(
     [...tempo.values()],
   );
 
+  // Rewrite the links of every account this run read: an account that no
+  // longer lists a client's ad account stops serving that client. Accounts the
+  // run did not read (no portal access, or outside `onlyAccounts`) keep theirs.
+  const linksByAccount = new Map<string, MarketScopeLink[]>();
+  for (const l of links) linksByAccount.set(l.ttmsAccountId, [...(linksByAccount.get(l.ttmsAccountId) ?? []), l]);
+  const unlinkedIds = unlinked.map((u) => u.ttmsAccountId);
+  if (unlinkedIds.length) await db.delete(marketScopeLinks).where(inArray(marketScopeLinks.ttmsAccountId, unlinkedIds));
+
   const results: MarketScopeAccountResult[] = [];
-  for (const link of links) {
-    const a = accounts.find((x) => x.ttms_account_id === link.ttmsAccountId)!;
+  for (const [accountId, accountLinks] of linksByAccount) {
+    const a = accounts.find((x) => x.ttms_account_id === accountId)!;
     await db
       .insert(marketScopeAccounts)
       .values({
         ttmsAccountId: a.ttms_account_id,
-        clientId: link.clientId,
         brandName: a.brand_name,
         vertical: a.industry,
         regionCode: a.region_code,
@@ -280,25 +288,36 @@ export async function syncMarketScope(
         isLite: a.is_lite,
         unavailableMetrics: a.unavailable_metrics ?? [],
         linkedAdvertiserIds: a.advertiser_ids ?? [],
-        isPrimary: link.isPrimary,
         lastDataDate: a.last_data_date,
       })
       .onConflictDoUpdate({
         target: marketScopeAccounts.ttmsAccountId,
         set: {
           ...excluded([
-            'client_id', 'brand_name', 'vertical', 'region_code', 'plan', 'is_lite',
-            'unavailable_metrics', 'linked_advertiser_ids', 'is_primary', 'last_data_date',
+            'brand_name', 'vertical', 'region_code', 'plan', 'is_lite',
+            'unavailable_metrics', 'linked_advertiser_ids', 'last_data_date',
           ]),
           syncedAt: sql`now()`,
         },
       });
 
+    const clientIds = accountLinks.map((l) => l.clientId);
+    await db
+      .delete(marketScopeLinks)
+      .where(and(eq(marketScopeLinks.ttmsAccountId, accountId), notInArray(marketScopeLinks.clientId, clientIds)));
+    await db
+      .insert(marketScopeLinks)
+      .values(accountLinks.map((l) => ({ ttmsAccountId: accountId, clientId: l.clientId, isPrimary: l.isPrimary })))
+      .onConflictDoUpdate({
+        target: [marketScopeLinks.ttmsAccountId, marketScopeLinks.clientId],
+        set: { isPrimary: sql`excluded."is_primary"` },
+      });
+
     const result: MarketScopeAccountResult = {
       ttmsAccountId: a.ttms_account_id,
       brandName: a.brand_name,
-      clientSlug: tempo.get(link.clientId)!.slug,
-      isPrimary: link.isPrimary,
+      clientSlugs: accountLinks.map((l) => tempo.get(l.clientId)!.slug),
+      primaryFor: accountLinks.filter((l) => l.isPrimary).map((l) => tempo.get(l.clientId)!.slug),
       from: null,
       to: null,
       audienceRows: 0,

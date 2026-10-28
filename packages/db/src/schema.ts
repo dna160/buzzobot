@@ -519,14 +519,16 @@ export const syncRuns = pgTable(
 // times, and a 1:1 shape is what lets the mirror be checked row-for-row against
 // its source (P0_DISCOVERY.md §2). Dates are TTMS days, which are UTC.
 
-/** One TTMS account the portal can open, linked to the Tempo client whose ad account it lists. */
+/**
+ * One TTMS account the portal can open. Which Tempo clients it serves is in
+ * `market_scope_links`: an account is a brand, and a brand's TTMS account can
+ * list several ad accounts held by different Tempo clients (TCL's lists both
+ * its TikTok Shop and its Tokopedia ad account).
+ */
 export const marketScopeAccounts = pgTable(
   'market_scope_accounts',
   {
     ttmsAccountId: text('ttms_account_id').primaryKey(),
-    clientId: uuid('client_id')
-      .notNull()
-      .references(() => clients.id, { onDelete: 'cascade' }),
     /** TikTok's own name for the brand — also its row name in ranking lists. */
     brandName: text('brand_name').notNull(),
     vertical: text('vertical'),
@@ -537,17 +539,37 @@ export const marketScopeAccounts = pgTable(
     /** Metrics (or METRIC:CONTENT_TYPE pairs) TikTok refuses for this plan — the source of locked rows. */
     unavailableMetrics: text('unavailable_metrics').array().notNull().default(sql`'{}'::text[]`),
     linkedAdvertiserIds: text('linked_advertiser_ids').array().notNull().default(sql`'{}'::text[]`),
-    /**
-     * The account a strategy report uses by default when a client has several
-     * (Purbasari and Senka share one advertiser): the one whose TikTok name
-     * matches the client's, or the only one. `strategy_specs.ttms_account_id` overrides.
-     */
-    isPrimary: boolean('is_primary').notNull().default(false),
     /** Latest settled TTMS day in the source; nothing after it is meaningful. */
     lastDataDate: date('last_data_date', { mode: 'string' }),
     syncedAt: timestamp('synced_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('market_scope_accounts_client_idx').on(t.clientId)],
+);
+
+/**
+ * Which Tempo clients a TTMS account serves: every client holding one of the
+ * ad accounts it lists (`ttms_accounts.advertiser_ids` ∩ the client's paid
+ * `tiktok_accounts.external_id`). Rewritten by each Market Scope sync.
+ */
+export const marketScopeLinks = pgTable(
+  'market_scope_links',
+  {
+    ttmsAccountId: text('ttms_account_id').notNull(),
+    clientId: uuid('client_id').notNull(),
+    /**
+     * The account this client's strategy report uses by default when it has
+     * several (Purbasari and Senka share one advertiser): the one whose TikTok
+     * name matches the client's, or the only one. `strategy_specs.ttms_account_id` overrides.
+     */
+    isPrimary: boolean('is_primary').notNull().default(false),
+    linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'market_scope_links_pk', columns: [t.ttmsAccountId, t.clientId] }),
+    // Named explicitly: the generated names run past Postgres's 63-character limit.
+    foreignKey({ name: 'ms_links_account_fk', columns: [t.ttmsAccountId], foreignColumns: [marketScopeAccounts.ttmsAccountId] }).onDelete('cascade'),
+    foreignKey({ name: 'ms_links_client_fk', columns: [t.clientId], foreignColumns: [clients.id] }).onDelete('cascade'),
+    index('market_scope_links_client_idx').on(t.clientId),
+  ],
 );
 
 /** Daily audience per funnel stage (ACC, Awareness, Consideration, Conversion). */
