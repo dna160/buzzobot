@@ -118,7 +118,7 @@ export async function GET(request: Request, { params }: RouteParams) {
 
   try {
     const report = assembleStrategyReport({ content: brief.content, runId: row.runId, clientName: client.name, slug });
-    const pdf = await htmlToPdf(report.html, 'a4');
+    const pdf = await htmlToPdf(report.html, 'deck');
     const artifact = await writeArtifact(`${client.slug}-tempo-strategy-${row.runId}.pdf`, pdf);
     await completeReportRun(db, row.id, {
       artifactPath: artifact.path,

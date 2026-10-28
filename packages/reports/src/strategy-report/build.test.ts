@@ -77,7 +77,10 @@ describe('renderStrategyReportHtml', () => {
 
   it('is an A4 Bahasa document', () => {
     expect(html).toContain('<html lang="id">');
-    expect(html).toContain('size: A4');
+    // Landscape A4 sheets, the same on screen and in the PDF.
+    expect(html).toContain('@page { size: 297mm 210mm; margin: 0; }');
+    expect(html).toContain('<div id="flow">');
+    expect(html).toContain('data-new-sheet');
     expect(html).toContain('Vonis minggu ini');
     expect(html).toContain('Keputusan minggu ini');
     expect(html).toContain('Lampiran A');

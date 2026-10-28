@@ -57,3 +57,14 @@ curl "http://127.0.0.1:3001/api/reports/bardi-tiktok/strategy-report?format=html
 2. **The renderer never prints a classification score** (PRD Q5 default: AM only). The header shows the class badge and "ditetapkan oleh AM" when overridden.
 3. **Empty states print once.** When a draft's headline is its own first sentence, only the sentence renders. T8 renders its signal rows instead of a restating paragraph.
 4. **Funnel ratios above 1 are not drawn as funnel steps,** matching T01 (P0 §6.2).
+
+## Later change — landscape sheets (2026-10-28)
+
+The report now renders as fixed landscape A4 sheets (297 × 210 mm), the same on screen and in the PDF:
+- **Sheets:** every sheet has the same margins and a footer with page numbers (`Halaman n dari N`).
+- **Pagination:** a small inline script deals the blocks onto sheets and never splits a card.
+- **Page 1:** holds the brief (header, verdict, decisions), and tightens its type before letting the decisions spill.
+- **Screen:** sheets scale as a whole to the window, so charts no longer stretch with it.
+- **Sections:** text on the left, chart on the right.
+- **PDF:** uses `htmlToPdf(html, 'deck')`, so the PDF takes its page size from `@page`.
+- **Stored PDFs:** full-tier PDFs saved before this change are portrait. They are replaced on the next full run, whether by the weekly cron or "Jalankan tier penuh".

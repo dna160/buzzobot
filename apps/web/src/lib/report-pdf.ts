@@ -49,10 +49,12 @@ const FOOTER =
  * `a4` is the portrait report pipeline, unchanged: A4 pages with a Chromium-drawn
  * page-number footer.
  *
- * `deck` is the Brief Deck (PRD §6): 16:9 landscape, zero margin, and
- * `preferCSSPageSize` so the document's own `@page { size: 338.67mm 190.5mm }`
- * is authoritative — one slide is one page, and the geometry lives with the
- * design rather than being asserted twice. No Chromium header/footer either:
+ * `deck` is for documents that draw their own pages: zero margin and
+ * `preferCSSPageSize`, so the document's own `@page` size is authoritative —
+ * one slide (or sheet) is one page, and the geometry lives with the design
+ * rather than being asserted twice. The Brief Deck uses 16:9 slides
+ * (`338.67mm 190.5mm`); the Strategy Report uses landscape A4 sheets
+ * (`297mm 210mm`) with its own page footer. No Chromium header/footer either:
  * the deck draws its own provenance footer inside each slide, and a second
  * footer over a full-bleed cover would print across the artwork.
  */

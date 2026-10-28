@@ -4,8 +4,23 @@ import { idDate, pct, num } from './format.js';
 import type { ActionRowModel, StrategyReportModel, StrategySectionModel } from './model.js';
 
 /**
- * `StrategyReportModel` → A4 HTML (Strategy Report PRD §5.1, §9.4). Reads the
- * model and nothing else. Printed with `htmlToPdf(html, 'a4')`.
+ * `StrategyReportModel` → paged HTML (Strategy Report PRD §5.1, §9.4). Reads
+ * the model and nothing else.
+ *
+ * The report is a stack of fixed landscape A4 sheets (297 × 210 mm), the same
+ * in the browser and in the PDF (`htmlToPdf(html, 'deck')`, which takes the
+ * page size from `@page`). Every sheet has the same margins and footer; the
+ * content never reflows to the window:
+ *
+ * - The server renders every block (header, verdict, actions, one card per
+ *   section) into `#flow`. A small inline script deals them onto sheets in
+ *   order, starting a new sheet when the next block would cross the bottom
+ *   margin, and numbers the pages. A block is never split.
+ * - On screen the sheets sit on a grey desk and are scaled as a whole to fit
+ *   the window width (`zoom`), so a wide window cannot stretch a chart and a
+ *   narrow one cannot squeeze a column. Print is always 1:1.
+ * - Without script (a mail client's preview) the blocks simply stack inside one
+ *   long sheet — readable, never clipped.
  */
 
 const CHIP_TONE: Record<string, string> = {
@@ -30,50 +45,79 @@ const VERDICT: Record<string, { tone: string; label: string }> = {
 };
 const DEGRADED: Record<string, string> = {
   full_tier_not_built: 'tier penuh belum tersedia — teks dari templat',
-  class_highlight: 'bagian kelas tidak memuat temuan utamanya',
-  llm_unavailable: 'model lokal tidak terjangkau — teks dari templat',
+  class_highlight_missing: 'bagian kelas tidak memuat temuan utamanya',
+  llm_unreachable: 'model lokal tidak terjangkau — teks dari templat',
+  full_tier_time_cap: 'batas waktu tier penuh tercapai — sebagian teks dari templat',
 };
 
+/** Sheet geometry (mm). One place, shared by CSS and the pagination script. */
+const SHEET = { w: 297, h: 210, padX: 14, padTop: 11, padBottom: 6, foot: 9 };
+
 function css(): string {
+  const body = SHEET.h - SHEET.padTop - SHEET.padBottom - SHEET.foot;
   return `
-  @page { size: A4; margin: 14mm 14mm 16mm; }
+  @page { size: ${SHEET.w}mm ${SHEET.h}mm; margin: 0; }
   :root { --ink:#1d1d24; --muted:#6b6b78; --line:#e5e4ea; --soft:#f6f5f9; --brand:#5b54d6; --bench:#c4c2d0; --earned:#0f8a72;
-          --good:#18794e; --good-bg:#e8f5ee; --warn:#a15c07; --warn-bg:#fdf3e1; --bad:#b42318; --bad-bg:#fdecea; }
+          --good:#18794e; --good-bg:#e8f5ee; --warn:#a15c07; --warn-bg:#fdf3e1; --bad:#b42318; --bad-bg:#fdecea; --desk:#e7e6ec; }
   * { box-sizing: border-box; }
-  body { margin:0; font: 10.5pt/1.5 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: var(--ink); background:#fff; }
-  h1 { font-size: 17pt; margin: 0; letter-spacing: -0.01em; }
-  h2 { font-size: 12.5pt; margin: 0 0 2px; }
-  h3 { font-size: 11pt; margin: 0 0 6px; }
-  p { margin: 0 0 6px; }
+  html, body { margin:0; padding:0; }
+  body { font: 10pt/1.45 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: var(--ink); background: var(--desk);
+         -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+  /* ── Sheets: fixed size, fixed margins, never reflowed by the window ── */
+  .pages { width: ${SHEET.w}mm; margin: 0 auto; padding: 8mm 0; }
+  .sheet { width: ${SHEET.w}mm; height: ${SHEET.h}mm; background: #fff; position: relative; overflow: hidden;
+           padding: ${SHEET.padTop}mm ${SHEET.padX}mm ${SHEET.padBottom}mm; display: flex; flex-direction: column;
+           box-shadow: 0 1px 3px rgba(20,20,40,.12), 0 8px 24px rgba(20,20,40,.08); border-radius: 2px; margin: 0 auto 8mm; }
+  .sheet-body { height: ${body}mm; overflow: hidden; display: flex; flex-direction: column; gap: 3.2mm; }
+  .sheet-foot { height: ${SHEET.foot}mm; margin-top: auto; border-top: 1px solid var(--line); display:flex; align-items: flex-end;
+                justify-content: space-between; font-size: 7.5pt; color: var(--muted); padding-bottom: 1mm; }
+  /* Without script: one long sheet, nothing clipped. */
+  #flow { width: ${SHEET.w}mm; margin: 8mm auto; background:#fff; padding: ${SHEET.padTop}mm ${SHEET.padX}mm; display:flex; flex-direction:column; gap: 3.2mm; }
+  .paged #flow { display: none; }
+  @media screen { .pages { zoom: var(--fit, 1); } }
+  @media print {
+    body { background: #fff; }
+    .pages { padding: 0; zoom: 1 !important; }
+    .sheet { margin: 0; box-shadow: none; border-radius: 0; break-after: page; }
+    .sheet:last-child { break-after: auto; }
+  }
+
+  h1 { font-size: 16pt; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 12pt; margin: 0 0 2px; }
+  h3 { font-size: 11pt; margin: 0 0 4px; }
+  p { margin: 0 0 5px; }
   .muted { color: var(--muted); }
-  .badge { display:inline-block; padding: 1px 8px; border-radius: 999px; font-size: 8.5pt; font-weight: 600; background: var(--soft); color: var(--muted); margin-left: 6px; }
+  .badge { display:inline-block; padding: 1px 8px; border-radius: 999px; font-size: 8pt; font-weight: 600; background: var(--soft); color: var(--muted); margin-left: 6px; white-space: nowrap; }
   .tone-good { background: var(--good-bg); color: var(--good); }
   .tone-warn { background: var(--warn-bg); color: var(--warn); }
   .tone-bad { background: var(--bad-bg); color: var(--bad); }
   .tone-muted { background: var(--soft); color: var(--muted); }
-  .head { display:flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid var(--line); padding-bottom: 10px; margin-bottom: 14px; }
-  .head .asof { text-align:right; font-size: 9pt; color: var(--muted); }
-  .head .asof strong { font-size: 12pt; color: var(--ink); }
-  .banner { font-size: 8.5pt; color: var(--warn); background: var(--warn-bg); border-radius: 6px; padding: 6px 10px; margin-bottom: 12px; }
-  .card { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-bottom: 12px; break-inside: avoid; }
-  .verdict { display:grid; grid-template-columns: 1.5fr 1fr; gap: 14px; }
-  .eyebrow { font-size: 8pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--brand); margin-bottom: 4px; }
-  .verdict h2 { font-size: 15pt; line-height: 1.25; margin-bottom: 6px; }
-  .chips { display:flex; flex-direction: column; gap: 6px; }
-  .chip { background: var(--soft); border-radius: 8px; padding: 6px 10px; display:flex; justify-content: space-between; gap: 8px; align-items:center; }
-  .chip .k { font-size: 8pt; color: var(--muted); }
+  .head { display:flex; justify-content: space-between; align-items: flex-start; border-bottom: 1px solid var(--line); padding-bottom: 2.5mm; }
+  .head .asof { text-align:right; font-size: 8.5pt; color: var(--muted); }
+  .head .asof strong { font-size: 11.5pt; color: var(--ink); }
+  .banner { font-size: 8.5pt; color: var(--warn); background: var(--warn-bg); border-radius: 6px; padding: 5px 10px; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 3mm 4mm; }
+  .verdict { display:grid; grid-template-columns: 1.7fr 1fr; gap: 5mm; }
+  .eyebrow { font-size: 7.5pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--brand); margin-bottom: 3px; }
+  .verdict h2 { font-size: 14pt; line-height: 1.25; margin-bottom: 5px; }
+  .chips { display:flex; flex-direction: column; gap: 5px; }
+  .chip { background: var(--soft); border-radius: 8px; padding: 5px 10px; display:flex; justify-content: space-between; gap: 8px; align-items:center; }
+  .chip .k { font-size: 7.5pt; color: var(--muted); }
   .chip .v { font-weight: 600; font-size: 9.5pt; }
-  .actions { display:grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  .action { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; break-inside: avoid; font-size: 9pt; }
-  .action .top { display:flex; justify-content: space-between; align-items:center; margin-bottom: 6px; font-size: 8.5pt; color: var(--muted); }
-  .action .langkah { font-weight: 650; font-size: 10pt; margin-bottom: 6px; }
-  .action .stake { background: var(--soft); border-radius: 6px; padding: 6px 8px; margin-bottom: 6px; }
-  .action .k { font-size: 7.5pt; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
-  .action .fail { border-top: 1px dashed var(--line); padding-top: 5px; margin-top: 5px; }
-  section.sec { break-inside: avoid-page; margin-top: 4px; }
+  .actions { display:grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }
+  .action { border: 1px solid var(--line); border-radius: 10px; padding: 3mm 3.5mm; font-size: 8.5pt; }
+  .action .top { display:flex; justify-content: space-between; align-items:center; margin-bottom: 4px; font-size: 8pt; color: var(--muted); }
+  .action .langkah { font-weight: 650; font-size: 9.5pt; margin-bottom: 5px; }
+  .action .stake { background: var(--soft); border-radius: 6px; padding: 4px 8px; margin-bottom: 5px; }
+  .action .k { font-size: 7pt; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  .action p { margin: 5px 0 0; }
+  .action .fail { border-top: 1px dashed var(--line); padding-top: 4px; margin-top: 5px; }
   .sec .title { display:flex; justify-content: space-between; align-items: baseline; }
-  .sec .headline { font-weight: 600; margin: 2px 0 6px; }
-  .chart { width: 100%; height: auto; margin: 6px 0; }
+  .sec .headline { font-weight: 600; margin: 1px 0 5px; }
+  .sec-grid { display:grid; grid-template-columns: 1fr 1.35fr; gap: 6mm; align-items: start; }
+  .sec-grid .viz { min-width: 0; }
+  .chart { display:block; width: 100%; height: auto; max-height: 92mm; margin: 2px 0; }
   .chart text { font-family: inherit; }
   .c-lab { font-size: 11px; fill: var(--ink); } .c-sub { font-size: 10px; fill: var(--muted); } .c-val { font-size: 11px; fill: var(--ink); font-weight: 600; }
   .c-inbar { font-size: 11px; fill: #fff; font-weight: 600; }
@@ -83,20 +127,69 @@ function css(): string {
   .c-kneel { font-size: 10px; fill: var(--warn); } .c-axis { stroke: var(--line); }
   .c-target { stroke: var(--muted); stroke-dasharray: 2 3; } .c-proj { stroke: var(--brand); stroke-dasharray: 5 4; stroke-width: 1.6; }
   .c-range { stroke: var(--brand); stroke-width: 6; opacity: .25; stroke-linecap: round; }
-  .ratio { font-size: 9pt; margin: 2px 0; }
+  .ratio { font-size: 8.5pt; margin: 2px 0; }
   .dot { display:inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--bench); }
   .dot-green { background: var(--good); } .dot-yellow { background: var(--warn); } .dot-red { background: var(--bad); }
-  table { width:100%; border-collapse: collapse; font-size: 9pt; margin: 6px 0; }
-  th, td { text-align:left; padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { font-size: 7.5pt; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
-  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table { width:100%; border-collapse: collapse; font-size: 8.5pt; margin: 4px 0; }
+  th, td { text-align:left; padding: 3.5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 7pt; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   tr.own td { font-weight: 700; background: var(--soft); }
-  .signal { display:flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); }
-  .signal:last-child { border-bottom: 0; }
+  .signals { display:grid; grid-template-columns: 1fr 1fr; column-gap: 6mm; }
+  .signal { display:flex; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 9pt; }
   .signal .body { flex: 1; } .signal .t { font-weight: 600; } .signal.locked { color: var(--muted); }
-  .notes { font-size: 8.5pt; color: var(--muted); margin-top: 4px; }
-  footer { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 6px; font-size: 8pt; color: var(--muted); }
+  .signal .badge { align-self: flex-start; }
+  .notes { font-size: 8pt; color: var(--muted); margin-top: 3px; }
+  /* Page 1 keeps the brief together: when the decisions would spill, the sheet tightens first. */
+  .sheet.tight .sheet-body { gap: 2.4mm; }
+  .sheet.tight .head { padding-bottom: 1.5mm; }
+  .sheet.tight .verdict h2 { font-size: 12.5pt; }
+  .sheet.tight .verdict p { font-size: 9pt; }
+  .sheet.tight .card { padding: 2.4mm 3.5mm; }
+  .sheet.tight .action { font-size: 7.8pt; line-height: 1.38; padding: 2.4mm 3mm; }
+  .sheet.tight .action .langkah { font-size: 8.8pt; }
+  .sheet.tight .action p { margin-top: 3px; }
+  .provenance { font-size: 7.5pt; color: var(--muted); }
   `;
+}
+
+/**
+ * Deal the `#flow` blocks onto fixed sheets, number them, and fit the stack to
+ * the window. Runs before Chromium prints, so the PDF gets the same pages.
+ */
+function pagerScript(brand: string): string {
+  return `<script>(function () {
+  var flow = document.getElementById('flow'), pages = document.getElementById('pages');
+  if (!flow || !pages) return;
+  var blocks = Array.prototype.slice.call(flow.children), sheets = [];
+  function sheet() {
+    var s = document.createElement('section'); s.className = 'sheet';
+    var b = document.createElement('div'); b.className = 'sheet-body';
+    var f = document.createElement('div'); f.className = 'sheet-foot';
+    f.innerHTML = '<span>' + ${JSON.stringify(esc(brand))} + ' · Tempo Strategy Report</span><span class="n"></span>';
+    s.appendChild(b); s.appendChild(f); pages.appendChild(s); sheets.push(b); return b;
+  }
+  document.documentElement.classList.add('paged');
+  var body = sheet();
+  function over() { return body.scrollHeight > body.clientHeight + 1; }
+  blocks.forEach(function (el) {
+    if (el.hasAttribute('data-new-sheet') && body.children.length) body = sheet();
+    body.appendChild(el);
+    if (over() && el.hasAttribute('data-keep-with-brief')) body.parentNode.classList.add('tight');
+    if (over() && body.children.length > 1) {
+      body.parentNode.classList.remove('tight');
+      body.removeChild(el); body = sheet(); body.appendChild(el);
+    }
+  });
+  var n = sheets.length;
+  sheets.forEach(function (b, i) { b.parentNode.querySelector('.n').textContent = 'Halaman ' + (i + 1) + ' dari ' + n; });
+  function fit() {
+    var px = pages.querySelector('.sheet').getBoundingClientRect().width / (parseFloat(getComputedStyle(pages).zoom) || 1);
+    var f = Math.min(1, (document.documentElement.clientWidth - 32) / px);
+    document.documentElement.style.setProperty('--fit', String(Math.max(0.3, f)));
+  }
+  fit(); window.addEventListener('resize', fit);
+})();</script>`;
 }
 
 const badge = (text: string, tone: string) => `<span class="badge tone-${tone}">${esc(text)}</span>`;
@@ -192,13 +285,16 @@ function section(s: StrategySectionModel): string {
         .join('')}</tbody></table>`
     : '';
   const paras = s.paragraphs.map((p) => `<p>${esc(p)}</p>`).join('');
+  const viz = visual(s);
+  const text = `${s.headline ? `<div class="headline">${esc(s.headline)}</div>` : ''}${paras}`;
+  // Landscape: the words on the left, the picture on the right; tables and
+  // signal lists run the full width underneath.
+  const main = viz ? `<div class="sec-grid"><div>${text}</div><div class="viz">${viz}</div></div>` : text;
   return `
   <section class="card sec" data-section="${s.id}">
     <div class="title"><h3>${esc(s.title)}</h3><span class="muted" style="font-size:8pt">${esc(s.key)}</span></div>
-    ${s.headline ? `<div class="headline">${esc(s.headline)}</div>` : ''}
-    ${visual(s)}
-    ${paras}
-    ${signals}${log}${table}
+    ${main}
+    ${signals ? `<div class="signals">${signals}</div>` : ''}${log}${table}
     ${s.notes.map((n) => `<div class="notes">${esc(n)}</div>`).join('')}
   </section>`;
 }
@@ -209,18 +305,27 @@ export function renderStrategyReportHtml(m: StrategyReportModel): string {
     ? `<div class="banner">Catatan: ${esc(meta.degraded.map((d) => DEGRADED[d] ?? d).join('; '))}.</div>`
     : '';
   const tierLabel = meta.tier === 'full' ? 'tier penuh (agen + model lokal)' : 'tier instan (templat, tanpa model)';
-  return `<!doctype html>
-<html lang="id"><head><meta charset="utf-8"/><title>${esc(meta.brandName)} — Tempo Strategy Report</title><style>${css()}</style></head>
-<body>
-  ${header(m)}
-  ${banner}
-  ${verdict(m)}
-  <div class="card">
+  const actions = `
+  <div class="card" data-keep-with-brief>
     <h3>Keputusan minggu ini</h3>
-    <p class="muted" style="font-size:9pt">Diurutkan menurut taruhan. Setiap keputusan menyebut besarnya, seberapa yakin Tempo, dan hasil apa yang membuktikannya salah.</p>
+    <p class="muted" style="font-size:8.5pt">Diurutkan menurut taruhan. Setiap keputusan menyebut besarnya, seberapa yakin Tempo, dan hasil apa yang membuktikannya salah.</p>
     ${m.actions.length ? `<div class="actions">${m.actions.map(action).join('')}</div>` : '<p>Tidak ada keputusan yang cukup kuat untuk diusulkan dari data periode ini.</p>'}
+  </div>`;
+  // Page 1 is the brief (header, verdict, decisions); the evidence starts on a fresh sheet.
+  const sections = m.sections.map((s, i) => (i === 0 ? section(s).replace('<section class="card sec"', '<section data-new-sheet class="card sec"') : section(s)));
+  const provenance = `<div class="provenance">Tempo Strategy Report · ${esc(tierLabel)} · run ${esc(meta.runId ?? '—')} · engine ${esc(meta.engineVersion)}${meta.promptVersion ? ` · prompt ${esc(meta.promptVersion)}` : ''} · data TikTok Market Scope + TikTok Ads</div>`;
+  return `<!doctype html>
+<html lang="id"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><title>${esc(meta.brandName)} — Tempo Strategy Report</title><style>${css()}</style></head>
+<body>
+  <div id="pages" class="pages"></div>
+  <div id="flow">
+    ${header(m)}
+    ${banner}
+    ${verdict(m)}
+    ${actions}
+    ${sections.join('')}
+    ${provenance}
   </div>
-  ${m.sections.map(section).join('')}
-  <footer>Tempo Strategy Report · ${esc(tierLabel)} · run ${esc(meta.runId ?? '—')} · engine ${esc(meta.engineVersion)}${meta.promptVersion ? ` · prompt ${esc(meta.promptVersion)}` : ''} · data TikTok Market Scope + TikTok Ads</footer>
+  ${pagerScript(meta.brandName)}
 </body></html>`;
 }

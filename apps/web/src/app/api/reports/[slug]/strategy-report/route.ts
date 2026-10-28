@@ -129,7 +129,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
 
   const filename = `${client.slug}-tempo-strategy-${result.runId}.pdf`;
   try {
-    const pdf = await htmlToPdf(report.html, 'a4');
+    const pdf = await htmlToPdf(report.html, 'deck');
     let artifact: { path: string; bytes: number } | null = null;
     if (tier === 'full') {
       try {
