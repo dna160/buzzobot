@@ -1,6 +1,8 @@
 import { fetchSanitizeAndSeed } from './sanitize.js';
+import { isSyncLockHeld, tryAcquireSyncLock } from './sync-lock.js';
 
-let isSyncing = false;
+// Whether a pass is running lives in `sync-lock.ts` now, shared with the
+// targeted `POST /api/clients/sync` so the two never write at the same time.
 let lastSyncTime = 0;
 let backgroundIntervalStarted = false;
 
@@ -21,7 +23,7 @@ export async function triggerAutoSyncIfStale(options: AutoSyncOptions = {}): Pro
 
   // If no DB_HOST is configured or if sync is already active, skip
   if (!process.env.DB_HOST) return false;
-  if (isSyncing) return false;
+  if (isSyncLockHeld()) return false;
   if (now - lastSyncTime < maxAgeMs) return false;
 
   // Start the background interval once in this runtime process
@@ -37,8 +39,12 @@ export async function triggerAutoSyncIfStale(options: AutoSyncOptions = {}): Pro
     }
   }
 
+  // Taken synchronously, before anything is awaited, so a concurrent caller
+  // sees it held at once.
+  const release = tryAcquireSyncLock();
+  if (!release) return false;
+
   const runSync = async () => {
-    isSyncing = true;
     try {
       // `fetchSanitizeAndSeed` opens its own PGlite instance whenever the
       // active `getDb()` backend isn't already PGlite (true here — this repo
@@ -53,7 +59,7 @@ export async function triggerAutoSyncIfStale(options: AutoSyncOptions = {}): Pro
     } catch (err) {
       console.warn('[tempo-auto-sync] Automatic background sync error:', err);
     } finally {
-      isSyncing = false;
+      release();
     }
   };
 

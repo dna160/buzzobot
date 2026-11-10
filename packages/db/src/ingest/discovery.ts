@@ -23,6 +23,12 @@ export interface DiscoveredBrand {
    */
   tiktokAdAccountIds?: string[];
   brandId?: number;
+  /**
+   * Every `brands.id` this entry claimed — all of `tiktokAdAccountIds`' rows
+   * for a fuzzy-matched Premium table, the one row otherwise. What a caller
+   * asking about a specific brand id (`{ brandIds }` below) matches against.
+   */
+  brandIds?: number[];
   conversionMetric?: string;
   conversionValueMetric?: string;
   metrics: string[];
@@ -176,19 +182,40 @@ export function inferBrandNorthStar(activeMetrics: string[]): {
  * out — neither has a single warehouse row, so including them would only
  * manufacture empty clients.
  */
-const INGESTIBLE_BRAND_STATUSES = ['active', 'reverse_binding', 'external'] as const;
+export const INGESTIBLE_BRAND_STATUSES = ['active', 'reverse_binding', 'external'] as const;
 
 const ACTIVE_HOUR_CONDITIONS = Array.from({ length: 24 }, (_, i) => `h${String(i).padStart(2, '0')} <> 0`).join(
   ' OR ',
 );
 
+export interface DiscoverOptions {
+  /**
+   * Only return the entries that claim one of these `brands.id`s.
+   *
+   * Narrows the *output*, not the `brands` query: which slug a row gets, and
+   * whether a Premium table claims it first, depends on every other ingestible
+   * row (two brands slugifying alike — the first by name wins; a Premium
+   * table's fuzzy match), so reading them all is what keeps a filtered run's
+   * entries identical to the nightly run's. That query is one cheap SELECT; the
+   * expensive part — the per-table metrics scan of every Premium table — is
+   * skipped for tables no requested id belongs to.
+   */
+  brandIds?: readonly number[];
+}
+
 /**
  * Auto-discover Buzzohero brands from PostgreSQL:
- * 1. Filter exclusively to Buzzohero brands (agency_id = 1, status = 'active').
+ * 1. Filter exclusively to Buzzohero brands (agency_id = 1, status in INGESTIBLE_BRAND_STATUSES).
  * 2. Premium clients: Have dedicated '*_daily_performance' tables with full hourly data.
  * 3. Standard clients: Accommodated for GMV Brief / daily summaries.
  */
-export async function discoverPostgresBrands(pool: pg.Pool): Promise<DiscoveredBrand[]> {
+export async function discoverPostgresBrands(
+  pool: pg.Pool,
+  options: DiscoverOptions = {},
+): Promise<DiscoveredBrand[]> {
+  const wanted = options.brandIds ? new Set(options.brandIds) : null;
+  const isWanted = (ids: readonly number[]) => !wanted || ids.some((id) => wanted.has(id));
+
   // Query all active Buzzohero brands
   let buzzoheroRows: Array<{
     id: number;
@@ -273,6 +300,14 @@ export async function discoverPostgresBrands(pool: pg.Pool): Promise<DiscoveredB
     );
     const matchingBrand = matchingBrands[0];
 
+    if (!isWanted(matchingBrands.map((b) => b.id))) {
+      // Not asked for — but it still claims its slug and rows, so the Standard
+      // loop below treats them exactly as the unfiltered run would.
+      processedSlugs.add(slug);
+      for (const b of matchingBrands) claimedBrandIds.add(b.id);
+      continue;
+    }
+
     // Fetch active non-zero metrics from the brand's table
     let metrics: string[] = [];
     try {
@@ -311,6 +346,7 @@ export async function discoverPostgresBrands(pool: pg.Pool): Promise<DiscoveredB
       tiktokAdAccountId: matchingBrand?.tiktok_ad_account_id,
       tiktokAdAccountIds: matchingBrands.map((b) => b.tiktok_ad_account_id).filter(Boolean),
       brandId: matchingBrand?.id,
+      brandIds: matchingBrands.map((b) => b.id),
       conversionMetric,
       conversionValueMetric,
       metrics,
@@ -323,6 +359,11 @@ export async function discoverPostgresBrands(pool: pg.Pool): Promise<DiscoveredB
   for (const brand of buzzoheroRows) {
     const slug = brand.tempo_slug?.trim() || formatBrandSlug(brand.name);
     if (!slug || processedSlugs.has(slug) || claimedBrandIds.has(brand.id)) continue;
+
+    if (!isWanted([brand.id])) {
+      processedSlugs.add(slug);
+      continue;
+    }
 
     const brandKey = slug.replace(/-/g, '_');
     const override = BRAND_OVERRIDES[brandKey] ?? BRAND_OVERRIDES[slug];
@@ -343,6 +384,7 @@ export async function discoverPostgresBrands(pool: pg.Pool): Promise<DiscoveredB
         tier: ClientTier.Premium,
         tiktokAdAccountId: brand.tiktok_ad_account_id,
         brandId: brand.id,
+        brandIds: [brand.id],
         metrics: [],
       });
       processedSlugs.add(slug);
@@ -360,6 +402,7 @@ export async function discoverPostgresBrands(pool: pg.Pool): Promise<DiscoveredB
         tier: ClientTier.Standard,
         tiktokAdAccountId: brand.tiktok_ad_account_id,
         brandId: brand.id,
+        brandIds: [brand.id],
         metrics: ['spend', 'impressions', 'clicks', 'conversions', 'conversion_value'],
       });
       processedSlugs.add(slug);

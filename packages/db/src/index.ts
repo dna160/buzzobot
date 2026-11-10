@@ -18,6 +18,8 @@ export { fetchSanitizeAndSeed, syncBrandToDomain } from './ingest/sanitize.js';
 export type { FetchSanitizeOptions } from './ingest/sanitize.js';
 export { triggerAutoSyncIfStale } from './ingest/auto-sync.js';
 export type { AutoSyncOptions } from './ingest/auto-sync.js';
+export { syncBrandsById, WarehouseNotConfiguredError } from './ingest/targeted-sync.js';
+export type { BrandSyncRequest, BrandSyncResult, BrandSyncOutcome } from './ingest/targeted-sync.js';
 export {
   discoverPostgresBrands,
   discoverSanitizedBrands,
