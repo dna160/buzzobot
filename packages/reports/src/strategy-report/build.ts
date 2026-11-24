@@ -49,7 +49,7 @@ const TITLES: Record<number, string> = {
 const T6_TITLE: Record<ReportClass, string> = { brand: 'Share of Voice & peringkat', shop: 'Konversi & product card' };
 /** T9's measured column in the metric's own unit: shares and size ratios are fractions, the rest are counts or Rupiah. */
 function logValue(metricKey: string, v: number): string {
-  if (/\.share|share\.|size_ratio/.test(metricKey)) return pct(v, 2);
+  if (/\.share|share\.|size_ratio/.test(metricKey)) return pct(v, 2);
   if (metricKey.startsWith('strategy.cost_per_1k_new')) return idr(v);
   return Math.abs(v) < 10 ? dec(v, 2) : num(v);
 }
