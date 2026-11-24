@@ -67,10 +67,27 @@ function principalOf(caller: Caller): { kind: string; key_id: string | null } {
   return { kind: caller.kind, key_id: caller.kind === 'api-key' ? caller.keyId : null };
 }
 
+/** FastAPI errors arrive as `{"detail": "..."}`; fall back to the raw body. */
+function detailOf(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as { detail?: unknown };
+    if (typeof parsed.detail === 'string') return parsed.detail;
+  } catch {
+    /* not JSON */
+  }
+  return body;
+}
+
 function engineMessage(status: number, body: string): string {
+  const detail = detailOf(body);
+  // No /v1/chat route: the engine process predates Tempo Chat and needs a restart.
+  if (status === 404) return 'Engine Tempo yang berjalan belum mendukung chat. Mulai ulang engine (pnpm stack), lalu coba lagi.';
+  if (status === 503 && /not configured|TEMPO_SCOPE/i.test(detail)) {
+    return `Chat belum dikonfigurasi di engine: ${detail}`;
+  }
   if (status === 503) return 'Model chat lokal sedang tidak tersedia. Coba lagi sebentar lagi.';
   if (status === 502) return 'Model chat mengembalikan galat. Coba lagi.';
-  return body || 'Terjadi kesalahan saat menghubungi Tempo.';
+  return detail || 'Terjadi kesalahan saat menghubungi Tempo.';
 }
 
 /** `POST /v1/chat`; 503/502 = model unreachable/errored or chat not configured. */
