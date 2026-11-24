@@ -23,6 +23,7 @@ from engine.chat.data import (
     FakeChatData,
     PaidCoverage,
     PortfolioRow,
+    SavedReport,
     TtmsLink,
 )
 from engine.chat.scope import ALL_TOOLS, ChatScope, ChatWorkspace, Principal, allowed_tools, workspace_for
@@ -535,3 +536,71 @@ async def test_loop_requires_last_message_user(monkeypatch):
     with pytest.raises(ValueError, match="last message must be from the user"):
         await run_chat(client=_mk_client(monkeypatch, handler), ctx=_ctx_with_ads(), allowed=ALL_TOOLS,
                        history=[{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hai"}])
+
+
+# ─── Improvement questions: saved reports + the brief's generator battery ────
+
+
+def _strategy_report() -> "SavedReport":
+    from datetime import datetime, timezone
+
+    content = {
+        "tier": "full",
+        "meta": {"window_start": "2026-09-29", "window_end": "2026-10-26", "section_order": [101, 103]},
+        "sections": {
+            "101": {"draft": {"headline": "Kebocoran besar di Consideration → Conversion.",
+                              "paragraph": "Fokus utama menaikkan Conversion dari 5,55% ke 10,55%."}},
+            "103": {"draft": {"headline": "Funnel bocor.", "paragraphs": [{"text": "Hanya 5.581 orang di Conversion."}],
+                              "implication": "Minat calon pembeli tidak bertahan."}},
+        },
+        "action_plan": [{"rank": 1, "copy": {
+            "langkah": "Naikkan Conversion dari 5,55% → 10,55% dalam 4 minggu.",
+            "cara": "Optimalkan navigasi ke produk.", "dasar": "Top 10 mencapai 16,00%.",
+            "gagal_jika": "Klik kartu produk tidak naik dalam 14 hari."}}],
+    }
+    return SavedReport(brief_type="strategy", run_id="run_x", tier="full",
+                       updated_at=datetime(2026, 10, 28, tzinfo=timezone.utc), content=content)
+
+
+async def test_saved_reports_quotes_the_approved_action_plan():
+    data = FakeChatData(reports=[_strategy_report()])
+    out = await run_tool(ctx_for(data, shop_scope("bardi", "BARDI")), "saved_reports", {})
+    assert out.ok
+    assert "Strategy Report BARDI yang sudah disetujui · dibuat 2026-10-28" in out.output
+    assert "Naikkan Conversion dari 5,55% → 10,55%" in out.output
+    assert "Gagal jika: Klik kartu produk tidak naik dalam 14 hari." in out.output
+    assert "Hanya 5.581 orang di Conversion." in out.output
+
+
+async def test_saved_reports_flags_a_stale_report():
+    data = FakeChatData(reports=[_strategy_report()])
+    out = await run_tool(ctx_for(data, shop_scope("bardi", "BARDI")), "saved_reports", {})
+    assert "berumur" in out.output  # 2026-10-28 is well over 14 days before any test run today
+
+
+async def test_saved_reports_none_points_to_diagnostics():
+    out = await run_tool(ctx_for(FakeChatData()), "saved_reports", {"brief_type": "strategy"})
+    assert "Belum ada Strategy Report" in out.output and "improvement_diagnostics" in out.output
+
+
+async def test_improvement_diagnostics_runs_the_brief_generators():
+    from eval.fixtures.sovella_gmv_week import build_sovella_gmv_metric_frame
+
+    data = FakeChatData(metric_frames={"gmv": build_sovella_gmv_metric_frame()})
+    out = await run_tool(ctx_for(data, shop_scope("sovella", "Sovella")), "improvement_diagnostics", {})
+    assert out.ok, out.output
+    assert out.output.startswith("Diagnostik perbaikan Sovella · GMV Brief (generator brief, tanpa LLM)")
+    assert "1. " in out.output and "Bukti:" in out.output and "Tindakan:" in out.output
+
+
+async def test_improvement_diagnostics_no_data_is_honest():
+    out = await run_tool(ctx_for(FakeChatData()), "improvement_diagnostics", {})
+    assert "Belum ada data iklan yang cukup" in out.output
+
+
+def test_prompt_routes_improvement_questions_to_the_scaffolding():
+    from engine.chat.prompts import system_prompt
+
+    text = system_prompt(ChatWorkspace(), date(2026, 11, 24))
+    assert text.index("saved_reports") < text.index("improvement_diagnostics") < text.rindex("market_scope_insights")
+    assert "Jangan mengarang strategi" in text

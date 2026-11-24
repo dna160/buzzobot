@@ -191,7 +191,7 @@ async def chat_endpoint(req: ChatRequest, request: Request) -> dict:
     data_pool = await request.app.state.chat_source.pool()
     focus = await resolve_scope(data_pool, req.client_slug) if req.client_slug else None
     allowed = allowed_tools(principal, workspace)
-    ctx = ToolContext(workspace=workspace, data=PgChatData(data_pool))
+    ctx = ToolContext(workspace=workspace, data=PgChatData(data_pool, engine_db=read_conn))
     history = [m.model_dump() for m in req.messages]
 
     try:

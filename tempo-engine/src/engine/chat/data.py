@@ -23,11 +23,15 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import asyncpg
 
 from engine.chat.scope import ChatScope, ChatWorkspace
+from engine.contracts import MetricFrame
 from engine.contracts.strategy import StrategyFrame
 from engine.ports.strategy_read import build_strategy_frame
 from engine.ports.tempo_read import (
     AwarenessRollupRow,
     RollupRow,
+    build_awareness_metric_frame,
+    build_gmv_metric_frame,
+    build_install_metric_frame,
     fetch_available_dates,
     fetch_paid_awareness_rollup,
     fetch_paid_rollup,
@@ -116,7 +120,25 @@ class PortfolioRow:
     engaged_view_15s: int
 
 
+@dataclass(frozen=True)
+class SavedReport:
+    """One approved engine report from `insight.brief`, content as stored
+    (reviewer edits already applied on approve)."""
+
+    brief_type: str
+    run_id: str
+    tier: str | None
+    updated_at: datetime | None
+    content: dict
+
+
 ResolveResult = ChatScope | list[ClientMatch]
+
+_FRAME_BUILDERS = {
+    "gmv": build_gmv_metric_frame,
+    "awareness": build_awareness_metric_frame,
+    "install": build_install_metric_frame,
+}
 
 
 class ChatData(Protocol):
@@ -136,6 +158,10 @@ class ChatData(Protocol):
     ) -> StrategyFrame | None: ...
     async def action_log(self, scope: ChatScope, limit: int) -> list[ActionLogRow]: ...
     async def campaign_meta(self, scope: ChatScope) -> dict[str, tuple[str, str]]: ...
+    async def saved_reports(self, scope: ChatScope, brief_type: str | None, limit: int) -> list[SavedReport]: ...
+    async def metric_frame(
+        self, scope: ChatScope, brief_type: str, *, window_days: int, end_date: date | None
+    ) -> MetricFrame | None: ...
 
 
 def client_today(timezone: str) -> date:
@@ -218,8 +244,11 @@ class PgChatData:
     """Reads Tempo's Postgres under a read-only role. Takes a pool (or
     connection) — both answer `fetch`/`fetchrow`/`fetchval`."""
 
-    def __init__(self, db: asyncpg.Pool) -> None:
+    def __init__(self, db: asyncpg.Pool, engine_db: asyncpg.Pool | None = None) -> None:
         self._db = db
+        #: The engine's own database: `insight.brief` lives there, whichever
+        #: database the ads data is read from.
+        self._engine = engine_db or db
 
     # ─── Workspace-level ────────────────────────────────────────────────────
 
@@ -434,6 +463,42 @@ class PgChatData:
         )
         return {r["id"]: (r["objective"], r["status"]) for r in rows}
 
+    async def saved_reports(self, scope: ChatScope, brief_type: str | None, limit: int) -> list[SavedReport]:
+        """Latest approved report per brief type, newest first. Matched by
+        slug against the engine DB's `clients`, since `insight.brief.tenant_id`
+        is the engine DB's client id even when ads data comes from elsewhere."""
+        rows = await _optional(
+            self._engine.fetch(
+                """
+                SELECT DISTINCT ON (b.brief_type) b.brief_type, b.run_id, b.updated_at, b.content
+                FROM insight.brief b JOIN clients c ON c.id::text = b.tenant_id
+                WHERE c.slug = $1 AND b.status = 'approved' AND ($2::text IS NULL OR b.brief_type = $2)
+                ORDER BY b.brief_type, b.updated_at DESC
+                """,
+                scope.client_slug,
+                brief_type,
+            ),
+            [],
+        )
+        out = []
+        for r in rows:
+            content = r["content"] if isinstance(r["content"], dict) else json.loads(r["content"])
+            out.append(
+                SavedReport(
+                    brief_type=r["brief_type"], run_id=r["run_id"], tier=content.get("tier"),
+                    updated_at=r["updated_at"], content=content,
+                )
+            )
+        out.sort(key=lambda x: x.updated_at or datetime.min, reverse=True)
+        return out[:limit]
+
+    async def metric_frame(
+        self, scope: ChatScope, brief_type: str, *, window_days: int, end_date: date | None
+    ) -> MetricFrame | None:
+        return await _FRAME_BUILDERS[brief_type](
+            self._db, scope.client_slug, end_date=end_date, window_days=window_days
+        )
+
     async def action_log(self, scope: ChatScope, limit: int) -> list[ActionLogRow]:
         rows = await self._db.fetch(
             """
@@ -499,6 +564,8 @@ class FakeChatData:
     portfolio_by_window: dict[tuple[date, date], list[PortfolioRow]] = field(default_factory=dict)
     portfolio_rows: list[PortfolioRow] = field(default_factory=list)
     last_date: date | None = None
+    reports: list[SavedReport] = field(default_factory=list)
+    metric_frames: dict[str, MetricFrame] = field(default_factory=dict)
     dates: list[date] = field(default_factory=list)
     rollup: list[RollupRow] = field(default_factory=list)
     awareness: list[AwarenessRollupRow] = field(default_factory=list)
@@ -563,3 +630,12 @@ class FakeChatData:
 
     async def campaign_meta(self, scope: ChatScope) -> dict[str, tuple[str, str]]:
         return dict(self.campaigns)
+
+    async def saved_reports(self, scope: ChatScope, brief_type: str | None, limit: int) -> list[SavedReport]:
+        rows = [r for r in self.reports if brief_type is None or r.brief_type == brief_type]
+        return sorted(rows, key=lambda r: r.updated_at or datetime.min, reverse=True)[:limit]
+
+    async def metric_frame(
+        self, scope: ChatScope, brief_type: str, *, window_days: int, end_date: date | None
+    ) -> MetricFrame | None:
+        return self.metric_frames.get(brief_type)

@@ -10,7 +10,7 @@ from datetime import date
 
 from engine.chat.scope import ChatScope, ChatWorkspace
 
-PROMPT_VERSION = "chat-2-general"
+PROMPT_VERSION = "chat-3-strategy"
 
 
 def system_prompt(workspace: ChatWorkspace, today: date, focus: ChatScope | None = None) -> str:
@@ -32,6 +32,14 @@ Cara bekerja:
 nama dari pengguna tidak persis atau alat mengembalikan beberapa kandidat, pakai find_clients atau tanyakan \
 ke pengguna klien mana yang dimaksud — jangan menebak.
 - Untuk membandingkan beberapa klien, panggil alat per klien untuk masing-masing.
+
+Pertanyaan strategi / perbaikan / "apa yang harus dilakukan" untuk satu klien:
+1. Panggil saved_reports lebih dulu. Bila ada laporan yang disetujui, rencana tindakannya adalah jawaban \
+utama — kutip langkah, dasar dan kriteria gagalnya, dan sebutkan tanggal laporannya.
+2. Panggil improvement_diagnostics untuk temuan terkini dari data iklan (berlaku untuk semua klien).
+3. Bila klien terhubung ke TikTok Market Scope, panggil juga market_scope_insights dengan topik actions.
+- Setiap saran harus berasal dari tindakan yang dikembalikan alat-alat ini. Jangan mengarang strategi \
+sendiri; bila alat tidak mengembalikan tindakan, katakan bahwa belum ada dasar data untuk saran.
 - Pakai alat paling sempit yang menjawab pertanyaan. Dua panggilan Market Scope dalam satu giliran memakai \
 satu frame yang sama.
 - Anda memilih alat mana yang dipanggil dan bagaimana menyusun jawaban — tetapi setiap angka berasal dari \

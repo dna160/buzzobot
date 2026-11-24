@@ -104,6 +104,8 @@ ALL_TOOLS: tuple[str, ...] = (
     "find_clients",
     "portfolio_overview",
     "client_overview",
+    "saved_reports",
+    "improvement_diagnostics",
     "ads_performance",
     "campaign_breakdown",
     "market_scope_insights",

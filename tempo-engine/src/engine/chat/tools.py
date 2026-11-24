@@ -22,7 +22,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from engine.chat import metrics
+from engine.chat import improve, metrics
 from engine.chat.data import ChatData, ClientMatch, PortfolioRow, client_today
 from engine.chat.scope import ChatScope, ChatWorkspace
 from engine.contracts import Finding
@@ -162,6 +162,16 @@ class PortfolioArgs(_Args):
 
 class ClientOverviewArgs(_ClientArgs):
     pass
+
+
+class SavedReportsArgs(_ClientArgs):
+    brief_type: Literal["strategy", "gmv", "awareness", "install"] | None = None
+
+
+class ImprovementArgs(_ClientArgs):
+    window_days: int = Field(default=7, ge=7, le=90)
+    end_date: date | None = None
+    limit: int = Field(default=6, ge=1, le=10)
 
 
 class AdsPerformanceArgs(_ClientArgs):
@@ -431,6 +441,36 @@ async def _strategy_action_log(ctx: ToolContext, args: StrategyActionLogArgs) ->
     return "\n".join(out)
 
 
+async def _saved_reports(ctx: ToolContext, args: SavedReportsArgs) -> str:
+    s = await ctx.client(args.client)
+    if isinstance(s, str):
+        return s
+    reports = await ctx.data.saved_reports(s, args.brief_type, 2)
+    if not reports:
+        kind = improve.BRIEF_LABEL.get(args.brief_type or "", "laporan engine")
+        return (
+            f"Belum ada {kind} yang disetujui untuk {s.client_name}. Untuk saran perbaikan, gunakan "
+            "improvement_diagnostics (dan market_scope_insights bila klien terhubung ke TTMS)."
+        )
+    today = client_today(s.timezone).isoformat()
+    parts = [improve.format_saved_report(r, s.client_name, today) for r in reports]
+    return "\n\n".join(parts)
+
+
+async def _improvement_diagnostics(ctx: ToolContext, args: ImprovementArgs) -> str:
+    s = await ctx.client(args.client)
+    if isinstance(s, str):
+        return s
+    brief_type = improve.BRIEF_FOR_NORTH_STAR.get(s.north_star)
+    if brief_type is None:
+        return f"Diagnostik perbaikan belum tersedia untuk bintang utara {s.north_star} ({s.client_name})."
+    frame = await ctx.data.metric_frame(s, brief_type, window_days=args.window_days, end_date=args.end_date)
+    if frame is None:
+        return f"Belum ada data iklan yang cukup untuk diagnostik {s.client_name} pada periode yang diminta."
+    d = improve.run_diagnostics(frame, brief_type)
+    return improve.format_diagnostics(d, s.client_name, frame, args.limit)
+
+
 async def _find_clients(ctx: ToolContext, args: FindClientsArgs) -> str:
     total = await ctx.data.client_count(ctx.workspace)
     rows = await ctx.data.find_clients(ctx.workspace, args.query, args.limit)
@@ -602,6 +642,25 @@ TOOLS: dict[str, Tool] = {
         "installs/views_6s), limit (1–25), north_star opsional (shop/vtr/app_install).",
         PortfolioArgs,
         _portfolio_overview,  # type: ignore[arg-type]
+    ),
+    "saved_reports": Tool(
+        "saved_reports",
+        "Laporan engine terakhir yang SUDAH DISETUJUI untuk satu klien (argumen client): Strategy Report "
+        "(temuan dan rencana tindakan bertarget dari agen strategi) atau GMV/Awareness/Install Brief (ringkasan, "
+        "temuan, tindakan, risiko). Ditulis agen laporan dan disetujui reviewer. Panggil PERTAMA untuk pertanyaan "
+        "strategi/perbaikan/langkah berikutnya. Argumen: brief_type opsional (strategy/gmv/awareness/install).",
+        SavedReportsArgs,
+        _saved_reports,  # type: ignore[arg-type]
+    ),
+    "improvement_diagnostics": Tool(
+        "improvement_diagnostics",
+        "Diagnostik perbaikan langsung untuk satu klien (argumen client), memakai generator brief yang sama "
+        "dengan laporan (efisiensi kampanye, konsentrasi, nol hasil, respons marginal, kontras segmen, dsb.), "
+        "diurutkan menurut materialitas, masing-masing dengan bukti angka dan tindakan dari templat brief. "
+        "Berlaku untuk semua klien yang punya data iklan. Argumen: window_days (7–90, default 7), end_date, "
+        "limit (1–10, default 6).",
+        ImprovementArgs,
+        _improvement_diagnostics,  # type: ignore[arg-type]
     ),
     "client_overview": Tool(
         "client_overview",
