@@ -106,5 +106,16 @@ def is_fresh(r: SavedReport, now: datetime | None = None) -> bool:
     return age is not None and age <= CACHE_HOURS
 
 
+def is_current(r: SavedReport) -> bool:
+    """A cached Strategy Report is reused only if the current strategy rules
+    wrote it (`meta.prompt_version`). strategy-2 stopped brand-class reports
+    from advising TikTok Shop, so an older one must be regenerated, not reused."""
+    if r.brief_type != "strategy":
+        return True
+    from engine.graphs.strategy import PROMPT_VERSION
+
+    return (r.content.get("meta") or {}).get("prompt_version") == PROMPT_VERSION
+
+
 def timed() -> float:
     return perf_counter()

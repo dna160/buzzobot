@@ -77,6 +77,23 @@ Topic = Literal[
 ]
 
 
+def is_brand_heavy(scope: ChatScope, report_class: str | None = None) -> bool:
+    """A client that does not sell through TikTok Shop: a non-shop north star
+    (vtr / app_install), or a Strategy Report classified as brand class."""
+    return scope.north_star != "shop" or report_class == "brand"
+
+
+def no_shop_note(scope: ChatScope, report_class: str | None = None) -> str:
+    """The sentence every tool appends for a brand-heavy client, so the model
+    never turns a Conversion gap into TikTok Shop advice."""
+    if not is_brand_heavy(scope, report_class):
+        return ""
+    return (
+        f" {scope.client_name} adalah klien brand-heavy yang tidak berjualan lewat TikTok Shop: jangan menyarankan "
+        "membuka/mengaktifkan TikTok Shop, kartu produk, etalase, checkout, atau mendorong tahap Conversion."
+    )
+
+
 @dataclass
 class ToolContext:
     workspace: ChatWorkspace
@@ -231,6 +248,8 @@ async def _client_overview(ctx: ToolContext, args: ClientOverviewArgs) -> str:
         )
     else:
         lines.append("Iklan berbayar: belum ada data iklan untuk klien ini.")
+    if no_shop_note(s):
+        lines.append(no_shop_note(s).strip())
 
     answerable = ["pertanyaan iklan berbayar"] if o.paid.days_with_data else []
     t = o.ttms
@@ -406,6 +425,7 @@ async def _market_scope(ctx: ToolContext, args: MarketScopeArgs) -> str:
         f"Market Scope {frame.brand_name} · kategori {frame.vertical or '—'} · paket {plan} · kelas laporan {cls} "
         f"· periode {frame.current_start} s.d. {frame.as_of} ({args.window_days} hari, data TTMS terakhir yang sudah "
         f"final) · pembanding: rata-rata {frame.benchmark.replace('top', 'Top ')} kategori."
+        + no_shop_note(s, cls)
     ]
     for topic in dict.fromkeys(args.topics):  # dedupe, keep order
         out.append(f"## {TOPIC_TITLE.get(topic, topic)}")
@@ -480,7 +500,10 @@ async def _client_report(ctx: ToolContext, args: ClientReportArgs) -> str:
     # 1. Cache: a report of the preferred kind approved within 24 hours.
     if not args.refresh:
         for k, w in kinds[:1]:
-            fresh = [r for r in await ctx.data.saved_reports(s, k, 1) if reports_mod.is_fresh(r)]
+            fresh = [
+                r for r in await ctx.data.saved_reports(s, k, 1)
+                if reports_mod.is_fresh(r) and reports_mod.is_current(r)
+            ]
             if fresh:
                 report, kind, window = fresh[0], k, w
     # 2. Otherwise generate it (falling back to the brief if the strategy frame refuses).
@@ -518,6 +541,8 @@ async def _client_report(ctx: ToolContext, args: ClientReportArgs) -> str:
     note = ""
     if kind != "strategy" and kinds[0][0] != "strategy":
         note = f" {s.client_name} tidak terhubung ke TikTok Market Scope, jadi laporannya adalah {label}, bukan Strategy Report."
+    report_class = (report.content.get("report_class") or {}).get("report_class")
+    note += no_shop_note(s, report_class)
     head = (
         f"Laporan untuk {s.client_name}: {label}, {source}.{note} Laporan lengkap (HTML) ditampilkan sebagai "
         "tautan di bawah jawaban — sebutkan itu, jangan menulis URL. Ringkas laporan di bawah ini."
@@ -537,7 +562,7 @@ async def _improvement_diagnostics(ctx: ToolContext, args: ImprovementArgs) -> s
     if frame is None:
         return f"Belum ada data iklan yang cukup untuk diagnostik {s.client_name} pada periode yang diminta."
     d = improve.run_diagnostics(frame, brief_type)
-    return improve.format_diagnostics(d, s.client_name, frame, args.limit)
+    return improve.format_diagnostics(d, s.client_name, frame, args.limit) + no_shop_note(s)
 
 
 async def _find_clients(ctx: ToolContext, args: FindClientsArgs) -> str:

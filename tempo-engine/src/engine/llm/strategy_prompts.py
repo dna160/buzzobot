@@ -90,13 +90,21 @@ def section_table(findings: list[Finding], brand: str) -> str:
     return "\n".join(table_line(f, brand) for f in findings)
 
 
+BRAND_CLASS_RULE = (
+    "ATURAN KELAS BRAND: merek ini tidak berjualan lewat TikTok Shop. Jangan menyarankan atau menyebut "
+    "pembukaan/aktivasi TikTok Shop, kartu produk, etalase, keranjang, checkout, atau mendorong tahap "
+    "Conversion; fokus pada jangkauan, tontonan, interaksi, pangsa kategori, peringkat, dan konten."
+)
+
+
 def header_line(frame: StrategyFrame) -> str:
     cls = frame.classification.report_class
     plan = "lite" if frame.is_lite else (frame.plan or "full")
-    return (
+    line = (
         f"# ringkas: {frame.brand_name} ({cls}) · {frame.current_start.isoformat()}→{frame.as_of.isoformat()} "
         f"vs periode sebelumnya · benchmark {frame.benchmark} · paket {plan}"
     )
+    return f"{line}\n{BRAND_CLASS_RULE}" if cls == "brand" else line
 
 
 def build_section_messages(

@@ -333,7 +333,7 @@ def deterministic_action_copy(a: ActionItem, findings_by_id: dict[str, Finding],
         stage, nxt = str(e.get("stage")), str(e.get("next_stage"))
         how = (
             "Tujukan kampanye ke audiens Consideration dengan penawaran TikTok Shop pada produk terlaris."
-            if stage == "consideration"
+            if stage == "consideration" and cls == "shop"
             else "Tujukan ulang audiens Awareness dengan konten yang mengajak komentar, simpan, atau klik."
         )
         return ActionCopy(
@@ -368,7 +368,11 @@ def deterministic_action_copy(a: ActionItem, findings_by_id: dict[str, Finding],
     return ActionCopy(
         langkah=f"Selidiki {a.subject}: dari #{e.get('rank_14d')} ke #{e.get('rank_now')} di tahap {STAGE.get(str(e.get('stage')), '')} dalam 14 hari.",
         dasar="TikTok hanya membagikan peringkat pesaing, bukan angkanya.",
-        cara="Periksa listing TikTok Shop dan unggahan kreator mereka minggu ini; catat produk dan kampanye yang mereka dorong.",
+        cara=(
+            "Periksa listing TikTok Shop dan unggahan kreator mereka minggu ini; catat produk dan kampanye yang mereka dorong."
+            if cls == "shop"
+            else "Periksa iklan dan unggahan kreator mereka minggu ini; catat pesan, format konten, dan kampanye yang mereka dorong."
+        ),
         gagal_jika="Peringkat mereka kembali turun dalam 7 hari — kemungkinan lonjakan kampanye sesaat.",
     )
 

@@ -546,7 +546,8 @@ def _strategy_report() -> "SavedReport":
 
     content = {
         "tier": "full",
-        "meta": {"window_start": "2026-09-29", "window_end": "2026-10-26", "section_order": [101, 103]},
+        "meta": {"window_start": "2026-09-29", "window_end": "2026-10-26", "section_order": [101, 103],
+                 "prompt_version": "strategy-2"},
         "sections": {
             "101": {"draft": {"headline": "Kebocoran besar di Consideration → Conversion.",
                               "paragraph": "Fokus utama menaikkan Conversion dari 5,55% ke 10,55%."}},
@@ -687,3 +688,47 @@ def test_prompt_routes_improvement_questions_to_the_scaffolding():
     assert text.index("client_report") < text.index("improvement_diagnostics")
     assert "24 jam" in text and "Jangan menulis URL" in text
     assert "Jangan mengarang strategi" in text
+
+
+# ─── Brand-heavy clients never get TikTok Shop advice ────────────────────────
+
+
+async def test_cached_report_from_older_strategy_rules_is_regenerated():
+    from dataclasses import replace
+
+    old = _aged(_strategy_report(), 2)
+    old = replace(old, content={**old.content, "meta": {**old.content["meta"], "prompt_version": "strategy-1"}})
+    runner = _Runner()
+    data = FakeChatData(overview_facts=_overview(linked=True), reports=[old])
+    ctx = ctx_for(data, shop_scope("bardi", "BARDI"))
+    ctx.runner = runner
+    await run_tool(ctx, "client_report", {})
+    assert len(runner.calls) == 1  # strategy-1 could advise TikTok Shop to a brand: not reused
+
+
+def _vtr_scope() -> ChatScope:
+    return ChatScope(client_slug="kanzler", tenant_id="t-k", agency_id="ag-1", client_name="Kanzler",
+                     north_star="vtr", currency="IDR", timezone="Asia/Jakarta")
+
+
+async def test_brand_heavy_client_report_carries_the_no_shop_rule():
+    data = FakeChatData(overview_facts=_overview(linked=False))
+    ctx = ctx_for(data, _vtr_scope())
+    ctx.runner = _Runner()
+    out = await run_tool(ctx, "client_report", {})
+    assert "brand-heavy" in out.output and "jangan menyarankan" in out.output
+    shop = await run_tool(ctx_for(FakeChatData(overview_facts=_overview(linked=False))), "client_report", {})
+    assert "brand-heavy" not in shop.output  # a shop client is not told to avoid shop advice
+
+
+async def test_client_overview_flags_brand_heavy():
+    data = FakeChatData(overview_facts=_overview(linked=False))
+    out = await run_tool(ctx_for(data, _vtr_scope()), "client_overview", {})
+    assert "tidak berjualan lewat TikTok Shop" in out.output
+
+
+def test_chat_prompt_forbids_shop_advice_for_brand_heavy():
+    from engine.chat.prompts import system_prompt
+
+    text = system_prompt(ChatWorkspace(), date(2026, 11, 24))
+    assert "brand-heavy" in text and "JANGAN" in text and "TikTok Shop" in text

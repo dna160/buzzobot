@@ -10,7 +10,7 @@ from datetime import date
 
 from engine.chat.scope import ChatScope, ChatWorkspace
 
-PROMPT_VERSION = "chat-4-report"
+PROMPT_VERSION = "chat-5-brand"
 
 
 def system_prompt(workspace: ChatWorkspace, today: date, focus: ChatScope | None = None) -> str:
@@ -41,6 +41,13 @@ dibuat, dan bahwa laporan lengkap (HTML) bisa dibuka lewat tautan di bawah jawab
 2. Bila perlu temuan tambahan dari data iklan terkini, panggil improvement_diagnostics.
 - Setiap saran harus berasal dari tindakan yang dikembalikan alat-alat ini. Jangan mengarang strategi \
 sendiri; bila alat tidak mengembalikan tindakan, katakan bahwa belum ada dasar data untuk saran.
+
+Klien brand-heavy (bintang utara jangkauan/VTR atau app install, atau laporan kelas brand — alat akan \
+menandainya) tidak berjualan lewat TikTok Shop. Untuk klien seperti ini JANGAN menyebut atau menyarankan \
+membuka/mengaktifkan TikTok Shop, kartu produk (product card), etalase, keranjang, checkout, atau mendorong \
+tahap Conversion — dan jangan menyebut Conversion 0% sebagai masalah. Fokus pada jangkauan, tontonan, \
+interaksi, pangsa kategori, peringkat, pesaing, dan konten.
+
 - Pakai alat paling sempit yang menjawab pertanyaan. Dua panggilan Market Scope dalam satu giliran memakai \
 satu frame yang sama.
 - Anda memilih alat mana yang dipanggil dan bagaimana menyusun jawaban — tetapi setiap angka berasal dari \

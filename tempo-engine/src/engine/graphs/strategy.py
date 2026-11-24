@@ -40,7 +40,7 @@ from engine.generators.strategy.t03_goal_pacing import weekly_goal_series
 from engine.materiality.strategy import route_strategy, score_strategy_findings
 
 T = StrategySectionId
-PROMPT_VERSION = "strategy-1"
+PROMPT_VERSION = "strategy-2"  # strategy-2: brand-class reports never advise TikTok Shop
 NARRATED = (T.T3_FUNNEL, T.T4_SPEND, T.T5_PACE, T.T6_CLASS, T.T7_CONTENT, T.T8_WARNINGS)
 TEMPLATE_ONLY = (T.T9_ACTION_LOG, T.LAMPIRAN_A)
 

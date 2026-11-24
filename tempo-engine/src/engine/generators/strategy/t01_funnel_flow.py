@@ -8,6 +8,12 @@ Consideration) is skipped rather than read as a 1,250% "move-on rate".
 
 Also reports where outflow cancels most of a stage's new audience over the
 window (`STAGE_INFLOW_OFFSET`), only for stages TTMS reports flow on.
+
+A brand-class report (no TikTok Shop — e.g. Kanzler) skips the Conversion
+stage entirely: TTMS Conversion is shop activity (product-card clicks,
+purchases), so for a brand that does not sell on TikTok it is structurally
+near zero, and reading it as a "leak" against shop-selling Top 10 brands would
+steer the Target Solver into recommending TikTok Shop activation.
 """
 
 from __future__ import annotations
@@ -22,6 +28,12 @@ LEAK_RATIO = 0.7  # brand ratio below 70% of the benchmark's
 OFFSET_RATIO = 0.8  # outflow ≥ 80% of new over the window
 
 PAIRS = (("awareness", "consideration"), ("consideration", "conversion"))
+#: Stages that only exist for a brand selling through TikTok Shop.
+SHOP_ONLY_STAGES = frozenset({"conversion"})
+
+
+def is_brand_class(frame: StrategyFrame) -> bool:
+    return frame.classification.report_class == "brand"
 
 
 class T01FunnelFlow(StrategyGenerator):
@@ -32,7 +44,10 @@ class T01FunnelFlow(StrategyGenerator):
         lv = frame.benchmark
         conf = history_confidence(frame)
         findings = []
+        brand = is_brand_class(frame)
         for stage, nxt in PAIRS:
+            if brand and nxt in SHOP_ONLY_STAGES:
+                continue
             d = last_day(frame.audience.get(stage, []), frame.as_of)
             nd = last_day(frame.audience.get(nxt, []), frame.as_of)
             if not d or not nd or not d.total or nd.total is None:
@@ -80,6 +95,8 @@ class T01FunnelFlow(StrategyGenerator):
             )
 
         for stage in ("awareness", "consideration", "conversion"):
+            if brand and stage in SHOP_ONLY_STAGES:
+                continue
             series = frame.audience.get(stage, [])
             if not has_flow(series, frame.current_start, frame.as_of):
                 continue

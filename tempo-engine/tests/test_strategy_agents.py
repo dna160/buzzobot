@@ -357,7 +357,7 @@ async def test_full_tier_accepts_gate_passing_copy(bardi_state, monkeypatch):
     assert c["sections"]["108"]["narration_source"] == "template"  # T8 renders as signal rows
     assert ev["pass_at_1"] == {"narrator": 1.0, "action_phraser": True, "synthesist": True, "chip_gate": True}
     assert ev["fallback_rate"] == {"sections": 0.0, "actions": 0.0}
-    assert ev["prompt_version"] == "strategy-1" and ev["llm_calls"] == client.stats.calls
+    assert ev["prompt_version"] == "strategy-2" and ev["llm_calls"] == client.stats.calls
     # Class order: shop narrates T3, T4, T6, T5, T7 — then actions, then T1.
     sections = [n for n in client.names if n.startswith("strategy_section_")]
     assert sections == ["strategy_section_103", "strategy_section_104", "strategy_section_106", "strategy_section_105", "strategy_section_107"]
