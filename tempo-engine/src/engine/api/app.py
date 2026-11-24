@@ -33,6 +33,7 @@ explicitly rather than inheriting one from this file.
 from __future__ import annotations
 
 import os
+import uuid
 from contextlib import asynccontextmanager
 from datetime import date
 from typing import Literal
@@ -41,7 +42,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 
 from engine.api.edits import Edit, EditError, ensure_edits_schema
 from engine.api.dispatcher import (
@@ -52,10 +53,15 @@ from engine.api.dispatcher import (
     run_brief_sync,
     start_brief_run_async,
 )
+from engine.chat.agent import run_chat
+from engine.chat.data import PgChatData, resolve_scope
+from engine.chat.log import ensure_chat_schema, record_turn
+from engine.chat.scope import Principal, allowed_tools
+from engine.chat.tools import ToolContext
 from engine.contracts.content import Tier
 from engine.graphs.brief import build_brief_graph
 from engine.graphs.persistence import brief_stats, ensure_schema, insight_checkpointer_conninfo, recent_strategy_runs
-from engine.llm.client import LmStudioConfig
+from engine.llm.client import LmStudioClient, LmStudioConfig, LmStudioError, LmStudioUnreachable
 from engine.materiality.persistence import ensure_schema as ensure_rankings_schema
 from engine.ports.tempo_read import create_pool
 from engine.version import ENGINE_VERSION
@@ -82,6 +88,8 @@ async def lifespan(app: FastAPI):
         await ensure_schema(app.state.read_conn)
         await ensure_rankings_schema(app.state.read_conn)
         await ensure_edits_schema(app.state.read_conn)
+        await ensure_chat_schema(app.state.read_conn)
+        app.state.chat_config = LmStudioConfig.for_chat()
         try:
             yield
         finally:
@@ -141,6 +149,74 @@ async def create_brief_sync(req: CreateBriefRequest, request: Request) -> dict:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=20_000)
+
+
+class ChatRequest(BaseModel):
+    client_slug: str
+    messages: list[ChatMessage] = Field(min_length=1, max_length=60)
+    conversation_id: str | None = Field(default=None, max_length=64)
+    principal: dict | None = None
+
+    @model_validator(mode="after")
+    def _last_is_user(self) -> ChatRequest:
+        if self.messages[-1].role != "user":
+            raise ValueError("the last message must be from the user")
+        return self
+
+
+@app.post("/v1/chat")
+async def chat_endpoint(req: ChatRequest, request: Request) -> dict:
+    """Tempo Chat (C1). Resolves the client server-side from `client_slug` (the
+    model never sees a client choice, PRD §6.2 R3), runs the tool loop, logs the
+    turn with its principal, and returns the checked reply."""
+    read_conn = request.app.state.read_conn
+    scope = await resolve_scope(read_conn, req.client_slug)
+    if scope is None:
+        raise HTTPException(status_code=404, detail=f"no client with slug {req.client_slug!r}")
+
+    config: LmStudioConfig = request.app.state.chat_config
+    if not config.model:
+        raise HTTPException(status_code=503, detail="Chat is not configured: set LM_STUDIO_CHAT_MODEL.")
+
+    principal = Principal.from_payload(req.principal)
+    allowed = allowed_tools(principal, scope)
+    ctx = ToolContext(scope=scope, data=PgChatData(read_conn))
+    history = [m.model_dump() for m in req.messages]
+
+    try:
+        result = await run_chat(client=LmStudioClient(config), ctx=ctx, allowed=allowed, history=history)
+    except LmStudioUnreachable as exc:
+        raise HTTPException(status_code=503, detail=f"Chat model unreachable: {exc}") from exc
+    except LmStudioError as exc:
+        raise HTTPException(status_code=502, detail=f"Chat model error: {exc}") from exc
+
+    conversation_id = req.conversation_id or uuid.uuid4().hex
+    question = req.messages[-1].content
+    await record_turn(
+        read_conn,
+        conversation_id=conversation_id,
+        scope=scope,
+        principal=principal,
+        question=question,
+        result=result,
+    )
+
+    return {
+        "conversation_id": conversation_id,
+        "client": {"slug": scope.client_slug, "name": scope.client_name, "north_star": scope.north_star},
+        "reply": result.reply,
+        "verified": result.verified,
+        "unverified_numerals": result.unverified_numerals,
+        "tool_calls": result.tool_calls,
+        "model": result.model,
+        "prompt_version": result.prompt_version,
+        "duration_s": result.duration_s,
+    }
+
+
 @app.get("/healthz")
 async def healthz(request: Request) -> dict:
     """Liveness plus the two facts the surface's engine health card needs
@@ -158,6 +234,7 @@ async def healthz(request: Request) -> dict:
         db_ok = False
         stats = {"briefs_total": 0, "last_run": None, "error": str(exc)[:200]}
     llm = LmStudioConfig.from_env()
+    chat = getattr(request.app.state, "chat_config", None) or LmStudioConfig.for_chat()
     return {
         "status": "ok" if db_ok else "degraded",
         "engine_version": ENGINE_VERSION,
@@ -168,6 +245,7 @@ async def healthz(request: Request) -> dict:
         "db": db_ok,
         "brief_types": ["gmv", "awareness", "install", "strategy"],
         "llm": {"base_url": llm.base_url, "model": llm.model, "max_tokens": llm.max_tokens, "concurrency": llm.concurrency},
+        "chat": {"base_url": chat.base_url, "model": chat.model or None},
         "last_strategy_run": strategy[0] if strategy else None,
         "strategy_runs": strategy,
         **stats,

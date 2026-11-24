@@ -56,6 +56,9 @@ class LmStudioConfig:
     #: Send `reasoning_effort` when an agent asks for thinking off/on. LM Studio
     #: accepts the field; a server that rejects unknown fields can turn it off.
     reasoning_toggle: bool = True
+    #: Default `reasoning_effort` for free-form chat (Tempo Chat PRD §8.2). Qwen
+    #: thinks at length unless told otherwise; "low" keeps turns inside budget.
+    reasoning_effort: str = "low"
 
     @classmethod
     def from_env(cls) -> LmStudioConfig:
@@ -66,6 +69,24 @@ class LmStudioConfig:
             max_tokens=_env_int("LM_STUDIO_MAX_TOKENS", cls.max_tokens),
             concurrency=max(1, _env_int("LM_STUDIO_CONCURRENCY", cls.concurrency)),
             reasoning_toggle=os.environ.get("LM_STUDIO_REASONING_TOGGLE", "true").strip().lower() not in ("false", "0"),
+        )
+
+    @classmethod
+    def for_chat(cls) -> LmStudioConfig:
+        """Tempo Chat's config (PRD §8.2): the chat model (Qwen 27B) and its own
+        token/timeout/reasoning budget, but the SAME base URL fallback and the
+        SAME process-wide concurrency as reports — there is one GPU, so a chat
+        turn and a report call share the one semaphore (PRD §8.2 [LOCKED]).
+        `LM_STUDIO_CHAT_MODEL` has no default: chat is off until it is set."""
+        base = cls.from_env()
+        return cls(
+            base_url=os.environ.get("LM_STUDIO_CHAT_URL") or base.base_url,
+            model=os.environ.get("LM_STUDIO_CHAT_MODEL") or "",
+            timeout_s=_env_float("LM_STUDIO_CHAT_TIMEOUT_S", 240.0),
+            max_tokens=_env_int("LM_STUDIO_CHAT_MAX_TOKENS", 8192),
+            concurrency=base.concurrency,
+            reasoning_toggle=base.reasoning_toggle,
+            reasoning_effort=os.environ.get("LM_STUDIO_CHAT_REASONING", "low").strip() or "low",
         )
 
 
@@ -138,7 +159,6 @@ class LmStudioClient:
         validation are the caller's job (the schema gate), not this
         client's, so a malformed reply is a gate failure, not a client
         exception swallowed here."""
-        url = f"{self.config.base_url.rstrip('/')}/chat/completions"
         payload: dict = {
             "model": self.config.model,
             "messages": [
@@ -158,6 +178,66 @@ class LmStudioClient:
         if thinking is not None and self.config.reasoning_toggle:
             payload["reasoning_effort"] = "low" if thinking else "none"
 
+        data = await self._post(payload, agent=agent)
+        choice = (data.get("choices") or [{}])[0]
+        content = (choice.get("message") or {}).get("content")
+        finish = choice.get("finish_reason")
+        if finish == "length":
+            self.stats.truncated += 1
+        if not content:
+            if finish == "length":
+                raise LmStudioTruncated("LM Studio stopped at max_tokens before writing any content")
+            raise LmStudioError("LM Studio returned no content")
+        return strip_to_json(content)
+
+    async def chat(
+        self,
+        *,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        reasoning_effort: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        agent: str = "chat",
+    ) -> dict:
+        """One free-form, tool-calling chat completion (Tempo Chat PRD §8.3).
+
+        Returns the assistant message dict as LM Studio sent it —
+        `{"role": "assistant", "content": ..., "tool_calls"?: [...],
+        "finish_reason": ...}` — raw, because the chat loop (not this client)
+        decides whether to run a tool call, parse an inline `<tool_call>` block
+        out of `content`, or treat the content as the final reply. Shares the
+        one process-wide semaphore and transport retries with `complete_json`
+        via `_post`, so a chat turn queues against report calls on the single
+        GPU rather than racing them."""
+        payload: dict = {
+            "model": self.config.model,
+            "messages": messages,
+            "temperature": temperature if temperature is not None else self.config.temperature,
+            "max_tokens": max_tokens or self.config.max_tokens,
+            "stream": False,
+        }
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = "auto"
+        if self.config.reasoning_toggle:
+            payload["reasoning_effort"] = reasoning_effort or self.config.reasoning_effort
+
+        data = await self._post(payload, agent=agent)
+        choice = (data.get("choices") or [{}])[0]
+        message = dict(choice.get("message") or {})
+        message["finish_reason"] = choice.get("finish_reason")
+        if choice.get("finish_reason") == "length":
+            self.stats.truncated += 1
+        return message
+
+    async def _post(self, payload: dict, *, agent: str | None = None) -> dict:
+        """Send one chat-completions request under the shared semaphore, with
+        transport retries and stats accounting. Returns the parsed JSON body;
+        raises `LmStudioUnreachable` (transport) or `LmStudioError` (non-200).
+        Both `complete_json` and `chat` go through here so the semaphore, the
+        retry/backoff policy and the token counters live in exactly one place."""
+        url = f"{self.config.base_url.rstrip('/')}/chat/completions"
         shared = _shared(self.config)
         loop = asyncio.get_running_loop()
         res: httpx.Response | None = None
@@ -187,17 +267,7 @@ class LmStudioClient:
         usage = data.get("usage") or {}
         self.stats.prompt_tokens += int(usage.get("prompt_tokens") or 0)
         self.stats.completion_tokens += int(usage.get("completion_tokens") or 0)
-        choices = data.get("choices") or []
-        choice = choices[0] if choices else {}
-        content = (choice.get("message") or {}).get("content")
-        finish = choice.get("finish_reason")
-        if finish == "length":
-            self.stats.truncated += 1
-        if not content:
-            if finish == "length":
-                raise LmStudioTruncated("LM Studio stopped at max_tokens before writing any content")
-            raise LmStudioError("LM Studio returned no content")
-        return strip_to_json(content)
+        return data
 
 
 class LmStudioError(Exception):
