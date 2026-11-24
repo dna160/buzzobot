@@ -57,6 +57,7 @@ from engine.chat.agent import run_chat
 from engine.chat.data import PgChatData, resolve_scope
 from engine.chat.log import ensure_chat_schema, record_turn
 from engine.chat.scope import Principal, allowed_tools, workspace_for
+from engine.chat.reports import EngineReportRunner
 from engine.chat.source import ChatDataSource
 from engine.chat.tools import ToolContext
 from engine.contracts.content import Tier
@@ -191,7 +192,12 @@ async def chat_endpoint(req: ChatRequest, request: Request) -> dict:
     data_pool = await request.app.state.chat_source.pool()
     focus = await resolve_scope(data_pool, req.client_slug) if req.client_slug else None
     allowed = allowed_tools(principal, workspace)
-    ctx = ToolContext(workspace=workspace, data=PgChatData(data_pool, engine_db=read_conn))
+    ctx = ToolContext(
+        workspace=workspace,
+        data=PgChatData(data_pool, engine_db=read_conn),
+        # Reports are generated against the engine DB, where they are stored.
+        runner=EngineReportRunner(request.app.state.graph, read_conn),
+    )
     history = [m.model_dump() for m in req.messages]
 
     try:
@@ -220,6 +226,7 @@ async def chat_endpoint(req: ChatRequest, request: Request) -> dict:
         "clients": [
             {"slug": c.client_slug, "name": c.client_name, "north_star": c.north_star} for c in result.clients
         ],
+        "reports": result.reports,
         "reply": result.reply,
         "verified": result.verified,
         "unverified_numerals": result.unverified_numerals,

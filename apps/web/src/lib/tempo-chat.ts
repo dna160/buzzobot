@@ -31,11 +31,40 @@ export interface ChatClientRef {
   northStar: string;
 }
 
+/** A report the turn reused (generated ≤ 24 h ago) or generated, with its HTML link. */
+export interface ChatReportLink {
+  slug: string;
+  clientName: string;
+  briefType: string;
+  label: string;
+  runId: string;
+  tier: string;
+  cached: boolean;
+  generatedAt: string | null;
+  url: string;
+}
+
+const REPORT_LABEL: Record<string, string> = {
+  strategy: 'Strategy Report',
+  gmv: 'GMV Brief',
+  awareness: 'Awareness Brief',
+  install: 'Install Brief',
+};
+
+/** The rendered HTML of a stored run — `?run=` renders it without generating. */
+function reportUrl(slug: string, briefType: string, runId: string, windowDays: number): string {
+  const s = encodeURIComponent(slug);
+  const run = encodeURIComponent(runId);
+  if (briefType === 'strategy') return `/api/reports/${s}/strategy-report?run=${run}`;
+  return `/api/reports/${s}/brief/${encodeURIComponent(briefType)}?format=html&run=${run}&days=${windowDays}`;
+}
+
 export interface ChatReply {
   conversationId: string;
   scope: string;
   /** Clients this turn's tools read, in first-touch order. */
   clients: ChatClientRef[];
+  reports: ChatReportLink[];
   reply: string;
   verified: boolean;
   unverifiedNumerals: string[];
@@ -124,7 +153,24 @@ export async function requestChat(req: ChatRelayRequest): Promise<ChatReply> {
 
   const data = (await res.json()) as Record<string, unknown>;
   const clients = Array.isArray(data.clients) ? (data.clients as Record<string, unknown>[]) : [];
+  const reports = Array.isArray(data.reports) ? (data.reports as Record<string, unknown>[]) : [];
   return {
+    reports: reports.map((r) => {
+      const slug = String(r.slug ?? '');
+      const briefType = String(r.brief_type ?? '');
+      const runId = String(r.run_id ?? '');
+      return {
+        slug,
+        clientName: String(r.client_name ?? slug),
+        briefType,
+        label: REPORT_LABEL[briefType] ?? briefType,
+        runId,
+        tier: String(r.tier ?? ''),
+        cached: Boolean(r.cached),
+        generatedAt: typeof r.generated_at === 'string' ? r.generated_at : null,
+        url: reportUrl(slug, briefType, runId, Number(r.window_days ?? 7)),
+      };
+    }),
     conversationId: String(data.conversation_id ?? ''),
     scope: String(data.scope ?? ''),
     clients: clients.map((c) => ({

@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Badge, Button, cn } from '@tempo/ui';
-import type { ChatReply, ChatToolCall } from '@/lib/tempo-chat';
+import type { ChatReply, ChatReportLink, ChatToolCall } from '@/lib/tempo-chat';
 
 /**
  * Tanya Tempo panel — one general chat over the whole ads database, not a
@@ -29,6 +29,8 @@ interface AssistantMeta {
   unverifiedNumerals: string[];
   toolCalls: ChatToolCall[];
   durationS: number;
+  /** Absent on turns saved before report links existed. */
+  reports?: ChatReportLink[];
 }
 
 type Turn =
@@ -56,6 +58,10 @@ function toolChip(tc: ChatToolCall): string {
       return `${who}Ikhtisar klien`;
     case 'strategy_action_log':
       return `${who}Log tindakan`;
+    case 'client_report':
+      return `${who}Laporan`;
+    case 'improvement_diagnostics':
+      return `${who}Diagnostik perbaikan${win}`;
     default:
       return tc.name;
   }
@@ -209,6 +215,7 @@ export function ChatPanel() {
           unverifiedNumerals: data.unverifiedNumerals,
           toolCalls: data.toolCalls,
           durationS: data.durationS,
+          reports: data.reports,
         },
       ]);
     } catch (err) {
@@ -265,6 +272,7 @@ export function ChatPanel() {
               <div className="max-w-[92%] rounded-2xl rounded-bl-sm border border-border bg-surface px-3.5 py-2.5 text-[13px] leading-relaxed text-secondary">
                 {renderMarkdown(t.content)}
               </div>
+              {t.reports?.length ? <ReportLinks reports={t.reports} /> : null}
               <ReplyFooter meta={t} />
             </div>
           ),
@@ -311,6 +319,38 @@ export function ChatPanel() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function generatedLabel(r: ChatReportLink): string {
+  if (!r.cached) return 'baru dibuat';
+  if (!r.generatedAt) return 'dari cache';
+  const when = new Date(r.generatedAt);
+  const time = when.toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  return `dari cache · dibuat ${time}`;
+}
+
+/** The full report each turn summarised, opened as rendered HTML in a new tab. */
+function ReportLinks({ reports }: { reports: ChatReportLink[] }) {
+  return (
+    <div className="flex flex-wrap gap-2 pl-1">
+      {reports.map((r) => (
+        <a
+          key={r.runId}
+          href={r.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-[12px] font-medium text-primary transition-colors hover:border-accent"
+        >
+          <span>
+            Buka {r.label} · {r.clientName} (HTML)
+          </span>
+          <span className="text-[11px] font-normal text-muted">
+            {generatedLabel(r)} · tier {r.tier}
+          </span>
+        </a>
+      ))}
     </div>
   );
 }

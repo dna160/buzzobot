@@ -562,25 +562,107 @@ def _strategy_report() -> "SavedReport":
                        updated_at=datetime(2026, 10, 28, tzinfo=timezone.utc), content=content)
 
 
-async def test_saved_reports_quotes_the_approved_action_plan():
-    data = FakeChatData(reports=[_strategy_report()])
-    out = await run_tool(ctx_for(data, shop_scope("bardi", "BARDI")), "saved_reports", {})
-    assert out.ok
-    assert "Strategy Report BARDI yang sudah disetujui · dibuat 2026-10-28" in out.output
+class _Runner:
+    """Records generate() calls; returns a fresh report of the asked type."""
+
+    def __init__(self, refuse: set[str] | None = None) -> None:
+        self.calls: list[tuple[str, str, int, str]] = []
+        self.refuse = refuse or set()
+
+    async def generate(self, slug, brief_type, *, window_days, tier):
+        from datetime import UTC, datetime
+
+        from engine.chat.reports import NotEligible
+
+        self.calls.append((slug, brief_type, window_days, tier))
+        if brief_type in self.refuse:
+            raise NotEligible(f"no {brief_type} for {slug}")
+        base = _strategy_report()
+        return SavedReport(brief_type=brief_type, run_id=f"run_new_{brief_type}", tier=tier,
+                           updated_at=datetime.now(UTC), content={**base.content, "tier": tier})
+
+
+def _overview(linked: bool, history: int = 30) -> ClientOverview:
+    return ClientOverview(
+        tier="standard", today=date(2026, 11, 24),
+        paid=PaidCoverage(1, date(2026, 9, 1), date(2026, 11, 23), 80),
+        ttms=TtmsLink(linked=linked, brand_name="BARDI" if linked else None, history_days=history if linked else 0),
+        last_reports=(), action_counts={},
+    )
+
+
+def _aged(report: "SavedReport", hours: float) -> "SavedReport":
+    from dataclasses import replace
+    from datetime import UTC, datetime, timedelta
+
+    return replace(report, updated_at=datetime.now(UTC) - timedelta(hours=hours))
+
+
+async def test_client_report_reuses_a_report_from_the_last_24_hours():
+    runner = _Runner()
+    data = FakeChatData(overview_facts=_overview(linked=True), reports=[_aged(_strategy_report(), 3)])
+    ctx = ctx_for(data, shop_scope("bardi", "BARDI"))
+    ctx.runner = runner
+    out = await run_tool(ctx, "client_report", {})
+    assert out.ok and runner.calls == []
+    assert "Strategy Report, diambil dari cache" in out.output and "3 jam lalu" in out.output
     assert "Naikkan Conversion dari 5,55% → 10,55%" in out.output
-    assert "Gagal jika: Klik kartu produk tidak naik dalam 14 hari." in out.output
-    assert "Hanya 5.581 orang di Conversion." in out.output
+    assert [(r.brief_type, r.run_id, r.cached) for r in ctx.reports] == [("strategy", "run_x", True)]
 
 
-async def test_saved_reports_flags_a_stale_report():
-    data = FakeChatData(reports=[_strategy_report()])
-    out = await run_tool(ctx_for(data, shop_scope("bardi", "BARDI")), "saved_reports", {})
-    assert "berumur" in out.output  # 2026-10-28 is well over 14 days before any test run today
+async def test_client_report_regenerates_after_24_hours():
+    runner = _Runner()
+    data = FakeChatData(overview_facts=_overview(linked=True), reports=[_aged(_strategy_report(), 30)])
+    ctx = ctx_for(data, shop_scope("bardi", "BARDI"))
+    ctx.runner = runner
+    out = await run_tool(ctx, "client_report", {})
+    assert runner.calls == [("bardi", "strategy", 28, "full")]
+    assert "baru dibuat sekarang" in out.output
+    assert ctx.reports[0].cached is False and ctx.reports[0].run_id == "run_new_strategy"
 
 
-async def test_saved_reports_none_points_to_diagnostics():
-    out = await run_tool(ctx_for(FakeChatData()), "saved_reports", {"brief_type": "strategy"})
-    assert "Belum ada Strategy Report" in out.output and "improvement_diagnostics" in out.output
+async def test_client_report_refresh_skips_the_cache():
+    runner = _Runner()
+    data = FakeChatData(overview_facts=_overview(linked=True), reports=[_aged(_strategy_report(), 1)])
+    ctx = ctx_for(data, shop_scope("bardi", "BARDI"))
+    ctx.runner = runner
+    await run_tool(ctx, "client_report", {"refresh": True})
+    assert len(runner.calls) == 1
+
+
+async def test_client_without_market_scope_gets_its_objective_brief():
+    runner = _Runner()
+    data = FakeChatData(overview_facts=_overview(linked=False))
+    ctx = ctx_for(data)  # Acme, shop
+    ctx.runner = runner
+    out = await run_tool(ctx, "client_report", {})
+    assert runner.calls == [("acme", "gmv", 7, "full")]
+    assert "GMV Brief" in out.output and "tidak terhubung ke TikTok Market Scope" in out.output
+
+
+async def test_client_report_falls_back_when_strategy_is_refused():
+    runner = _Runner(refuse={"strategy"})
+    data = FakeChatData(overview_facts=_overview(linked=True))
+    ctx = ctx_for(data)
+    ctx.runner = runner
+    await run_tool(ctx, "client_report", {})
+    assert [c[1] for c in runner.calls] == ["strategy", "gmv"]
+    assert ctx.reports[0].brief_type == "gmv"
+
+
+async def test_client_report_without_runner_never_generates():
+    data = FakeChatData(overview_facts=_overview(linked=True))
+    out = await run_tool(ctx_for(data), "client_report", {})
+    assert "pembuatan laporan tidak tersedia" in out.output and not data.reports
+
+
+async def test_generation_tier_env(monkeypatch):
+    from engine.chat.reports import generation_tier
+
+    monkeypatch.setenv("CHAT_REPORT_TIER", "instant")
+    assert generation_tier() == "instant"
+    monkeypatch.setenv("CHAT_REPORT_TIER", "bogus")
+    assert generation_tier() == "full"
 
 
 async def test_improvement_diagnostics_runs_the_brief_generators():
@@ -602,5 +684,6 @@ def test_prompt_routes_improvement_questions_to_the_scaffolding():
     from engine.chat.prompts import system_prompt
 
     text = system_prompt(ChatWorkspace(), date(2026, 11, 24))
-    assert text.index("saved_reports") < text.index("improvement_diagnostics") < text.rindex("market_scope_insights")
+    assert text.index("client_report") < text.index("improvement_diagnostics")
+    assert "24 jam" in text and "Jangan menulis URL" in text
     assert "Jangan mengarang strategi" in text

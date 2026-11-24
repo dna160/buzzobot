@@ -16,7 +16,10 @@ import { htmlToPdf } from '@/lib/report-pdf';
 import { authenticate, corsHeaders, preflight } from '@/lib/api-auth';
 
 /**
- * GET /api/reports/:slug/brief/:objective?tier=&format=&date=&days=
+ * GET /api/reports/:slug/brief/:objective?tier=&format=&date=&days=&run=
+ *
+ * `run=<engine run id>` renders that stored, approved brief (html|json) with
+ * no generation — the link Tanya Tempo gives for a cached or new report.
  *
  * The Brief Deck (docs/architecture/PRD_tempo_brief_deck.md) — one landscape
  * 16:9 deck per objective, replacing the A4 engine brief.
@@ -127,6 +130,56 @@ export async function GET(
   const dateParam = url.searchParams.get('date');
   const endDate = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : undefined;
   const forceFresh = url.searchParams.get('fresh') === '1';
+
+  // `?run=<engine run id>` renders a brief that already exists (Tanya Tempo's
+  // links, cached or just generated) as html/json instead of generating one.
+  // The numbers side still comes from the dashboard read model for the window.
+  const runParam = url.searchParams.get('run');
+  if (runParam) {
+    let stored: { run_id: string; status: string; content: unknown; tenant_id?: string; brief_type?: string } | null =
+      null;
+    try {
+      const res = await fetch(`${TEMPO_ENGINE_URL}/v1/briefs/${encodeURIComponent(runParam)}`, { cache: 'no-store' });
+      if (res.ok) stored = await res.json();
+    } catch (err) {
+      console.error('[reports] reading the stored brief failed:', err);
+      return new Response('Brief generation service is unreachable', { status: 502, headers: cors });
+    }
+    if (!stored || stored.brief_type !== objective || stored.tenant_id !== client.id || stored.status !== 'approved') {
+      return new Response(`No approved ${objective} brief "${runParam}" for "${slug}"`, { status: 404, headers: cors });
+    }
+    const storedTier: DeckTier = (stored.content as { tier?: string } | null)?.tier === 'full' ? 'full' : 'instant';
+    const runDashboard = await getDailyBriefDashboard(db, client, { endDate, windowDays });
+    if (!runDashboard) {
+      return new Response(`No daily ad data ingested for "${slug}"`, { status: 404, headers: cors });
+    }
+    let storedDeck;
+    try {
+      storedDeck = await assembleDeck({
+        db,
+        client,
+        objective: objective as BriefObjective,
+        tier: storedTier,
+        engineContent: stored.content,
+        engineRunId: stored.run_id,
+        windowDays,
+        endDate,
+        dashboard: runDashboard,
+      });
+    } catch (err) {
+      if (err instanceof NoDeckDataError) return new Response(err.message, { status: 404, headers: cors });
+      console.error('[reports] stored brief content failed validation:', err);
+      return new Response('Brief content did not match the engine contract', { status: 502, headers: cors });
+    }
+    const runHeaders = { ...cors, 'X-Engine-Run-Id': stored.run_id, 'Cache-Control': 'no-store' };
+    if (format === 'json') {
+      return Response.json(
+        { run_id: stored.run_id, status: stored.status, tier: storedDeck.model.meta.tier, deck: storedDeck.model },
+        { headers: runHeaders },
+      );
+    }
+    return new Response(storedDeck.html, { headers: { ...runHeaders, 'Content-Type': 'text/html; charset=utf-8' } });
+  }
 
   const callEngine = async (): Promise<Response | null> => {
     try {

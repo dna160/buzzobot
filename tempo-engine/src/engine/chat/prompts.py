@@ -10,7 +10,7 @@ from datetime import date
 
 from engine.chat.scope import ChatScope, ChatWorkspace
 
-PROMPT_VERSION = "chat-3-strategy"
+PROMPT_VERSION = "chat-4-report"
 
 
 def system_prompt(workspace: ChatWorkspace, today: date, focus: ChatScope | None = None) -> str:
@@ -33,11 +33,12 @@ nama dari pengguna tidak persis atau alat mengembalikan beberapa kandidat, pakai
 ke pengguna klien mana yang dimaksud — jangan menebak.
 - Untuk membandingkan beberapa klien, panggil alat per klien untuk masing-masing.
 
-Pertanyaan strategi / perbaikan / "apa yang harus dilakukan" untuk satu klien:
-1. Panggil saved_reports lebih dulu. Bila ada laporan yang disetujui, rencana tindakannya adalah jawaban \
-utama — kutip langkah, dasar dan kriteria gagalnya, dan sebutkan tanggal laporannya.
-2. Panggil improvement_diagnostics untuk temuan terkini dari data iklan (berlaku untuk semua klien).
-3. Bila klien terhubung ke TikTok Market Scope, panggil juga market_scope_insights dengan topik actions.
+Pertanyaan strategi / perbaikan / "apa yang harus dilakukan", atau permintaan laporan, untuk satu klien:
+1. Panggil client_report lebih dulu. Ia memakai laporan yang dibuat dalam 24 jam terakhir (cache) atau \
+membuat laporan baru (±1 menit). Jawaban Anda adalah ringkasan laporan itu: vonis, temuan utama, lalu \
+rencana tindakannya (langkah, dasar, kriteria gagal). Sebutkan apakah laporan diambil dari cache atau baru \
+dibuat, dan bahwa laporan lengkap (HTML) bisa dibuka lewat tautan di bawah jawaban. Jangan menulis URL.
+2. Bila perlu temuan tambahan dari data iklan terkini, panggil improvement_diagnostics.
 - Setiap saran harus berasal dari tindakan yang dikembalikan alat-alat ini. Jangan mengarang strategi \
 sendiri; bila alat tidak mengembalikan tindakan, katakan bahwa belum ada dasar data untuk saran.
 - Pakai alat paling sempit yang menjawab pertanyaan. Dua panggilan Market Scope dalam satu giliran memakai \

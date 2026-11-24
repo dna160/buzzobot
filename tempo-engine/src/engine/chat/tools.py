@@ -23,7 +23,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from engine.chat import improve, metrics
-from engine.chat.data import ChatData, ClientMatch, PortfolioRow, client_today
+from engine.chat import reports as reports_mod
+from engine.chat.data import ChatData, ClientMatch, PortfolioRow, SavedReport, client_today
+from engine.chat.reports import ReportRef, ReportRunner
 from engine.chat.scope import ChatScope, ChatWorkspace
 from engine.contracts import Finding
 from engine.contracts.strategy import StrategyFrame
@@ -81,6 +83,11 @@ class ToolContext:
     data: ChatData
     #: Clients this turn resolved, in order — logged with the turn.
     touched: dict[str, ChatScope] = field(default_factory=dict)
+    #: Runs the report pipeline when `client_report` finds no fresh report.
+    #: `None` (tests, or a context without an engine) = reuse only, never generate.
+    runner: ReportRunner | None = None
+    #: Reports this turn reused or generated — the web app links their HTML.
+    reports: list[ReportRef] = field(default_factory=list)
     _resolved: dict[str, ChatScope | str] = field(default_factory=dict)
     _frames: dict[tuple[str, int, str | None], StrategyFrame | None] = field(default_factory=dict)
 
@@ -164,8 +171,11 @@ class ClientOverviewArgs(_ClientArgs):
     pass
 
 
-class SavedReportsArgs(_ClientArgs):
-    brief_type: Literal["strategy", "gmv", "awareness", "install"] | None = None
+class ClientReportArgs(_ClientArgs):
+    refresh: bool = Field(
+        default=False,
+        description="true hanya bila pengguna meminta laporan baru walau ada laporan ≤ 24 jam.",
+    )
 
 
 class ImprovementArgs(_ClientArgs):
@@ -441,20 +451,79 @@ async def _strategy_action_log(ctx: ToolContext, args: StrategyActionLogArgs) ->
     return "\n".join(out)
 
 
-async def _saved_reports(ctx: ToolContext, args: SavedReportsArgs) -> str:
+async def _report_kinds(ctx: ToolContext, s: ChatScope) -> list[tuple[str, int]]:
+    """Which report this client gets, best first: the Strategy Report when it
+    has a TTMS link with ≥ 14 days of audience, then its objective brief."""
+    kinds: list[tuple[str, int]] = []
+    try:
+        o = await ctx.data.overview(s)
+        if o.ttms.linked and o.ttms.history_days >= 14:
+            kinds.append(("strategy", reports_mod.STRATEGY_WINDOW_DAYS))
+    except Exception:  # noqa: BLE001 - eligibility probe only; the brief still works
+        pass
+    brief = improve.BRIEF_FOR_NORTH_STAR.get(s.north_star)
+    if brief:
+        kinds.append((brief, reports_mod.BRIEF_WINDOW_DAYS))
+    return kinds
+
+
+async def _client_report(ctx: ToolContext, args: ClientReportArgs) -> str:
     s = await ctx.client(args.client)
     if isinstance(s, str):
         return s
-    reports = await ctx.data.saved_reports(s, args.brief_type, 2)
-    if not reports:
-        kind = improve.BRIEF_LABEL.get(args.brief_type or "", "laporan engine")
-        return (
-            f"Belum ada {kind} yang disetujui untuk {s.client_name}. Untuk saran perbaikan, gunakan "
-            "improvement_diagnostics (dan market_scope_insights bila klien terhubung ke TTMS)."
+    kinds = await _report_kinds(ctx, s)
+    if not kinds:
+        return f"Laporan belum tersedia untuk bintang utara {s.north_star} ({s.client_name})."
+
+    report: SavedReport | None = None
+    kind, window, cached, duration = kinds[0][0], kinds[0][1], True, None
+    # 1. Cache: a report of the preferred kind approved within 24 hours.
+    if not args.refresh:
+        for k, w in kinds[:1]:
+            fresh = [r for r in await ctx.data.saved_reports(s, k, 1) if reports_mod.is_fresh(r)]
+            if fresh:
+                report, kind, window = fresh[0], k, w
+    # 2. Otherwise generate it (falling back to the brief if the strategy frame refuses).
+    if report is None:
+        if ctx.runner is None:
+            return f"Tidak ada laporan {s.client_name} dalam 24 jam terakhir, dan pembuatan laporan tidak tersedia di sini."
+        tier = reports_mod.generation_tier()
+        reasons: list[str] = []
+        for k, w in kinds:
+            started = reports_mod.timed()
+            try:
+                report = await ctx.runner.generate(s.client_slug, k, window_days=w, tier=tier)
+            except reports_mod.NotEligible as exc:
+                reasons.append(str(exc))
+                continue
+            kind, window, cached = k, w, False
+            duration = round(reports_mod.timed() - started, 1)
+            break
+        if report is None:
+            return f"Laporan {s.client_name} tidak bisa dibuat: {'; '.join(reasons) or 'data tidak cukup'}."
+
+    ctx.reports.append(
+        ReportRef(
+            slug=s.client_slug, client_name=s.client_name, brief_type=kind, run_id=report.run_id,
+            tier=str(report.content.get("tier") or report.tier or "—"), cached=cached,
+            generated_at=report.updated_at, window_days=window, duration_s=duration,
         )
+    )
+    label = improve.BRIEF_LABEL.get(kind, kind)
+    if cached:
+        age = reports_mod.age_hours(report)
+        source = f"diambil dari cache — laporan ini dibuat {age:.0f} jam lalu, jadi tidak dibuat ulang" if age is not None else "diambil dari cache"
+    else:
+        source = f"baru dibuat sekarang oleh pipeline laporan (tier {report.content.get('tier') or report.tier}, {duration} dtk)"
+    note = ""
+    if kind != "strategy" and kinds[0][0] != "strategy":
+        note = f" {s.client_name} tidak terhubung ke TikTok Market Scope, jadi laporannya adalah {label}, bukan Strategy Report."
+    head = (
+        f"Laporan untuk {s.client_name}: {label}, {source}.{note} Laporan lengkap (HTML) ditampilkan sebagai "
+        "tautan di bawah jawaban — sebutkan itu, jangan menulis URL. Ringkas laporan di bawah ini."
+    )
     today = client_today(s.timezone).isoformat()
-    parts = [improve.format_saved_report(r, s.client_name, today) for r in reports]
-    return "\n\n".join(parts)
+    return head + "\n\n" + improve.format_saved_report(report, s.client_name, today)
 
 
 async def _improvement_diagnostics(ctx: ToolContext, args: ImprovementArgs) -> str:
@@ -643,14 +712,16 @@ TOOLS: dict[str, Tool] = {
         PortfolioArgs,
         _portfolio_overview,  # type: ignore[arg-type]
     ),
-    "saved_reports": Tool(
-        "saved_reports",
-        "Laporan engine terakhir yang SUDAH DISETUJUI untuk satu klien (argumen client): Strategy Report "
-        "(temuan dan rencana tindakan bertarget dari agen strategi) atau GMV/Awareness/Install Brief (ringkasan, "
-        "temuan, tindakan, risiko). Ditulis agen laporan dan disetujui reviewer. Panggil PERTAMA untuk pertanyaan "
-        "strategi/perbaikan/langkah berikutnya. Argumen: brief_type opsional (strategy/gmv/awareness/install).",
-        SavedReportsArgs,
-        _saved_reports,  # type: ignore[arg-type]
+    "client_report": Tool(
+        "client_report",
+        "Laporan strategi satu klien (argumen client): Strategy Report bila klien terhubung ke TikTok Market "
+        "Scope, selain itu GMV/Awareness/Install Brief sesuai bintang utaranya. Bila laporan sudah dibuat dalam "
+        "24 jam terakhir, laporan itu dipakai (cache); bila belum, laporan baru dibuat oleh agen laporan (±1 "
+        "menit). Mengembalikan isi laporan — temuan, rencana tindakan, risiko — dan tautan HTML-nya tampil di "
+        "bawah jawaban. Panggil PERTAMA untuk pertanyaan strategi/perbaikan/langkah berikutnya atau permintaan "
+        "laporan. Argumen: refresh (true hanya bila pengguna minta laporan baru).",
+        ClientReportArgs,
+        _client_report,  # type: ignore[arg-type]
     ),
     "improvement_diagnostics": Tool(
         "improvement_diagnostics",

@@ -11,7 +11,12 @@ import {
 } from '@tempo/db';
 import { authenticate, corsHeaders, preflight } from '@/lib/api-auth';
 import { htmlToPdf } from '@/lib/report-pdf';
-import { assembleStrategyReport, requestStrategyRun, StrategyEngineError } from '@/lib/strategy-report-pipeline';
+import {
+  assembleStrategyReport,
+  fetchStrategyRun,
+  requestStrategyRun,
+  StrategyEngineError,
+} from '@/lib/strategy-report-pipeline';
 import { recordStrategyRun } from '@/lib/strategy-actions';
 
 /**
@@ -25,6 +30,7 @@ import { recordStrategyRun } from '@/lib/strategy-actions';
  *   ?date=YYYY-MM-DD        last day of the window (clamped to the settled TTMS day)
  *   ?class=brand|shop       preview a class without saving an override
  *   ?fresh=1                skip the stored full-tier PDF
+ *   ?run=<engine run id>    render that stored, approved run (html|json) — no generation
  *
  * Same auth as every report route: same-origin passes, external callers need a
  * key. Every generation is recorded in `report_runs` (objective `strategy`);
@@ -65,6 +71,28 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
   const { db } = getDb();
   const client = await getClientBySlug(db, slug);
   if (!client) return new Response(`Client "${slug}" not found`, { status: 404, headers: cors });
+
+  // `?run=<engine run id>` renders a report that already exists (Tanya Tempo's
+  // links, cached or just generated) instead of generating a new one.
+  const runParam = url.searchParams.get('run');
+  if (runParam) {
+    const stored = await fetchStrategyRun(runParam);
+    if (!stored || stored.briefType !== 'strategy' || stored.tenantId !== client.id || stored.status !== 'approved') {
+      return new Response(`No approved Strategy Report "${runParam}" for "${slug}"`, { status: 404, headers: cors });
+    }
+    let saved;
+    try {
+      saved = assembleStrategyReport({ content: stored.content, runId: stored.runId, clientName: client.name, slug });
+    } catch (err) {
+      console.error('[strategy-report] stored content failed validation:', err);
+      return new Response('Strategy report content did not match the engine contract', { status: 502, headers: cors });
+    }
+    const headers = { ...cors, 'X-Engine-Run-Id': stored.runId, 'Cache-Control': 'no-store' };
+    if (format === 'json') {
+      return Response.json({ run_id: stored.runId, status: stored.status, report: saved.model }, { headers });
+    }
+    return new Response(saved.html, { headers: { ...headers, 'Content-Type': 'text/html; charset=utf-8' } });
+  }
 
   const window = await resolveStrategyWindow(db, client.id, { endDate, days: windowDays });
   if (!window) {

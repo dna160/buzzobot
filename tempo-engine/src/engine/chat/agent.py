@@ -44,6 +44,8 @@ class ChatResult:
     tool_outputs: list[dict] = field(default_factory=list)
     #: Clients the turn's tools resolved to, in first-touch order.
     clients: list[ChatScope] = field(default_factory=list)
+    #: Reports `client_report` reused or generated this turn (`ReportRef.to_json()`).
+    reports: list[dict] = field(default_factory=list)
     rounds: int = 0
     gate_attempts: int = 0
     model: str = ""
@@ -194,6 +196,7 @@ async def run_chat(
         tool_calls=tool_calls_log,
         tool_outputs=tool_outputs_log,
         clients=list(ctx.touched.values()),
+        reports=[r.to_json() for r in ctx.reports],
         rounds=model_calls,
         gate_attempts=gate_attempts,
         model=client.config.model,
