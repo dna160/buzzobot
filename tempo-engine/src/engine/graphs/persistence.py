@@ -99,3 +99,44 @@ async def brief_stats(conn: asyncpg.Connection) -> dict:
             "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
         }
     return {"briefs_total": int(total or 0), "last_run": last}
+
+
+def _fallbacks(ev: dict) -> int:
+    """Parts of a full-tier report that kept their instant copy because the
+    model's draft failed its gates: sections, action copies and the verdict."""
+    n = sum(1 for e in (ev.get("sections") or {}).values() if e.get("source") == "fallback")
+    n += sum(1 for v in ((ev.get("actions") or {}).get("sources") or {}).values() if v == "fallback")
+    return n + (1 if (ev.get("verdict") or {}).get("source") == "fallback" else 0)
+
+
+async def recent_strategy_runs(conn: asyncpg.Connection, limit: int = 8) -> list[dict]:
+    """Newest Strategy Report runs for `/healthz` and the settings health card
+    (Strategy Report PRD §9.5, §10): tier, status, how long the full tier took,
+    how many parts fell back, what degraded, and pass@1."""
+    rows = await conn.fetch(
+        """
+        SELECT run_id, status, updated_at, content->>'tier' AS tier,
+               content->'meta'->'degraded' AS degraded, content->'meta'->'eval' AS eval, content->>'error' AS error
+        FROM insight.brief WHERE brief_type = 'strategy' ORDER BY updated_at DESC LIMIT $1
+        """,
+        limit,
+    )
+    out = []
+    for row in rows:
+        ev = row["eval"]
+        ev = json.loads(ev) if isinstance(ev, str) else (ev or {})
+        deg = row["degraded"]
+        deg = json.loads(deg) if isinstance(deg, str) else (deg or [])
+        out.append({
+            "run_id": row["run_id"],
+            "status": row["status"],
+            "tier": row["tier"],
+            "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+            "duration_s": ev.get("duration_s"),
+            "llm_calls": ev.get("llm_calls"),
+            "pass_at_1": ev.get("pass_at_1"),
+            "fallbacks": _fallbacks(ev),
+            "degraded": deg,
+            "error": row["error"],
+        })
+    return out

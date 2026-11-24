@@ -73,6 +73,39 @@ class ClaimFrame(str, Enum):
     CPI_EFFICIENCY_SATURATING = "cpi_efficiency_saturating"  # N03
     INSTALL_RATE_ANOMALY = "install_rate_anomaly"  # N04 — flagged, not asserted (PRD §6.3)
 
+    # Strategy Report (TTMS) — Strategy Report PRD §7.3, with the P0
+    # corrections: T01 compares stage *size ratios*, never "move-on" rates.
+    STAGE_LEAK = "stage_leak"  # T01 — size ratio well below the benchmark's
+    STAGE_HEALTHY = "stage_healthy"  # T01
+    STAGE_INFLOW_OFFSET = "stage_inflow_offset"  # T01 — outflow cancels most new audience
+    SPEND_RESPONSE_DIMINISHING = "spend_response_diminishing"  # T02
+    SPEND_RESPONSE_LINEAR = "spend_response_linear"  # T02
+    SPEND_RESPONSE_UNRELATED = "spend_response_unrelated"  # T02 — fit too weak to read
+    GOAL_ON_TRACK = "goal_on_track"  # T03
+    GOAL_OFF_TRACK = "goal_off_track"  # T03
+    GOAL_UNREACHABLE = "goal_unreachable"  # T03
+    CONTENT_MIX_PAID_HEAVY = "content_mix_paid_heavy"  # T04
+    CONTENT_MIX_BALANCED = "content_mix_balanced"  # T04
+    HALO_BELOW_BENCHMARK = "halo_below_benchmark"  # T04
+    CREATOR_COST_EFFICIENT = "creator_cost_efficient"  # T04 — creator CPM below ads CPM
+    CREATOR_COST_HIGHER = "creator_cost_higher"  # T04 — creator CPM above ads CPM
+    SOV_GAINING = "sov_gaining"  # T05
+    SOV_LOSING = "sov_losing"  # T05
+    SOV_STABLE = "sov_stable"  # T05 — product-card clicks report even when flat
+    RANK_MOVED = "rank_moved"  # T05 — audience-stage rank, from the ranking list
+    GROWING_FASTER_THAN_CATEGORY = "growing_faster_than_category"  # T05
+    GROWING_SLOWER_THAN_CATEGORY = "growing_slower_than_category"  # T05
+    COMPETITOR_CLIMBING = "competitor_climbing"  # T06
+    COMPETITOR_FALLING = "competitor_falling"  # T06
+    BRAND_OVERTAKEN = "brand_overtaken"  # T06
+    SEARCH_SHARE_DROP = "search_share_drop"  # T07 — Full plan only
+    SENTIMENT_SPIKE_NEGATIVE = "sentiment_spike_negative"  # T07 — Full plan only
+    SEARCH_LEADING_INDICATOR = "search_leading_indicator"  # T07 — Full plan only
+    OUTFLOW_SPIKE = "outflow_spike"  # T08
+    OUTFLOW_FLIGHT_END = "outflow_flight_end"  # T08 — spike right after spend fell
+    ACTION_PROPOSED = "action_proposed"  # T09 Target Solver
+    ACTION_MEASURED = "action_measured"  # T11
+
 
 class FindingLevel(str, Enum):
     """The entity granularity a `Finding` is about (PRD §6.1). Hard Rule 2:
@@ -96,6 +129,12 @@ class FindingLevel(str, Enum):
     PRODUCT = "product"
     CREATOR = "creator"
     SESSION = "session"
+    # Strategy Report: TTMS is brand-level. `brand` is the client's own TTMS
+    # account, `benchmark` a Top-N average, `competitor` a public brand name
+    # from the ranking list.
+    BRAND = "brand"
+    BENCHMARK = "benchmark"
+    COMPETITOR = "competitor"
 
 
 class EntityRef(BaseModel):
@@ -201,7 +240,11 @@ class Finding(BaseModel):
     @classmethod
     def _sections_in_range(cls, v: list[int]) -> list[int]:
         # S1 is written last from accepted S2-S6 content and never receives
-        # a Finding directly (PRD §4.1, §5.6).
-        if any(s < 2 or s > 6 for s in v):
-            raise ValueError("section_affinity values must be in 2..6 (S1 is synthesized, not fed)")
+        # a Finding directly (PRD §4.1, §5.6). The Strategy Report's T
+        # sections are 101-110 (T1 = 101 is likewise synthesized, never fed).
+        if any(not (2 <= s <= 6 or 102 <= s <= 110) for s in v):
+            raise ValueError(
+                "section_affinity values must be in 2..6, or 102..110 for the Strategy Report "
+                "(S1 and T1 are synthesized, not fed)"
+            )
         return v

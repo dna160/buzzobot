@@ -4,6 +4,7 @@ import {
   formatDelta,
   formatMetricValue,
   type Currency,
+  type MarketScopeMetricKey,
   type MetricKey,
 } from '@tempo/core';
 import type { Totals } from '@tempo/db';
@@ -23,6 +24,17 @@ import type { Totals } from '@tempo/db';
  * disagreeing (and, on the engine side, the rule §3.1 of the engine PRD binds
  * every generator to).
  */
+
+/**
+ * Market Scope (TTMS) keys belong to the Strategy Report, which reads its own
+ * model. The brief window has no TTMS read-model, so a deck cannot fill one —
+ * the same decision as the organic `null`s below, made once for the family.
+ */
+const MARKET_SCOPE_UNFILLED = Object.fromEntries(
+  Object.values(METRICS)
+    .filter((m) => m.surface === 'market_scope')
+    .map((m) => [m.key, null]),
+) as Record<MarketScopeMetricKey, null>;
 
 const DIRECT: Record<MetricKey, ((t: Totals) => number | null) | null> = {
   spend: (t) => t.spend,
@@ -56,6 +68,7 @@ const DIRECT: Record<MetricKey, ((t: Totals) => number | null) | null> = {
   newFollowers: null,
   engagementRate: null,
   avgWatchTimeSec: null,
+  ...MARKET_SCOPE_UNFILLED,
 };
 
 /** The window value for a metric, or `null` when this rollup cannot fill it. */

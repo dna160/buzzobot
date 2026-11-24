@@ -1,4 +1,4 @@
-import { getDb, listClients, type ClientSummary } from '@tempo/db';
+import { getDb, listClients, listMarketScopeClientIds, type ClientSummary } from '@tempo/db';
 
 /**
  * Weekly deck pre-generation (Brief Deck PRD §5).
@@ -16,6 +16,11 @@ import { getDb, listClients, type ClientSummary } from '@tempo/db';
  *
  * Failures are per client: one brand's engine run going wrong must not cost the
  * other nineteen their Monday deck.
+ *
+ * The Strategy Report (Strategy Report PRD §9.5) rides the same job: every
+ * client with a mirrored TikTok Market Scope account also gets a full-tier
+ * 28-day strategy report, stored by its route and served warm. Clients are
+ * taken east to west, so the ones whose 06:00 arrives first are done first.
  */
 
 export interface PregenerateOptions {
@@ -47,14 +52,51 @@ export interface PregenerateResult {
  * own gate allows it for any north star); the objective deck is whichever one
  * that client's north star makes honest.
  */
-export function objectivesFor(client: ClientSummary): string[] {
+export function objectivesFor(client: ClientSummary, { marketScope = false }: { marketScope?: boolean } = {}): string[] {
   const byNorthStar: Record<string, string | null> = {
     vtr: null, // awareness already covers a VTR client
     shop: 'gmv',
     app_install: 'install',
   };
   const specific = byNorthStar[client.northStar] ?? null;
-  return specific ? ['awareness', specific] : ['awareness'];
+  const decks = specific ? ['awareness', specific] : ['awareness'];
+  // The Strategy Report's only gate is TTMS presence (PRD §7.1), not north star.
+  return marketScope ? [...decks, 'strategy'] : decks;
+}
+
+/** The Strategy Report's window — the route's own default (PRD §9.4). */
+export const STRATEGY_WINDOW_DAYS = 28;
+
+/** The public route a pre-generated report comes from. `fresh=1` skips the stored copy it is replacing. */
+export function reportUrl(baseUrl: string, slug: string, objective: string, windowDays: number): string {
+  if (objective === 'strategy') {
+    return `${baseUrl}/api/reports/${slug}/strategy-report?tier=full&format=pdf&days=${STRATEGY_WINDOW_DAYS}&fresh=1`;
+  }
+  return `${baseUrl}/api/reports/${slug}/brief/${objective}?tier=full&days=${windowDays}&fresh=1`;
+}
+
+/** Minutes ahead of UTC for an IANA zone at `at`; unknown zones count as WIB (+420). */
+export function utcOffsetMinutes(timeZone: string, at: Date = new Date()): number {
+  try {
+    const part = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'shortOffset' })
+      .formatToParts(at)
+      .find((p) => p.type === 'timeZoneName')?.value;
+    const m = /GMT(?:([+-])(\d{1,2})(?::(\d{2}))?)?/.exec(part ?? '');
+    if (!m) return 420;
+    if (!m[1]) return 0;
+    const minutes = Number(m[2]) * 60 + Number(m[3] ?? 0);
+    return m[1] === '-' ? -minutes : minutes;
+  } catch {
+    return 420;
+  }
+}
+
+/** East first (PRD v2 B7): WIT before WITA before WIB; ties keep their order. */
+export function orderByTimezone<T extends Pick<ClientSummary, 'timezone'>>(clients: readonly T[], at: Date = new Date()): T[] {
+  return [...clients]
+    .map((c, i) => ({ c, i, off: utcOffsetMinutes(c.timezone, at) }))
+    .sort((a, b) => b.off - a.off || a.i - b.i)
+    .map((x) => x.c);
 }
 
 export async function pregenerateDecks(
@@ -79,19 +121,19 @@ export async function pregenerateDecks(
 
   const { db } = getDb();
   const all = await listClients(db);
-  const clients = options.slugs?.length
-    ? all.filter((c) => options.slugs!.includes(c.slug))
-    : all;
+  const marketScope = await listMarketScopeClientIds(db);
+  const clients = orderByTimezone(options.slugs?.length ? all.filter((c) => options.slugs!.includes(c.slug)) : all);
 
   const results: PregenerateResult[] = [];
   for (const client of clients) {
-    for (const objective of objectivesFor(client)) {
+    for (const objective of objectivesFor(client, { marketScope: marketScope.has(client.id) })) {
       const startedAt = Date.now();
-      const url = `${baseUrl}/api/reports/${client.slug}/brief/${objective}?tier=full&days=${windowDays}&fresh=1`;
+      const url = reportUrl(baseUrl, client.slug, objective, windowDays);
       try {
         const response = await fetch(url, {
           headers: { 'X-API-Key': apiKey },
-          signal: AbortSignal.timeout(timeoutMs),
+          // The strategy route's own ceiling is 660 s (PRD G4: ≤ 10 min p95).
+          signal: AbortSignal.timeout(objective === 'strategy' ? Math.max(timeoutMs, 11 * 60_000) : timeoutMs),
         });
         if (!response.ok) {
           results.push({

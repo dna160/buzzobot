@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { ClientSummary } from '@tempo/db';
-import { objectivesFor, summarize, type PregenerateResult } from './pregenerate-decks.js';
+import {
+  objectivesFor,
+  orderByTimezone,
+  reportUrl,
+  summarize,
+  utcOffsetMinutes,
+  type PregenerateResult,
+} from './pregenerate-decks.js';
 
 const client = (northStar: ClientSummary['northStar']): ClientSummary => ({
   id: 'c1',
@@ -10,6 +17,7 @@ const client = (northStar: ClientSummary['northStar']): ClientSummary => ({
   currency: 'IDR',
   timezone: 'Asia/Jakarta',
   northStar,
+  tier: 'standard',
 });
 
 describe('objectivesFor', () => {
@@ -34,6 +42,34 @@ describe('objectivesFor', () => {
         expect(gate[objective]).toBe(northStar);
       }
     }
+  });
+});
+
+describe('Strategy Report in the weekly job (Strategy Report PRD §9.5)', () => {
+  it('adds strategy for any north star once the client has a Market Scope account', () => {
+    expect(objectivesFor(client('vtr'), { marketScope: true })).toEqual(['awareness', 'strategy']);
+    expect(objectivesFor(client('shop'), { marketScope: true })).toEqual(['awareness', 'gmv', 'strategy']);
+    expect(objectivesFor(client('shop'))).toEqual(['awareness', 'gmv']);
+  });
+
+  it('asks the strategy route for a fresh full-tier 28-day PDF', () => {
+    expect(reportUrl('http://x', 'bardi-tiktok', 'strategy', 7)).toBe(
+      'http://x/api/reports/bardi-tiktok/strategy-report?tier=full&format=pdf&days=28&fresh=1',
+    );
+    expect(reportUrl('http://x', 'sovella', 'gmv', 7)).toBe('http://x/api/reports/sovella/brief/gmv?tier=full&days=7&fresh=1');
+  });
+
+  it('orders clients east to west so the earliest 06:00 is served first', () => {
+    const at = new Date('2026-10-19T00:00:00Z');
+    expect(utcOffsetMinutes('Asia/Jakarta', at)).toBe(420);
+    expect(utcOffsetMinutes('Asia/Jayapura', at)).toBe(540);
+    expect(utcOffsetMinutes('Not/AZone', at)).toBe(420);
+    const tz = (slug: string, timezone: string) => ({ ...client('shop'), slug, timezone });
+    const ordered = orderByTimezone(
+      [tz('jkt-1', 'Asia/Jakarta'), tz('mks', 'Asia/Makassar'), tz('jpr', 'Asia/Jayapura'), tz('jkt-2', 'Asia/Jakarta')],
+      at,
+    );
+    expect(ordered.map((c) => c.slug)).toEqual(['jpr', 'mks', 'jkt-1', 'jkt-2']);
   });
 });
 

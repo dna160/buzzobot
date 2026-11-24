@@ -54,6 +54,7 @@ from engine.generators.gmv import GMV_GENERATORS
 from engine.generators.install import INSTALL_GENERATORS
 from engine.generators.shared import SHARED_GENERATORS, assess_confidence_tier
 from engine.graphs.coverage import build_coverage_audit
+from engine.graphs.strategy import strategy_fanout_node, strategy_instant_copy_node, strategy_route_node
 from engine.llm.client import LmStudioClient
 from engine.llm.schemas import json_schema_for
 from engine.materiality import route_all_sections, score_findings
@@ -99,12 +100,27 @@ class BriefState(TypedDict, total=False):
     probe_yield_rate: float
     probe_rounds_used: int
     probe_log: list[dict]
+    # Strategy Report (brief_type "strategy", PRD §7, §10)
+    strategy_frame: dict
+    strategy_actions: list[dict]
+    report_class: dict
+    signals: list[dict]
+    goal_pace: dict | None
+    action_log: list[dict]
+    charts: dict
+    strategy_meta: dict
 
 
 async def data_steward_node(state: BriefState) -> dict[str, Any]:
     # Validates the frame parses under the contract — the actual fetch
-    # already happened in tempo_read.py, before this graph was invoked.
-    MetricFrame.model_validate(state["metric_frame"])
+    # already happened in tempo_read.py / strategy_read.py, before this graph
+    # was invoked.
+    if state.get("brief_type") == "strategy":
+        from engine.contracts.strategy import StrategyFrame
+
+        StrategyFrame.model_validate(state["strategy_frame"])
+    else:
+        MetricFrame.model_validate(state["metric_frame"])
     return {}
 
 
@@ -336,6 +352,12 @@ async def synthesist_node(state: BriefState) -> dict[str, Any]:
     }
 
 
+async def strategy_agents_node(state: BriefState) -> dict[str, Any]:
+    from engine.graphs.strategy_agents import strategy_full_node
+
+    return await strategy_full_node(state)
+
+
 async def review_gate_node(state: BriefState) -> dict[str, Any]:
     """PRD §4.1 step 8, §10: LangGraph `interrupt()` pauses the graph here;
     state persists in the Postgres checkpointer; resuming requires a
@@ -351,6 +373,16 @@ async def review_gate_node(state: BriefState) -> dict[str, Any]:
 
 def _is_instant(state: BriefState) -> bool:
     return state.get("tier", "full") == "instant"
+
+
+def _route_after_steward(state: BriefState) -> str:
+    return "strategy_fanout" if state.get("brief_type") == "strategy" else "generator_fanout"
+
+
+def _route_strategy_copy(state: BriefState) -> str:
+    """The strategy full tier is the agent path (PRD §8.4); instant writes from
+    templates with zero model calls."""
+    return "strategy_instant_copy" if _is_instant(state) else "strategy_agents"
 
 
 def _route_after_generators(state: BriefState) -> str:
@@ -373,9 +405,22 @@ def build_brief_graph(checkpointer: object):
     graph.add_node("instant_copy", instant_copy_node)
     graph.add_node("synthesist", synthesist_node)
     graph.add_node("review_gate", review_gate_node)
+    graph.add_node("strategy_fanout", strategy_fanout_node)
+    graph.add_node("strategy_route", strategy_route_node)
+    graph.add_node("strategy_instant_copy", strategy_instant_copy_node)
+    graph.add_node("strategy_agents", strategy_agents_node)
 
     graph.add_edge(START, "data_steward")
-    graph.add_edge("data_steward", "generator_fanout")
+    graph.add_conditional_edges(
+        "data_steward", _route_after_steward, {"generator_fanout": "generator_fanout", "strategy_fanout": "strategy_fanout"}
+    )
+    graph.add_edge("strategy_fanout", "strategy_route")
+    graph.add_conditional_edges(
+        "strategy_route", _route_strategy_copy,
+        {"strategy_instant_copy": "strategy_instant_copy", "strategy_agents": "strategy_agents"},
+    )
+    graph.add_edge("strategy_instant_copy", "review_gate")
+    graph.add_edge("strategy_agents", "review_gate")
     graph.add_conditional_edges(
         "generator_fanout",
         _route_after_generators,

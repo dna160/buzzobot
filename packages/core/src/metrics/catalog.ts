@@ -7,7 +7,7 @@ import type { BriefObjective, DataSurface } from '../domain/enums.js';
  * decisions live in exactly one place.
  */
 
-export type MetricFormat = 'currency' | 'number' | 'percent' | 'duration' | 'ratio';
+export type MetricFormat = 'currency' | 'number' | 'percent' | 'duration' | 'ratio' | 'rank';
 
 /** For deltas: is an increase good (up), bad (down), or neutral? */
 export type MetricDirection = 'up' | 'down' | 'neutral';
@@ -102,7 +102,213 @@ export type MetricKey =
   | 'reach'
   | 'newFollowers'
   | 'engagementRate'
-  | 'avgWatchTimeSec';
+  | 'avgWatchTimeSec'
+  // Market Scope (TTMS) — Strategy Report
+  | MarketScopeMetricKey;
+
+// ─── Market Scope (TTMS) ─────────────────────────────────────────────────────
+//
+// Strategy Report PRD §6.5, with the corrections from
+// docs/phases/strategy-report/P0_DISCOVERY.md applied:
+//  - `size_ratio`, not `move_on_rate`: TTMS stage totals are rolling-window
+//    stocks, and Conversion can exceed Consideration (BDL 12.5×), so the ratio
+//    of two stages is not a share of people moving on (P0 §6.2).
+//  - no per-metric insight rank: the portal stores rank for audience stages
+//    only; per-metric rank comes from a live call it never persists (P0 §2).
+//  - no cost per new Conversion: Conversion-stage new/outflow is 0 every day
+//    for 14 of 15 accounts (P0 §6.3).
+//  - content-type shares are `neutral`: a bigger slice of a mix is neither good
+//    nor bad by itself, and the sub-types overlap (P0 §6.6).
+// Families are generated from the tables below so a stage or metric added
+// later gets every key at once. Grading is benchmark-relative (`light()` with
+// the benchmark as target), so none of these carries `bands`.
+
+export const TTMS_STAGES = ['acc', 'awareness', 'consideration', 'conversion'] as const;
+export type TtmsStageKey = (typeof TTMS_STAGES)[number];
+
+export const TTMS_INSIGHT_METRICS = [
+  'impressions',
+  'engagements',
+  'video_views_p100',
+  'video_views_6s',
+  'search_volume',
+  'likes',
+  'comments',
+  'shares',
+  'clicks',
+  'product_card_clicks',
+  'nsr',
+] as const;
+export type TtmsInsightMetricKey = (typeof TTMS_INSIGHT_METRICS)[number];
+
+/** Content types below "all". Only `paid` + `non_paid` partition the total; the rest overlap. */
+export const TTMS_CONTENT_TYPES = [
+  'paid',
+  'non_paid',
+  'ads',
+  'creator_boosted',
+  'creator_organic',
+  'bgc_boosted',
+  'bgc_organic',
+  'ugc_boosted',
+  'ugc_organic',
+] as const;
+export type TtmsContentTypeKey = (typeof TTMS_CONTENT_TYPES)[number];
+
+export type MarketScopeMetricKey =
+  | `ttms.audience.${TtmsStageKey}.${'total' | 'new' | 'outflow' | 'rank'}`
+  | 'ttms.audience.awareness.size_ratio'
+  | 'ttms.audience.consideration.size_ratio'
+  | `ttms.${TtmsInsightMetricKey}`
+  | `ttms.${Exclude<TtmsInsightMetricKey, 'nsr'>}.share`
+  | `ttms.impressions.share.${TtmsContentTypeKey}`
+  | 'ttms.halo_ratio'
+  | 'strategy.cost_per_1k_new.awareness'
+  | 'strategy.cost_per_1k_new.consideration'
+  | 'strategy.spend_cap_daily';
+
+const STAGE_NAME: Record<TtmsStageKey, string> = {
+  acc: 'ACC',
+  awareness: 'Awareness',
+  consideration: 'Consideration',
+  conversion: 'Conversion',
+};
+
+const INSIGHT: Record<
+  TtmsInsightMetricKey,
+  { label: string; short: string; labelId: string; category: MetricCategory; format?: MetricFormat }
+> = {
+  impressions: { label: 'Brand Impressions', short: 'Impr.', labelId: 'Impresi konten merek', category: 'jangkauan' },
+  engagements: { label: 'Brand Engagements', short: 'Eng.', labelId: 'Interaksi konten merek', category: 'hasil' },
+  video_views_p100: { label: 'Brand Video Views (100%)', short: '100% Views', labelId: 'Tontonan penuh konten merek', category: 'video' },
+  video_views_6s: { label: 'Brand Video Views (6s)', short: '6s Views', labelId: 'Tontonan 6 detik konten merek', category: 'video' },
+  search_volume: { label: 'Brand Search Volume', short: 'Search', labelId: 'Volume pencarian merek', category: 'hasil' },
+  likes: { label: 'Brand Likes', short: 'Likes', labelId: 'Suka konten merek', category: 'hasil' },
+  comments: { label: 'Brand Comments', short: 'Comments', labelId: 'Komentar konten merek', category: 'hasil' },
+  shares: { label: 'Brand Shares', short: 'Shares', labelId: 'Dibagikan konten merek', category: 'hasil' },
+  clicks: { label: 'Brand Clicks', short: 'Clicks', labelId: 'Klik konten merek', category: 'hasil' },
+  product_card_clicks: { label: 'Product Card Clicks', short: 'Card Clicks', labelId: 'Klik kartu produk', category: 'hasil' },
+  nsr: { label: 'Net Sentiment Rate', short: 'NSR', labelId: 'Sentimen bersih', category: 'efisiensi', format: 'ratio' },
+};
+
+/** Approved Bahasa phrasings (Strategy Report PRD §5.4 rule 3). */
+const CONTENT_TYPE: Record<TtmsContentTypeKey, { label: string; phrase: string }> = {
+  paid: { label: 'Paid content', phrase: 'konten berbayar' },
+  non_paid: { label: 'Non-paid content', phrase: 'konten non-berbayar' },
+  ads: { label: 'Ads', phrase: 'iklan' },
+  creator_boosted: { label: 'Creator content, boosted', phrase: 'video afiliasi/kreator yang di-boost' },
+  creator_organic: { label: 'Creator content, organic', phrase: 'video afiliasi/kreator (organik)' },
+  bgc_boosted: { label: 'Brand content, boosted', phrase: 'konten BGC internal yang di-boost' },
+  bgc_organic: { label: 'Brand content, organic', phrase: 'konten BGC internal (organik)' },
+  ugc_boosted: { label: 'User content, boosted', phrase: 'konten pengguna (UGC) yang di-boost' },
+  ugc_organic: { label: 'User content, organic', phrase: 'konten pengguna (UGC) organik' },
+};
+
+const ttms = (
+  key: MarketScopeMetricKey,
+  def: Omit<MetricDef, 'key' | 'surface' | 'pickerVisible'>,
+): [MarketScopeMetricKey, MetricDef] => [
+  key,
+  // Not pickable: the deck's brief window has no Market Scope read-model.
+  { key, surface: 'market_scope', pickerVisible: false, ...def },
+];
+
+function buildMarketScopeMetrics(): Record<MarketScopeMetricKey, MetricDef> {
+  const out: Array<[MarketScopeMetricKey, MetricDef]> = [];
+  for (const s of TTMS_STAGES) {
+    const n = STAGE_NAME[s];
+    out.push(
+      ttms(`ttms.audience.${s}.total`, {
+        label: `${n} Audience`, shortLabel: n, format: 'number', goodDirection: 'up', category: 'jangkauan',
+        labelId: `Audiens ${n}`,
+        description: `People in the brand's ${n} stage on the day (TTMS, rolling window; a stock, not a flow).`,
+      }),
+      ttms(`ttms.audience.${s}.new`, {
+        label: `New ${n} Audience`, shortLabel: `New ${n}`, format: 'number', goodDirection: 'up', category: 'jangkauan',
+        labelId: `Audiens baru ${n}`,
+        description: `People in the ${n} stage today but not yesterday, summed over the period.`,
+      }),
+      ttms(`ttms.audience.${s}.outflow`, {
+        label: `${n} Outflow`, shortLabel: `${n} out`, format: 'number', goodDirection: 'down', category: 'jangkauan',
+        labelId: `Audiens keluar ${n}`,
+        description: `People in the ${n} stage yesterday but not today, summed over the period.`,
+      }),
+      ttms(`ttms.audience.${s}.rank`, {
+        label: `${n} Rank`, shortLabel: 'Rank', format: 'rank', goodDirection: 'down', category: 'jangkauan',
+        labelId: `Peringkat ${n}`,
+        description: `Position in the TTMS ranking list for the ${n} stage (ties share a rank).`,
+      }),
+    );
+  }
+  out.push(
+    ttms('ttms.audience.awareness.size_ratio', {
+      label: 'Consideration ÷ Awareness Size', shortLabel: 'Cons./Aw.', format: 'percent', precision: 1,
+      goodDirection: 'up', category: 'efisiensi', labelId: 'Ukuran Consideration dibanding Awareness',
+      description: 'Consideration audience ÷ Awareness audience on the same day. A ratio of two stocks — never a share of people moving on.',
+    }),
+    ttms('ttms.audience.consideration.size_ratio', {
+      label: 'Conversion ÷ Consideration Size', shortLabel: 'Conv./Cons.', format: 'percent', precision: 1,
+      goodDirection: 'up', category: 'efisiensi', labelId: 'Ukuran Conversion dibanding Consideration',
+      description: 'Conversion audience ÷ Consideration audience on the same day. Can exceed 100% — the stages use different windows.',
+    }),
+  );
+  for (const m of TTMS_INSIGHT_METRICS) {
+    const d = INSIGHT[m];
+    out.push(
+      ttms(`ttms.${m}`, {
+        label: d.label, shortLabel: d.short, format: d.format ?? 'number', goodDirection: 'up', category: d.category,
+        labelId: d.labelId, ...(m === 'nsr' ? { precision: 2 } : {}),
+        description: `${d.label} on content mentioning the brand (TTMS brand insights, all content types).`,
+      }),
+    );
+    if (m !== 'nsr') {
+      out.push(
+        ttms(`ttms.${m}.share`, {
+          label: `${d.label} Share of Category`, shortLabel: `${d.short} share`, format: 'percent', precision: 2,
+          goodDirection: 'up', category: 'efisiensi', labelId: `Pangsa kategori: ${d.labelId}`,
+          description: `The brand's ${d.label.toLowerCase()} ÷ the whole vertical's, over the period.`,
+        }),
+      );
+    }
+  }
+  for (const c of TTMS_CONTENT_TYPES) {
+    const d = CONTENT_TYPE[c];
+    out.push(
+      ttms(`ttms.impressions.share.${c}`, {
+        label: `Impressions Share: ${d.label}`, shortLabel: d.label, format: 'percent', precision: 1,
+        goodDirection: 'neutral', category: 'jangkauan', labelId: `Porsi impresi dari ${d.phrase}`,
+        description:
+          `Impressions from ${d.label.toLowerCase()} ÷ all brand impressions. Only paid + non-paid add up to ` +
+          '100%; the other content types overlap and are never summed or stacked.',
+      }),
+    );
+  }
+  out.push(
+    ttms('ttms.halo_ratio', {
+      label: 'Earned Halo', shortLabel: 'Halo', format: 'ratio', precision: 2, goodDirection: 'up',
+      category: 'efisiensi', labelId: 'Impresi gratis per impresi berbayar',
+      description: 'Non-paid impressions ÷ paid impressions on content mentioning the brand.',
+    }),
+    ttms('strategy.cost_per_1k_new.awareness', {
+      label: 'Cost per 1K New Awareness', shortLabel: 'Cost/1K new Aw.', format: 'currency', goodDirection: 'down',
+      category: 'biaya', labelId: 'Biaya per 1.000 audiens baru Awareness',
+      description: 'Ad spend ÷ new Awareness audience × 1,000. TTMS "new" counts paid and organic entrants alike.',
+    }),
+    ttms('strategy.cost_per_1k_new.consideration', {
+      label: 'Cost per 1K New Consideration', shortLabel: 'Cost/1K new Cons.', format: 'currency',
+      goodDirection: 'down', category: 'biaya', labelId: 'Biaya per 1.000 audiens baru Consideration',
+      description: 'Ad spend ÷ new Consideration audience × 1,000. TTMS "new" counts paid and organic entrants alike.',
+    }),
+    ttms('strategy.spend_cap_daily', {
+      label: 'Suggested Daily Spend Cap', shortLabel: 'Daily cap', format: 'currency', goodDirection: 'neutral',
+      category: 'biaya', labelId: 'Batas belanja harian',
+      description: 'Daily spend above which new Consideration per rupiah falls off — shown only when the fit passes its gate.',
+    }),
+  );
+  return Object.fromEntries(out) as Record<MarketScopeMetricKey, MetricDef>;
+}
+
+const MARKET_SCOPE_METRICS = buildMarketScopeMetrics();
 
 export const METRICS: Record<MetricKey, MetricDef> = {
   spend: {
@@ -455,6 +661,7 @@ export const METRICS: Record<MetricKey, MetricDef> = {
     category: 'video',
     pickerVisible: false,
   },
+  ...MARKET_SCOPE_METRICS,
 };
 
 export const metricsBySurface = (surface: DataSurface): MetricDef[] =>

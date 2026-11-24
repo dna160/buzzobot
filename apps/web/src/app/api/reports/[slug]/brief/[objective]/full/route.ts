@@ -28,8 +28,10 @@ import { authenticate, corsHeaders, preflight } from '@/lib/api-auth';
  * Two deliberate choices:
  *
  * - **The engine's async endpoint, not `/sync`.** `POST /v1/briefs` returns a
- *   run id immediately, so this request does not hold a connection open for
- *   minutes and a portal that navigates away does not cancel the analysis.
+ *   run id immediately (the engine writes the row as `running` and runs the
+ *   graph in a background task), so this request does not hold a connection
+ *   open for minutes and a portal that navigates away does not cancel the
+ *   analysis.
  * - **The render happens on the poll that finds the run ready**, not in a
  *   background task. There is no job queue here, and a promise left running
  *   after a serverless response returns is a promise that may never finish.
@@ -210,6 +212,13 @@ export async function GET(request: Request, { params }: RouteParams) {
   if (brief.status === 'rejected') {
     await failReportRun(db, row.id, 'the run was rejected at review');
     return json({ status: 'failed', runId: row.id, error: 'rejected at review' });
+  }
+  // The engine runs the graph in the background (Strategy Report PRD §13 #1);
+  // a run that raised is recorded as `failed` with the error in its content.
+  if (brief.status === 'failed') {
+    const error = (brief.content as { error?: string } | null)?.error ?? 'the engine run failed';
+    await failReportRun(db, row.id, error);
+    return json({ status: 'failed', runId: row.id, error });
   }
   if (brief.status !== 'approved') {
     return json({ status: 'running', runId: row.id, engineStatus: brief.status });

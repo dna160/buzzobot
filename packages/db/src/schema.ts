@@ -1,8 +1,11 @@
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   boolean,
+  check,
   date,
   doublePrecision,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -381,7 +384,12 @@ export const reportBenchmarks = pgTable(
   (t) => [uniqueIndex('report_benchmarks_client_obj_metric_uq').on(t.clientId, t.objective, t.metric)],
 );
 
-/** One row per Template Report generation — the ledger, mirroring `reportRuns`. */
+/**
+ * One row per Template Report generation — the ledger, mirroring `reportRuns`.
+ * The shared report link (`/r/:token`) is what writes it: a run is the cache
+ * entry for one (client, template, benchmark, window), and its rendered HTML
+ * lives on disk at `artifactPath`, same as a deck.
+ */
 export const templateReportRuns = pgTable(
   'template_report_runs',
   {
@@ -389,7 +397,13 @@ export const templateReportRuns = pgTable(
     clientId: uuid('client_id')
       .notNull()
       .references(() => clients.id, { onDelete: 'cascade' }),
+    /** 'shop' | 'vtr' | 'app_install' — which template was rendered. */
+    template: text('template').notNull().default('shop'),
+    /** 'industry' | 'previous_period' — what §2/§3 were graded against. */
+    benchmarkMode: text('benchmark_mode').notNull().default('industry'),
+    /** First day covered. */
     periodStart: date('period_start', { mode: 'string' }),
+    /** Last day covered — inclusive, as a person picked it ("1–31 Aug"). */
     periodEnd: date('period_end', { mode: 'string' }),
     status: text('status').notNull().default('running'),
     artifactPath: text('artifact_path'),
@@ -398,7 +412,42 @@ export const templateReportRuns = pgTable(
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     finishedAt: timestamp('finished_at', { withTimezone: true }),
   },
-  (t) => [index('template_report_runs_lookup_idx').on(t.clientId, t.periodEnd)],
+  (t) => [
+    index('template_report_runs_lookup_idx').on(t.clientId, t.periodEnd),
+    // At most one generation in flight per key: two viewers opening the same
+    // link at once must share one LM Studio run, not start two.
+    uniqueIndex('template_report_runs_running_uq')
+      .on(t.clientId, t.template, t.benchmarkMode, t.periodStart, t.periodEnd)
+      .where(sql`${t.status} = 'running'`),
+  ],
+);
+
+/**
+ * Shareable, unauthenticated links to a client's Template Report
+ * (`/r/:token`). The token is the only credential — 32 random bytes, so it
+ * cannot be guessed — and it is stored as issued so the portal's "Generate
+ * Report" can hand back the same stable link every time rather than minting a
+ * new one per click. It never expires on its own; `revokedAt` kills it, and the
+ * next request for that client issues a fresh token.
+ */
+export const reportLinks = pgTable(
+  'report_links',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    token: text('token').notNull(),
+    /** Who asked for it, as the caller described them (e.g. "portal:user:42"). */
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('report_links_token_uq').on(t.token),
+    // One live link per client — what makes "create or return" well defined.
+    uniqueIndex('report_links_client_active_uq').on(t.clientId).where(sql`${t.revokedAt} IS NULL`),
+  ],
 );
 
 /**
@@ -457,6 +506,236 @@ export const syncRuns = pgTable(
     isBackfill: boolean('is_backfill').notNull().default(false),
   },
   (t) => [index('sync_runs_account_idx').on(t.accountId, sql`${t.startedAt} DESC`)],
+);
+
+// ─── Market Scope (TTMS) mirror — Strategy Report PRD §6.3 ──────────────────
+//
+// A read-only copy of the portal's `ttms_*` tables, filled by
+// `ingest/market-scope-sync.ts` inside the sanitizer run, so tempo-engine keeps
+// reading only Tempo's own DB (engine PRD §1). Deliberately the portal's
+// **wide** shape — one row per (account, day, stage) with every benchmark level
+// as a column — rather than the PRD's row-per-benchmark sketch: brand values do
+// not vary by benchmark level, so a row per level would store each one four
+// times, and a 1:1 shape is what lets the mirror be checked row-for-row against
+// its source (P0_DISCOVERY.md §2). Dates are TTMS days, which are UTC.
+
+/**
+ * One TTMS account the portal can open. Which Tempo clients it serves is in
+ * `market_scope_links`: an account is a brand, and a brand's TTMS account can
+ * list several ad accounts held by different Tempo clients (TCL's lists both
+ * its TikTok Shop and its Tokopedia ad account).
+ */
+export const marketScopeAccounts = pgTable(
+  'market_scope_accounts',
+  {
+    ttmsAccountId: text('ttms_account_id').primaryKey(),
+    /** TikTok's own name for the brand — also its row name in ranking lists. */
+    brandName: text('brand_name').notNull(),
+    vertical: text('vertical'),
+    regionCode: text('region_code'),
+    /** Raw plan text from TikTok, e.g. "TTS Purchase(Lite)". Use `isLite` for logic. */
+    plan: text('plan'),
+    isLite: boolean('is_lite').notNull().default(true),
+    /** Metrics (or METRIC:CONTENT_TYPE pairs) TikTok refuses for this plan — the source of locked rows. */
+    unavailableMetrics: text('unavailable_metrics').array().notNull().default(sql`'{}'::text[]`),
+    linkedAdvertiserIds: text('linked_advertiser_ids').array().notNull().default(sql`'{}'::text[]`),
+    /** Latest settled TTMS day in the source; nothing after it is meaningful. */
+    lastDataDate: date('last_data_date', { mode: 'string' }),
+    syncedAt: timestamp('synced_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+/**
+ * Which Tempo clients a TTMS account serves: every client holding one of the
+ * ad accounts it lists (`ttms_accounts.advertiser_ids` ∩ the client's paid
+ * `tiktok_accounts.external_id`). Rewritten by each Market Scope sync.
+ */
+export const marketScopeLinks = pgTable(
+  'market_scope_links',
+  {
+    ttmsAccountId: text('ttms_account_id').notNull(),
+    clientId: uuid('client_id').notNull(),
+    /**
+     * The account this client's strategy report uses by default when it has
+     * several (Purbasari and Senka share one advertiser): the one whose TikTok
+     * name matches the client's, or the only one. `strategy_specs.ttms_account_id` overrides.
+     */
+    isPrimary: boolean('is_primary').notNull().default(false),
+    linkedAt: timestamp('linked_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'market_scope_links_pk', columns: [t.ttmsAccountId, t.clientId] }),
+    // Named explicitly: the generated names run past Postgres's 63-character limit.
+    foreignKey({ name: 'ms_links_account_fk', columns: [t.ttmsAccountId], foreignColumns: [marketScopeAccounts.ttmsAccountId] }).onDelete('cascade'),
+    foreignKey({ name: 'ms_links_client_fk', columns: [t.clientId], foreignColumns: [clients.id] }).onDelete('cascade'),
+    index('market_scope_links_client_idx').on(t.clientId),
+  ],
+);
+
+/** Daily audience per funnel stage (ACC, Awareness, Consideration, Conversion). */
+export const marketScopeAudienceDaily = pgTable(
+  'market_scope_audience_daily',
+  {
+    ttmsAccountId: text('ttms_account_id').notNull(),
+    date: date('date', { mode: 'string' }).notNull(),
+    /** 'acc' | 'awareness' | 'consideration' | 'conversion' */
+    stage: text('stage').notNull(),
+    /** A stock over TTMS's rolling window, not a flow — see `size_ratio` in the catalog. */
+    brandTotal: bigint('brand_total', { mode: 'number' }),
+    brandNew: bigint('brand_new', { mode: 'number' }),
+    brandOutflow: bigint('brand_outflow', { mode: 'number' }),
+    /** From the audience-trend call; differs by ±1 from `market_scope_rankings_daily`, which is canonical. */
+    brandRanking: integer('brand_ranking'),
+    totalBrandCount: integer('total_brand_count'),
+    benchTotalTop5: doublePrecision('bench_total_top5'),
+    benchTotalTop10: doublePrecision('bench_total_top10'),
+    benchTotalTop25: doublePrecision('bench_total_top25'),
+    benchTotalTop50: doublePrecision('bench_total_top50'),
+    benchNewTop5: doublePrecision('bench_new_top5'),
+    benchNewTop10: doublePrecision('bench_new_top10'),
+    benchNewTop25: doublePrecision('bench_new_top25'),
+    benchNewTop50: doublePrecision('bench_new_top50'),
+    benchOutflowTop5: doublePrecision('bench_outflow_top5'),
+    benchOutflowTop10: doublePrecision('bench_outflow_top10'),
+    benchOutflowTop25: doublePrecision('bench_outflow_top25'),
+    benchOutflowTop50: doublePrecision('bench_outflow_top50'),
+  },
+  (t) => [
+    primaryKey({ name: 'ms_audience_daily_pk', columns: [t.ttmsAccountId, t.date, t.stage] }),
+    foreignKey({ name: 'ms_audience_daily_account_fk', columns: [t.ttmsAccountId], foreignColumns: [marketScopeAccounts.ttmsAccountId] }).onDelete('cascade'),
+  ],
+);
+
+/**
+ * Daily brand-insight metric per content type ('all' = no filter). The content
+ * types overlap except `paid` + `non_paid`, which partition `all`.
+ */
+export const marketScopeInsightsDaily = pgTable(
+  'market_scope_insights_daily',
+  {
+    ttmsAccountId: text('ttms_account_id').notNull(),
+    date: date('date', { mode: 'string' }).notNull(),
+    /** Lower-case TTMS metric: 'impressions', 'engagements', … 'nsr'. */
+    metric: text('metric').notNull(),
+    /** 'all' | 'paid' | 'non_paid' | 'ads' | 'creator_boosted' | … | 'ugc_organic' */
+    contentType: text('content_type').notNull(),
+    brandValue: doublePrecision('brand_value'),
+    /** The brand's share of the whole vertical that day (0–1). */
+    brandShare: doublePrecision('brand_share'),
+    benchValueTop5: doublePrecision('bench_value_top5'),
+    benchValueTop10: doublePrecision('bench_value_top10'),
+    benchValueTop25: doublePrecision('bench_value_top25'),
+    benchValueTop50: doublePrecision('bench_value_top50'),
+    benchShareTop5: doublePrecision('bench_share_top5'),
+    benchShareTop10: doublePrecision('bench_share_top10'),
+    benchShareTop25: doublePrecision('bench_share_top25'),
+    benchShareTop50: doublePrecision('bench_share_top50'),
+  },
+  (t) => [
+    primaryKey({ name: 'ms_insights_daily_pk', columns: [t.ttmsAccountId, t.date, t.metric, t.contentType] }),
+    foreignKey({ name: 'ms_insights_daily_account_fk', columns: [t.ttmsAccountId], foreignColumns: [marketScopeAccounts.ttmsAccountId] }).onDelete('cascade'),
+  ],
+);
+
+/**
+ * The daily category ranking list per stage — names and ranks only; TikTok
+ * gives no competitor values. Ties share a rank. Canonical source for "#x of N".
+ */
+export const marketScopeRankingsDaily = pgTable(
+  'market_scope_rankings_daily',
+  {
+    ttmsAccountId: text('ttms_account_id').notNull(),
+    date: date('date', { mode: 'string' }).notNull(),
+    stage: text('stage').notNull(),
+    /** Public brand name as TikTok lists it. */
+    brand: text('brand').notNull(),
+    ranking: integer('ranking').notNull(),
+  },
+  (t) => [
+    primaryKey({ name: 'ms_rankings_daily_pk', columns: [t.ttmsAccountId, t.date, t.stage, t.brand] }),
+    foreignKey({ name: 'ms_rankings_daily_account_fk', columns: [t.ttmsAccountId], foreignColumns: [marketScopeAccounts.ttmsAccountId] }).onDelete('cascade'),
+    index('market_scope_rankings_stage_date_idx').on(t.ttmsAccountId, t.stage, t.date),
+  ],
+);
+
+// ─── Strategy Report specs and the action loop — PRD §6.4 ───────────────────
+
+/**
+ * What an AM set for a client's Strategy Report: the class override, the goal
+ * the report paces against, and the costs TikTok Ads cannot see. One row per
+ * client; absent means "inferred class, no goal, no fees".
+ */
+export const strategySpecs = pgTable(
+  'strategy_specs',
+  {
+    clientId: uuid('client_id')
+      .primaryKey()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    /** Which TTMS account to report on when a client has several; null = the primary one. */
+    ttmsAccountId: text('ttms_account_id'),
+    /** 'brand' | 'shop' — `ReportClass` in @tempo/core; null = inferred per run. */
+    reportClassOverride: text('report_class_override'),
+    /**
+     * 'rank' | 'share' | 'size_ratio' | 'cost_per_new'. `size_ratio` replaces the
+     * PRD's `move_on_rate` (P0 §6.2); `cost_per_new` is offered only for stages
+     * with daily flow, never Conversion (P0 §6.3) — enforced in the repository.
+     */
+    goalKind: text('goal_kind'),
+    /** 'acc' | 'awareness' | 'consideration' | 'conversion' */
+    goalStage: text('goal_stage'),
+    /** For share goals: a TTMS insight metric such as 'impressions'. */
+    goalMetric: text('goal_metric'),
+    goalValue: doublePrecision('goal_value'),
+    goalDeadline: date('goal_deadline', { mode: 'string' }),
+    /** IDR per month, typed by the AM — creator fees never appear in TikTok Ads. */
+    creatorFeeMonthly: doublePrecision('creator_fee_monthly'),
+    bgcCostMonthly: doublePrecision('bgc_cost_monthly'),
+    updatedBy: text('updated_by'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'strategy_specs_ttms_account_fk',
+      columns: [t.ttmsAccountId],
+      foreignColumns: [marketScopeAccounts.ttmsAccountId],
+    }).onDelete('set null'),
+    check('strategy_specs_class_ck', sql`${t.reportClassOverride} IN ('brand', 'shop')`),
+    check('strategy_specs_goal_kind_ck', sql`${t.goalKind} IN ('rank', 'share', 'size_ratio', 'cost_per_new')`),
+    check('strategy_specs_goal_stage_ck', sql`${t.goalStage} IN ('acc', 'awareness', 'consideration', 'conversion')`),
+  ],
+);
+
+/**
+ * Every action a Strategy Report proposed, and what became of it (PRD §5.6).
+ * `action_json` is the engine's `ActionItem` as proposed — targets come from
+ * the Target Solver, never a model — so the next run can measure the same
+ * metric against the same target.
+ */
+export const strategyActions = pgTable(
+  'strategy_actions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    /** The engine run that proposed it. */
+    runId: text('run_id').notNull(),
+    actionJson: jsonb('action_json').notNull(),
+    /** proposed → running (accepted) → worked | weak | failed; or snoozed. */
+    status: text('status').notNull().default('proposed'),
+    acceptedBy: text('accepted_by'),
+    startedAt: date('started_at', { mode: 'string' }),
+    measuredValue: doublePrecision('measured_value'),
+    /** The benchmark's change over the same window — what "beat the category" is measured against. */
+    categoryDelta: doublePrecision('category_delta'),
+    measuredRunId: text('measured_run_id'),
+    measuredAt: timestamp('measured_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('strategy_actions_client_status_idx').on(t.clientId, t.status),
+    check('strategy_actions_status_ck', sql`${t.status} IN ('proposed', 'running', 'worked', 'weak', 'failed', 'snoozed')`),
+  ],
 );
 
 export const schema = {

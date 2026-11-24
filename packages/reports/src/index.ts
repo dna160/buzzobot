@@ -23,11 +23,43 @@
 export { BriefObjective, OBJECTIVE_NORTH_STAR, NORTH_STAR_OBJECTIVE, isBriefObjective } from '@tempo/core';
 export { comboChart, type ComboPoint, type ComboOptions } from './charts.js';
 export { renderHourlyHtml, type HourlyReportOptions } from './hourly.js';
+export {
+  EMPTY_STRATEGY_SPEC,
+  GOAL_KINDS,
+  GOAL_STAGES,
+  SHARE_GOAL_METRICS,
+  StrategySpecError,
+  StrategySpecSchema,
+  parseStrategySpec,
+  strategySpecFromRow,
+  strategySpecToRow,
+  type GoalKind,
+  type StrategyGoal,
+  type StrategySpec,
+  type StrategySpecIssue,
+} from './strategy-report/spec.js';
+export { buildStrategyReportModel, NotAStrategyReportError, SECTION as STRATEGY_SECTION } from './strategy-report/build.js';
+export type { BuildContext as StrategyBuildContext } from './strategy-report/build.js';
+export type * from './strategy-report/model.js';
+export { renderStrategyReportHtml } from './strategy-report/render.js';
+export type * from './strategy-report/engine-content.js';
 
 export * from './template-report/rubric.js';
 export type * from './template-report/model.js';
 export { renderTemplateReportHtml } from './template-report/render.js';
-export { buildPeriodInfo, formatIdDate, formatPeriodRange, inclusiveEnd, type ReportPeriodInfo } from './template-report/period.js';
+export { esc } from './template-report/html.js';
+export {
+  buildPeriodInfo,
+  defaultReportRange,
+  formatIdDate,
+  formatPeriodRange,
+  inclusiveEnd,
+  jakartaYesterday,
+  monthReportRange,
+  reportRangeIssue,
+  type ReportDateRange,
+  type ReportPeriodInfo,
+} from './template-report/period.js';
 export { elaborateArea, shortName, type AreaItem, type ElaboratedArea } from './template-report/area.js';
 export {
   rankSources,

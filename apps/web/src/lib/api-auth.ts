@@ -71,7 +71,6 @@ function keyFingerprint(key: string): string {
  * Everything else — the portal, cron jobs, curl — must present one.
  */
 export function authenticate(request: Request): AuthResult {
-  const keys = configuredKeys();
   const origin = request.headers.get('origin');
   const host = request.headers.get('host');
 
@@ -83,6 +82,19 @@ export function authenticate(request: Request): AuthResult {
   if (!origin && request.headers.get('sec-fetch-site') === 'same-origin') {
     return { ok: true, caller: { kind: 'same-origin' } };
   }
+
+  return authenticateApiKey(request);
+}
+
+/**
+ * Key-only authentication — no same-origin pass. For endpoints this app's own
+ * UI never calls (issuing and revoking shared report links), where the
+ * same-origin shortcut above would only be a way around the key: `Origin`,
+ * `Host` and `Sec-Fetch-Site` are headers any non-browser client can set.
+ */
+export function authenticateApiKey(request: Request): AuthResult {
+  const keys = configuredKeys();
+  const origin = request.headers.get('origin');
 
   const presented =
     request.headers.get('x-api-key') ??

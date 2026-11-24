@@ -9,6 +9,8 @@ Skipped without a reachable LM Studio server and TEMPO_ENGINE_DATABASE_URL.
 
 from __future__ import annotations
 
+import asyncio
+import html
 import os
 
 import httpx
@@ -30,6 +32,18 @@ def _lm_studio_reachable() -> bool:
         return False
 
 
+async def _wait_for(client: httpx.AsyncClient, run_id: str, *, until: set[str], timeout_s: float = 900.0) -> dict:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_s
+    while True:
+        res = await client.get(f"/v1/briefs/{run_id}")
+        assert res.status_code == 200
+        body = res.json()
+        if body["status"] in until or loop.time() > deadline:
+            return body
+        await asyncio.sleep(2.0)
+
+
 async def test_full_review_lifecycle_via_http_api() -> None:
     if not _lm_studio_reachable():
         pytest.skip("requires a reachable LM Studio server")
@@ -41,18 +55,22 @@ async def test_full_review_lifecycle_via_http_api() -> None:
             assert create_res.status_code == 200, create_res.text
             created = create_res.json()
             run_id = created["run_id"]
-            assert created["status"] == "pending_review"
+            # Strategy Report PRD §13 #1: POST returns at once; the row says
+            # `running` until the graph reaches the review gate.
+            assert created["status"] == "running"
+            running = await client.get(f"/v1/briefs/{run_id}")
+            assert running.status_code == 200
+            assert running.json()["status"] in ("running", "pending_review")
 
-            status_res = await client.get(f"/v1/briefs/{run_id}")
-            assert status_res.status_code == 200
-            body = status_res.json()
-            assert body["status"] == "pending_review"
+            body = await _wait_for(client, run_id, until={"pending_review", "failed"})
+            assert body["status"] == "pending_review", body["content"]
             assert body["content"]["s1"]["draft"]["headline"]
 
             page_res = await client.get(f"/ui/briefs/{run_id}")
             assert page_res.status_code == 200
             assert "Approve" in page_res.text
-            assert body["content"]["s1"]["draft"]["headline"] in page_res.text
+            # The page escapes the headline (a model may quote a campaign name).
+            assert html.escape(body["content"]["s1"]["draft"]["headline"]) in page_res.text
 
             review_res = await client.post(f"/v1/briefs/{run_id}/review", json={"decision": "approved", "notes": "looks good"})
             assert review_res.status_code == 200

@@ -102,6 +102,8 @@ const formatByType = (
       return formatRatio(value, precision ?? 2);
     case 'duration':
       return formatDuration(value, precision ?? 1);
+    case 'rank':
+      return `#${Math.round(value)}`;
     default:
       return String(value);
   }

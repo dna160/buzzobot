@@ -68,3 +68,35 @@ async def persist_rankings(
         """,
         rows,
     )
+
+
+async def persist_ranking_state(conn: asyncpg.Connection, run_id: str, tenant_id: str, brief_type: str, state: dict) -> int:
+    """The production write (Strategy Report PRD §13 #6): the same audit rows
+    as `persist_rankings`, read from a finished run's exported state —
+    `rankings` (selected, then below the cut, in rank order) joined to
+    `findings` — because graph nodes never hold a database connection.
+    Returns the number of rows written."""
+    findings = {f["id"]: f for f in state.get("findings") or []}
+    rows = []
+    for section_id, entry in (state.get("rankings") or {}).items():
+        ordered = [(fid, True) for fid in entry.get("selected_ids", [])]
+        ordered += [(b["id"], False) for b in entry.get("below_cut", [])]
+        for rank, (fid, included) in enumerate(ordered, start=1):
+            f = findings.get(fid)
+            if f is None:
+                continue
+            rows.append((
+                run_id, tenant_id, brief_type, int(section_id), fid, str(f.get("generator", "")),
+                str(f.get("claim_frame", "")), rank, float(f.get("materiality") or 0.0), included,
+            ))
+    if not rows:
+        return 0
+    await conn.executemany(
+        """
+        INSERT INTO insight.materiality_rankings
+            (run_id, tenant_id, brief_type, section_id, finding_id, generator, claim_frame, rank, materiality, included)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        """,
+        rows,
+    )
+    return len(rows)

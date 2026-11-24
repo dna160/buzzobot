@@ -18,6 +18,8 @@ export { fetchSanitizeAndSeed, syncBrandToDomain } from './ingest/sanitize.js';
 export type { FetchSanitizeOptions } from './ingest/sanitize.js';
 export { triggerAutoSyncIfStale } from './ingest/auto-sync.js';
 export type { AutoSyncOptions } from './ingest/auto-sync.js';
+export { syncBrandsById, WarehouseNotConfiguredError } from './ingest/targeted-sync.js';
+export type { BrandSyncRequest, BrandSyncResult, BrandSyncOutcome } from './ingest/targeted-sync.js';
 export {
   discoverPostgresBrands,
   discoverSanitizedBrands,
@@ -102,7 +104,47 @@ export {
 } from './repositories/report-benchmark.js';
 export type { StoredBenchmark } from './repositories/report-benchmark.js';
 
+export {
+  getActiveReportLink,
+  issueReportLink,
+  revokeReportLink,
+  resolveReportLink,
+} from './repositories/report-link.js';
+export type { ReportLinkRow } from './repositories/report-link.js';
+
+export {
+  latestCompletedTemplateReportRun,
+  latestTemplateReportRun,
+  claimTemplateReportRun,
+  countRunningTemplateReportRuns,
+  completeTemplateReportRun,
+  failTemplateReportRun,
+} from './repositories/template-report-run.js';
+export type { TemplateReportRunKey, TemplateReportRunRow } from './repositories/template-report-run.js';
+
 export { getPaidTiktokAdAccountId, getPaidTiktokAdAccountIds } from './repositories/tiktok-account.js';
+export {
+  deleteStrategySpec,
+  getStrategySpec,
+  listMarketScopeAccounts,
+  listMarketScopeClientIds,
+  resolveStrategyWindow,
+  upsertStrategySpec,
+} from './repositories/strategy-spec.js';
+export type { MarketScopeAccountSummary, StoredStrategySpec, StrategySpecRow } from './repositories/strategy-spec.js';
+export {
+  acceptStrategyAction,
+  insertProposedActions,
+  insertProposedActionsOnce,
+  listStrategyActions,
+  recordActionMeasurement,
+  snoozeStrategyAction,
+} from './repositories/strategy-action.js';
+export type { ActionMeasurement, StrategyActionRow, StrategyActionStatus } from './repositories/strategy-action.js';
+export { syncMarketScope, verifyMarketScopeMirror } from './ingest/market-scope-sync.js';
+export type { MarketScopeSyncResult, MirrorCountMismatch } from './ingest/market-scope-sync.js';
+export { checkSpendParity, defaultParityWindow } from './ingest/spend-parity.js';
+export type { SpendParityRow } from './ingest/spend-parity.js';
 export { fetchTemplateReportRawData, createSourcePool } from './ingest/template-report-data.js';
 export { fetchNorthStarRawData } from './ingest/north-star-data.js';
 export type {

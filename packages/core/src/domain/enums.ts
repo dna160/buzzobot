@@ -9,6 +9,12 @@ export const DataSurface = {
   Paid: 'paid',
   /** Organic content — TikTok Display / Content Posting API. */
   Organic: 'organic',
+  /**
+   * TikTok Market Scope (TTMS): brand-level funnel audience, category
+   * benchmarks, rank and share of voice. Synced by the Buzzohero portal and
+   * mirrored into `market_scope_*`. Not an ad-account fact grain.
+   */
+  MarketScope: 'market_scope',
 } as const;
 export type DataSurface = (typeof DataSurface)[keyof typeof DataSurface];
 
@@ -118,6 +124,22 @@ export const OBJECTIVE_NORTH_STAR: Record<BriefObjective, NorthStar> = {
 export const NORTH_STAR_OBJECTIVE = Object.fromEntries(
   Object.entries(OBJECTIVE_NORTH_STAR).map(([objective, northStar]) => [northStar, objective]),
 ) as Record<NorthStar, BriefObjective>;
+
+/**
+ * Strategy Report class (PRD §5.2): which questions the report leads with.
+ * `brand` puts share of voice, rank and competitor movement first; `shop` puts
+ * Consideration→Conversion, product card clicks and spend response first.
+ * Inferred per run by the engine, overridable by an AM in `strategy_specs`.
+ */
+export const ReportClass = {
+  Brand: 'brand',
+  Shop: 'shop',
+} as const;
+export type ReportClass = (typeof ReportClass)[keyof typeof ReportClass];
+
+export function isReportClass(value: string): value is ReportClass {
+  return value === ReportClass.Brand || value === ReportClass.Shop;
+}
 
 export function isBriefObjective(value: string): value is BriefObjective {
   return (

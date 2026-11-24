@@ -126,6 +126,29 @@ a browser caller must satisfy **both** the key and the origin allowlist, so a
 leaked key cannot be used from another site. An unset `REPORT_API_KEYS` fails
 closed — external access is refused rather than opened.
 
+### Shared report links (`/r/:token`)
+
+A stable, login-free link to a client's Template Report — what the portal's
+"Generate Report" opens, and what is sent on to the brand:
+
+```
+POST /api/report-links         { slug, createdBy? }  → { url, token, created }   API key only
+POST /api/report-links/revoke  { slug }              → { revoked }               API key only
+GET  /r/:token?from=YYYY-MM-DD&to=YYYY-MM-DD          → the page (month picker + custom range)
+GET  /r/:token/report?from=&to=[&wait=1|&format=pdf]  → what the page fetches
+```
+
+One live link per client; asking again returns the same token (32 random
+bytes). It does not expire; revoking it answers 404 from the next request and
+the next POST issues a new one. The page opens on this month through yesterday
+(Asia/Jakarta), or the whole previous month on the 1st. The report is the
+client's north-star template graded against its stored benchmarks. Each window
+is generated once and kept in `template_report_runs` (HTML under
+`TEMPO_ARTIFACT_DIR`): settled windows for good, recent ones for
+`DECK_ARTIFACT_MAX_AGE_HOURS`. Tempo is internal, so `/r/*` — and only that
+prefix — has to be exposed for brands to open it; set `REPORT_SHARE_BASE_URL`
+to that external origin.
+
 ### Brief Deck (`/api/reports/:slug/brief/:objective`)
 
 The client-facing deliverable: a landscape **16:9 deck** where every analytical
