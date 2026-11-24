@@ -4,6 +4,8 @@ import type { Caller } from './api-auth';
  * Relay to tempo-engine's `POST /v1/chat` (Tempo Chat PRD §11, D2): all model
  * calls live in the engine, this app only forwards and renders. Mirrors
  * `strategy-report-pipeline.ts` — nothing here reads data or computes a number.
+ * Tanya Tempo is one general chat over the whole ads database; the engine's
+ * workspace (`TEMPO_SCOPE`) decides which clients its tools may read.
  *
  * The authenticated `Caller` becomes the engine's `principal`, so every turn is
  * logged with who asked (PRD §10.1). C1 carries only kind + key fingerprint.
@@ -23,9 +25,17 @@ export interface ChatToolCall {
   ok: boolean;
 }
 
+export interface ChatClientRef {
+  slug: string;
+  name: string;
+  northStar: string;
+}
+
 export interface ChatReply {
   conversationId: string;
-  client: { slug: string; name: string; northStar: string };
+  scope: string;
+  /** Clients this turn's tools read, in first-touch order. */
+  clients: ChatClientRef[];
   reply: string;
   verified: boolean;
   unverifiedNumerals: string[];
@@ -36,7 +46,8 @@ export interface ChatReply {
 }
 
 export interface ChatRelayRequest {
-  slug: string;
+  /** Optional client the user is looking at — a hint, never a restriction. */
+  focusSlug?: string | null;
   messages: ChatMessage[];
   conversationId?: string | null;
   caller: Caller;
@@ -62,7 +73,7 @@ function engineMessage(status: number, body: string): string {
   return body || 'Terjadi kesalahan saat menghubungi Tempo.';
 }
 
-/** `POST /v1/chat`; 404 = unknown client, 503/502 = model unreachable/errored. */
+/** `POST /v1/chat`; 503/502 = model unreachable/errored or chat not configured. */
 export async function requestChat(req: ChatRelayRequest): Promise<ChatReply> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS);
@@ -72,7 +83,7 @@ export async function requestChat(req: ChatRelayRequest): Promise<ChatReply> {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        client_slug: req.slug,
+        client_slug: req.focusSlug ?? null,
         messages: req.messages,
         conversation_id: req.conversationId ?? null,
         principal: principalOf(req.caller),
@@ -90,22 +101,20 @@ export async function requestChat(req: ChatRelayRequest): Promise<ChatReply> {
     clearTimeout(timer);
   }
 
-  if (res.status === 404) {
-    throw new ChatEngineError(404, (await res.text()) || `Klien "${req.slug}" tidak ditemukan.`);
-  }
   if (!res.ok) {
     throw new ChatEngineError(res.status >= 500 ? 502 : res.status, engineMessage(res.status, await res.text()));
   }
 
   const data = (await res.json()) as Record<string, unknown>;
-  const client = (data.client ?? {}) as Record<string, unknown>;
+  const clients = Array.isArray(data.clients) ? (data.clients as Record<string, unknown>[]) : [];
   return {
     conversationId: String(data.conversation_id ?? ''),
-    client: {
-      slug: String(client.slug ?? req.slug),
-      name: String(client.name ?? ''),
-      northStar: String(client.north_star ?? ''),
-    },
+    scope: String(data.scope ?? ''),
+    clients: clients.map((c) => ({
+      slug: String(c.slug ?? ''),
+      name: String(c.name ?? ''),
+      northStar: String(c.north_star ?? ''),
+    })),
     reply: String(data.reply ?? ''),
     verified: Boolean(data.verified),
     unverifiedNumerals: Array.isArray(data.unverified_numerals) ? (data.unverified_numerals as string[]) : [],

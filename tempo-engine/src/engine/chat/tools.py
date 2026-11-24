@@ -1,27 +1,30 @@
-"""The five C1 tools — the only way the model reads data (PRD §7).
+"""Tanya Tempo's tools — the only way the model reads data (PRD §7).
 
-Each tool is a pydantic argument model (`extra="ignore"`, so an injected
-`client_slug` is dropped not obeyed, PRD R3), an async handler
+Each tool is a pydantic argument model (`extra="ignore"`), an async handler
 `(ctx, args) -> str`, and a Bahasa description the model sees. Output is compact
 Bahasa with every value formatted and every change labelled by metric polarity,
 capped at 6,000 characters (§7.1). The model is never handed raw rows (R5).
 
-The client is on `ctx.scope`, bound by the server; no tool argument names it.
-Two Market Scope calls in one turn share one built frame (§7.1 per-turn cache).
+The chat is general: two workspace tools (`find_clients`, `portfolio_overview`)
+span every client the workspace allows, and the per-client tools take a
+`client` argument (name or slug) that the server resolves *inside the
+workspace* (`ToolContext.client`). An ambiguous or unknown name returns the
+candidates as text, never a guess. Two Market Scope calls for the same client
+in one turn share one built frame (§7.1 per-turn cache).
 """
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from engine.chat import metrics
-from engine.chat.data import ChatData, client_today
-from engine.chat.scope import ChatScope
+from engine.chat.data import ChatData, ClientMatch, PortfolioRow, client_today
+from engine.chat.scope import ChatScope, ChatWorkspace
 from engine.contracts import Finding
 from engine.contracts.strategy import StrategyFrame
 from engine.copy.strategy import deterministic_action_copy, dec, finding_sentence, num, pct
@@ -74,17 +77,56 @@ Topic = Literal[
 
 @dataclass
 class ToolContext:
-    scope: ChatScope
+    workspace: ChatWorkspace
     data: ChatData
-    _frames: dict[tuple[int, str | None], StrategyFrame | None] = field(default_factory=dict)
+    #: Clients this turn resolved, in order — logged with the turn.
+    touched: dict[str, ChatScope] = field(default_factory=dict)
+    _resolved: dict[str, ChatScope | str] = field(default_factory=dict)
+    _frames: dict[tuple[str, int, str | None], StrategyFrame | None] = field(default_factory=dict)
 
-    async def frame(self, window_days: int, end_date: date | None) -> StrategyFrame | None:
-        key = (window_days, end_date.isoformat() if end_date else None)
+    async def client(self, ref: str | None) -> ChatScope | str:
+        """Resolve the model's `client` argument inside the workspace. A
+        `ChatScope` on one match; otherwise Bahasa text listing the candidates
+        (or saying there are none) for the model to act on."""
+        ref = (ref or "").strip() or (self.workspace.focus_slug or "")
+        if not ref:
+            return (
+                "Sebutkan klien yang dimaksud lewat argumen client (nama atau slug). "
+                "Gunakan find_clients untuk mencari nama yang tepat."
+            )
+        if ref not in self._resolved:
+            got = await self.data.resolve_client(self.workspace, ref)
+            if isinstance(got, ChatScope):
+                self._resolved[ref] = got
+            elif got:
+                self._resolved[ref] = (
+                    f"Nama klien \"{ref}\" cocok dengan beberapa klien. Pilih salah satu slug di bawah dan panggil "
+                    "alat lagi, atau tanyakan ke pengguna klien mana yang dimaksud:\n"
+                    + "\n".join(_match_line(m) for m in got)
+                )
+            else:
+                self._resolved[ref] = (
+                    f"Tidak ada klien yang cocok dengan \"{ref}\". Gunakan find_clients dengan kata kunci yang "
+                    "lebih pendek untuk mencari namanya."
+                )
+        res = self._resolved[ref]
+        if isinstance(res, ChatScope):
+            self.touched.setdefault(res.client_slug, res)
+        return res
+
+    async def frame(self, scope: ChatScope, window_days: int, end_date: date | None) -> StrategyFrame | None:
+        key = (scope.client_slug, window_days, end_date.isoformat() if end_date else None)
         if key not in self._frames:
             self._frames[key] = await self.data.strategy_frame(
-                self.scope, window_days=window_days, end_date=end_date
+                scope, window_days=window_days, end_date=end_date
             )
         return self._frames[key]
+
+
+def _match_line(m: ClientMatch) -> str:
+    data = f"data iklan s.d. {m.last_date}" if m.last_date else "belum ada data iklan"
+    ttms = " · TTMS terhubung" if m.ttms_linked else ""
+    return f"- {m.name} (slug: {m.slug}) · bintang utara {NORTH_STAR_LABEL.get(m.north_star, m.north_star)} · {data}{ttms}"
 
 
 # ─── Argument models ─────────────────────────────────────────────────────────
@@ -94,11 +136,35 @@ class _Args(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
-class ClientOverviewArgs(_Args):
+class _ClientArgs(_Args):
+    client: str | None = Field(
+        default=None,
+        max_length=200,
+        description="Nama atau slug klien, mis. \"Cimory\" atau \"cimory\". Wajib kecuali pengguna sedang membuka satu klien.",
+    )
+
+
+class FindClientsArgs(_Args):
+    query: str = Field(default="", max_length=200, description="Kata kunci nama/slug klien; kosong = semua klien.")
+    limit: int = Field(default=10, ge=1, le=25)
+
+
+PortfolioSort = Literal["spend", "gmv", "orders", "roas", "impressions", "clicks", "ctr", "installs", "views_6s"]
+
+
+class PortfolioArgs(_Args):
+    window_days: int = Field(default=7, ge=1, le=90)
+    end_date: date | None = None
+    sort_by: PortfolioSort = "spend"
+    limit: int = Field(default=10, ge=1, le=25)
+    north_star: Literal["shop", "vtr", "app_install"] | None = None
+
+
+class ClientOverviewArgs(_ClientArgs):
     pass
 
 
-class AdsPerformanceArgs(_Args):
+class AdsPerformanceArgs(_ClientArgs):
     window_days: int = Field(default=7, ge=1, le=90)
     end_date: date | None = None
     include_daily: bool = False
@@ -107,14 +173,14 @@ class AdsPerformanceArgs(_Args):
 SortBy = Literal["spend", "impressions", "clicks", "ctr", "conversions", "conversion_value", "roas", "cpa"]
 
 
-class CampaignBreakdownArgs(_Args):
+class CampaignBreakdownArgs(_ClientArgs):
     window_days: int = Field(default=7, ge=1, le=90)
     end_date: date | None = None
     sort_by: SortBy = "spend"
     limit: int = Field(default=10, ge=1, le=20)
 
 
-class MarketScopeArgs(_Args):
+class MarketScopeArgs(_ClientArgs):
     topics: list[Topic] = Field(
         default_factory=lambda: ["funnel", "share_of_voice", "content", "actions"]
     )
@@ -122,7 +188,7 @@ class MarketScopeArgs(_Args):
     end_date: date | None = None
 
 
-class StrategyActionLogArgs(_Args):
+class StrategyActionLogArgs(_ClientArgs):
     limit: int = Field(default=8, ge=1, le=20)
 
 
@@ -130,8 +196,10 @@ class StrategyActionLogArgs(_Args):
 
 
 async def _client_overview(ctx: ToolContext, args: ClientOverviewArgs) -> str:
-    o = await ctx.data.overview(ctx.scope)
-    s = ctx.scope
+    s = await ctx.client(args.client)
+    if isinstance(s, str):
+        return s
+    o = await ctx.data.overview(s)
     lines = [
         f"Klien {s.client_name} · bintang utara {NORTH_STAR_LABEL.get(s.north_star, s.north_star)} "
         f"· tier {o.tier or '—'} · mata uang {s.currency} · zona {s.timezone} · hari ini {o.today}."
@@ -175,7 +243,9 @@ async def _client_overview(ctx: ToolContext, args: ClientOverviewArgs) -> str:
 
 
 async def _ads_performance(ctx: ToolContext, args: AdsPerformanceArgs) -> str:
-    s = ctx.scope
+    s = await ctx.client(args.client)
+    if isinstance(s, str):
+        return s
     today = client_today(s.timezone)
     available = await ctx.data.available_dates(s)
     bounds = metrics.window_bounds(available, today, args.end_date, args.window_days)
@@ -221,7 +291,9 @@ async def _ads_performance(ctx: ToolContext, args: AdsPerformanceArgs) -> str:
 
 
 async def _campaign_breakdown(ctx: ToolContext, args: CampaignBreakdownArgs) -> str:
-    s = ctx.scope
+    s = await ctx.client(args.client)
+    if isinstance(s, str):
+        return s
     today = client_today(s.timezone)
     available = await ctx.data.available_dates(s)
     bounds = metrics.window_bounds(available, today, args.end_date, args.window_days)
@@ -283,8 +355,10 @@ async def _campaign_breakdown(ctx: ToolContext, args: CampaignBreakdownArgs) -> 
 
 
 async def _market_scope(ctx: ToolContext, args: MarketScopeArgs) -> str:
-    s = ctx.scope
-    frame = await ctx.frame(args.window_days, args.end_date)
+    s = await ctx.client(args.client)
+    if isinstance(s, str):
+        return s
+    frame = await ctx.frame(s, args.window_days, args.end_date)
     if frame is None:
         o = await ctx.data.overview(s)
         if not o.ttms.linked:
@@ -339,10 +413,13 @@ async def _market_scope(ctx: ToolContext, args: MarketScopeArgs) -> str:
 
 
 async def _strategy_action_log(ctx: ToolContext, args: StrategyActionLogArgs) -> str:
-    rows = await ctx.data.action_log(ctx.scope, args.limit)
+    s = await ctx.client(args.client)
+    if isinstance(s, str):
+        return s
+    rows = await ctx.data.action_log(s, args.limit)
     if not rows:
-        return f"Belum ada tindakan strategi yang tercatat untuk {ctx.scope.client_name}."
-    out = [f"Log tindakan strategi {ctx.scope.client_name} (terbaru dulu):"]
+        return f"Belum ada tindakan strategi yang tercatat untuk {s.client_name}."
+    out = [f"Log tindakan strategi {s.client_name} (terbaru dulu):"]
     for r in rows:
         when = r.started_at or r.proposed_at
         measured = f" · terukur {dec(r.measured_value, 2)}" if r.measured_value is not None else ""
@@ -350,6 +427,123 @@ async def _strategy_action_log(ctx: ToolContext, args: StrategyActionLogArgs) ->
             f"- [{ACTION_STATUS.get(r.status, r.status)}] {r.langkah or '(tindakan)'}"
             + (f" · sejak {when}" if when else "")
             + measured
+        )
+    return "\n".join(out)
+
+
+async def _find_clients(ctx: ToolContext, args: FindClientsArgs) -> str:
+    total = await ctx.data.client_count(ctx.workspace)
+    rows = await ctx.data.find_clients(ctx.workspace, args.query, args.limit)
+    if not rows:
+        return (
+            f"Tidak ada klien yang cocok dengan \"{args.query}\" di antara {num(total)} klien. "
+            "Coba kata kunci yang lebih pendek."
+        )
+    head = (
+        f"Klien yang cocok dengan \"{args.query}\"" if args.query.strip() else "Daftar klien (urut nama)"
+    ) + f": {len(rows)} ditampilkan dari {num(total)} klien di database."
+    return "\n".join([head, *(_match_line(m) for m in rows)])
+
+
+_PORTFOLIO_KEY = {"orders": "orders", "gmv": "gmv", "roas": "roas", "installs": "installs", "views_6s": "views_6s"}
+
+
+def _portfolio_metrics(r: PortfolioRow) -> dict[str, float]:
+    if r.north_star in metrics.USES_AWARENESS:
+        sums = {
+            "spend": r.spend, "impressions": r.impressions, "reach": r.reach,
+            "video_watched_6s": r.video_watched_6s, "engaged_view_15s": r.engaged_view_15s,
+        }
+    else:
+        sums = {
+            "spend": r.spend, "impressions": r.impressions, "clicks": r.clicks,
+            "conversions": r.conversions, "conversion_value": r.conversion_value,
+        }
+    m = metrics.metric_values(r.north_star, sums)
+    if r.north_star == "shop" and not r.conversion_value:
+        for k in ("gmv", "roas", "roi", "aov"):
+            m.pop(k, None)
+    m.setdefault("impressions", float(r.impressions))
+    m.setdefault("clicks", float(r.clicks))
+    if "ctr" not in m and r.impressions:
+        m["ctr"] = r.clicks / r.impressions
+    return m
+
+
+async def _portfolio_overview(ctx: ToolContext, args: PortfolioArgs) -> str:
+    ws = ctx.workspace
+    last = await ctx.data.portfolio_last_date(ws)
+    if last is None:
+        return "Belum ada data iklan berbayar di database."
+    today = client_today(ws.timezone)
+    ceiling = args.end_date or (today - timedelta(days=1))
+    cur_last = min(last, ceiling)
+    cur_first = cur_last - timedelta(days=args.window_days - 1)
+    prior_last = cur_first - timedelta(days=1)
+    prior_first = prior_last - timedelta(days=args.window_days - 1)
+
+    cur = await ctx.data.portfolio(ws, cur_first, cur_last)
+    prior = {r.slug: r for r in await ctx.data.portfolio(ws, prior_first, prior_last)}
+    if args.north_star:
+        cur = [r for r in cur if r.north_star == args.north_star]
+    cur = [r for r in cur if r.spend > 0 or r.impressions > 0]
+    if not cur:
+        return f"Tidak ada klien dengan aktivitas iklan pada {cur_first} s.d. {cur_last}."
+
+    total_clients = await ctx.data.client_count(ws)
+    scope_note = f" (hanya bintang utara {NORTH_STAR_LABEL.get(args.north_star, args.north_star)})" if args.north_star else ""
+    out = [
+        f"Portofolio iklan semua klien{scope_note} · {cur_first} s.d. {cur_last} ({args.window_days} hari), "
+        f"dibanding {prior_first} s.d. {prior_last}. {len(cur)} dari {num(total_clients)} klien beriklan. "
+        "Hanya baris tingkat kampanye; belanja termasuk GMV Max. Jendela berakhir pada hari lengkap terakhir."
+    ]
+
+    by_ccy: dict[str, list[PortfolioRow]] = {}
+    for r in cur:
+        by_ccy.setdefault(r.currency, []).append(r)
+    for ccy, rows in sorted(by_ccy.items()):
+        spend = sum(r.spend for r in rows)
+        prior_spend = sum(prior[r.slug].spend for r in rows if r.slug in prior)
+        impressions = sum(r.impressions for r in rows)
+        clicks = sum(r.clicks for r in rows)
+        shop = [r for r in rows if r.north_star == "shop"]
+        line = (
+            f"Total ({ccy}, {len(rows)} klien): belanja {metrics.money(spend, ccy)} "
+            f"({metrics._change(spend, prior_spend if prior_spend else None, 0)}), impresi {num(impressions)}, "
+            f"klik {num(clicks)}"
+        )
+        if impressions:
+            line += f", CTR {pct(clicks / impressions)}"
+        if shop:
+            gmv = sum(r.conversion_value for r in shop)
+            shop_spend = sum(r.spend for r in shop)
+            line += f"; klien shop: pesanan {num(sum(r.conversions for r in shop))}, GMV {metrics.money(gmv, ccy)}"
+            if shop_spend:
+                line += f", ROAS {dec(gmv / shop_spend, 2)}×"
+        out.append(line + ".")
+
+    per = [(r, _portfolio_metrics(r)) for r in cur]
+    key = _PORTFOLIO_KEY.get(args.sort_by, args.sort_by)
+    if args.sort_by != "spend":
+        per = [x for x in per if key in x[1]]
+    per.sort(key=lambda x: x[1].get(key, 0.0), reverse=True)
+    out.append(f"Peringkat klien berdasarkan {args.sort_by} (teratas {min(args.limit, len(per))}):")
+    spend_by_ccy = {ccy: sum(r.spend for r in rows) for ccy, rows in by_ccy.items()}
+    for rank, (r, m) in enumerate(per[: args.limit], start=1):
+        tot = spend_by_ccy.get(r.currency) or 0.0
+        share = f", {_pct1(r.spend / tot)} dari total" if tot else ""
+        p = prior.get(r.slug)
+        chg = metrics._change(r.spend, p.spend if p else None, 0)
+        extra = {"shop": ("orders", "gmv", "roas"), "app_install": ("installs", "cpi"), "vtr": ("vtr6s", "views_6s")}.get(
+            r.north_star, ("orders", "gmv")
+        )
+        tail = ", ".join(f"{k.upper()} {_mval(m, k, r.currency)}" for k in extra if k in m)
+        if r.north_star == "shop" and not r.conversion_value:
+            # No GMV booked (e.g. no shop attribution): a 0,00× ROAS would read as a result.
+            tail = (tail + ", " if tail else "") + "GMV belum tercatat (ROAS tidak bisa dihitung)"
+        out.append(
+            f"{rank}. {r.name} (slug: {r.slug}) · belanja {metrics.money(r.spend, r.currency)}{share} ({chg})"
+            f", CTR {_mval(m, 'ctr', r.currency)}" + (f", {tail}" if tail else "")
         )
     return "\n".join(out)
 
@@ -391,17 +585,35 @@ class ToolResult:
 
 
 TOOLS: dict[str, Tool] = {
+    "find_clients": Tool(
+        "find_clients",
+        "Cari klien di database iklan berdasarkan nama atau slug: nama, slug, bintang utara, tanggal data "
+        "iklan terakhir, dan apakah terhubung ke TikTok Market Scope. Argumen: query (kosong = semua, urut "
+        "nama), limit (1–25, default 10). Pakai ini bila nama klien dari pengguna tidak persis.",
+        FindClientsArgs,
+        _find_clients,  # type: ignore[arg-type]
+    ),
+    "portfolio_overview": Tool(
+        "portfolio_overview",
+        "Gambaran lintas SEMUA klien pada satu jendela dibanding jendela sebelumnya: total belanja, impresi, "
+        "klik, CTR, pesanan/GMV/ROAS klien shop, dan peringkat klien. Untuk pertanyaan seperti \"klien mana "
+        "yang belanja paling besar\", \"ROAS tertinggi minggu ini\", atau total portofolio. Argumen: "
+        "window_days (1–90, default 7), end_date, sort_by (spend/gmv/orders/roas/impressions/clicks/ctr/"
+        "installs/views_6s), limit (1–25), north_star opsional (shop/vtr/app_install).",
+        PortfolioArgs,
+        _portfolio_overview,  # type: ignore[arg-type]
+    ),
     "client_overview": Tool(
         "client_overview",
-        "Ringkasan apa yang tersedia untuk klien ini: bintang utara, tier, mata uang, zona waktu, cakupan "
-        "data iklan, status tautan TikTok Market Scope (merek, kategori, paket, hari riwayat), laporan "
-        "terakhir, dan jumlah tindakan strategi. Panggil ini lebih dulu bila belum yakin data apa yang ada.",
+        "Ringkasan apa yang tersedia untuk satu klien (argumen client): bintang utara, tier, mata uang, zona "
+        "waktu, cakupan data iklan, status tautan TikTok Market Scope (merek, kategori, paket, hari riwayat), "
+        "laporan terakhir, dan jumlah tindakan strategi.",
         ClientOverviewArgs,
         _client_overview,  # type: ignore[arg-type]
     ),
     "ads_performance": Tool(
         "ads_performance",
-        "Kinerja iklan berbayar pada satu jendela dibanding jendela sebelumnya yang sama panjang: belanja, "
+        "Kinerja iklan berbayar satu klien (argumen client) pada satu jendela dibanding jendela sebelumnya: belanja, "
         "impresi, klik, CTR, CPM, CPC, plus metrik bintang utara (shop: pesanan, GMV, ROAS, biaya/pesanan, "
         "CVR, AOV; vtr: VTR 6d/15d, jangkauan; app_install: instalasi, CPI). Argumen: window_days (1–90, "
         "default 7), end_date opsional, include_daily untuk rincian harian.",
@@ -410,7 +622,7 @@ TOOLS: dict[str, Tool] = {
     ),
     "campaign_breakdown": Tool(
         "campaign_breakdown",
-        "Rincian per kampanye pada satu jendela: belanja, porsi dari total, perubahan belanja vs periode "
+        "Rincian per kampanye satu klien (argumen client): belanja, porsi dari total, perubahan belanja vs periode "
         "sebelumnya, CTR, dua–tiga metrik bintang utara, objective dan status. Argumen: window_days, "
         "end_date, sort_by (spend/impressions/clicks/ctr/conversions/conversion_value/roas/cpa), limit (1–20).",
         CampaignBreakdownArgs,
@@ -418,7 +630,7 @@ TOOLS: dict[str, Tool] = {
     ),
     "market_scope_insights": Tool(
         "market_scope_insights",
-        "Analisis TikTok Market Scope untuk klien yang terhubung: funnel vs kategori, respons belanja, laju "
+        "Analisis TikTok Market Scope untuk satu klien yang terhubung (argumen client): funnel vs kategori, respons belanja, laju "
         "target, komposisi konten, share of voice, pesaing, peringatan, hasil tindakan, dan usulan tindakan "
         "bertarget (Target Solver). Argumen: topics (subset dari coverage/funnel/spend_response/goal/content/"
         "share_of_voice/competitors/warnings/actions/action_results), window_days (14–90, default 28), end_date.",
@@ -427,7 +639,7 @@ TOOLS: dict[str, Tool] = {
     ),
     "strategy_action_log": Tool(
         "strategy_action_log",
-        "Tindakan strategi yang diusulkan, berjalan, dan sudah dinilai (berhasil/lemah/gagal/ditunda), "
+        "Tindakan strategi satu klien (argumen client) yang diusulkan, berjalan, dan sudah dinilai (berhasil/lemah/gagal/ditunda), "
         "terbaru dulu, dengan langkah, status, tanggal dan nilai terukur. Argumen: limit (1–20, default 8).",
         StrategyActionLogArgs,
         _strategy_action_log,  # type: ignore[arg-type]

@@ -14,7 +14,7 @@ import sys
 import asyncpg
 
 from engine.chat.agent import ChatResult
-from engine.chat.scope import ChatScope, Principal
+from engine.chat.scope import ChatWorkspace, Principal
 
 
 async def ensure_chat_schema(conn: asyncpg.Connection) -> None:
@@ -58,13 +58,20 @@ async def record_turn(
     conn: asyncpg.Connection,
     *,
     conversation_id: str,
-    scope: ChatScope,
+    workspace: ChatWorkspace,
     principal: Principal,
     question: str,
     result: ChatResult,
 ) -> None:
     """Best-effort: a logging failure is swallowed (printed to stderr), never
-    raised, so audit never costs a user their answer."""
+    raised, so audit never costs a user their answer.
+
+    General chat spans clients, so `tenant_id`/`client_slug` hold the clients
+    the turn's tools touched, comma-separated (`*` when none), and the
+    workspace scope rides in `principal.workspace`."""
+    tenants = ",".join(c.tenant_id for c in result.clients) or "*"
+    slugs = ",".join(c.client_slug for c in result.clients) or "*"
+    principal_json = {**principal.to_json(), "workspace": workspace.scope}
     try:
         await conn.execute(
             """
@@ -75,9 +82,9 @@ async def record_turn(
             VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8::jsonb,$9::jsonb,$10::jsonb,$11,$12,$13,$14,$15,$16,$17)
             """,
             conversation_id,
-            scope.tenant_id,
-            scope.client_slug,
-            json.dumps(principal.to_json()),
+            tenants,
+            slugs,
+            json.dumps(principal_json),
             question,
             result.reply,
             result.verified,

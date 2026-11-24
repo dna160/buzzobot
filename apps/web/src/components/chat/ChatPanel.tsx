@@ -5,21 +5,23 @@ import { Badge, Button, cn } from '@tempo/ui';
 import type { ChatReply, ChatToolCall } from '@/lib/tempo-chat';
 
 /**
- * Tanya Tempo panel (Tempo Chat C1, PRD §12.3). Holds the conversation for the
- * browser session only (sessionStorage per client; nothing server-side for the
- * user). Replies are not streamed — the engine checks every number before the
- * text is shown — so a reply arrives whole, with a verified/unverified badge,
- * the tools it read, and how long it took. Markdown is rendered as React nodes;
+ * Tanya Tempo panel — one general chat over the whole ads database, not a
+ * per-client page. Holds the conversation for the browser session only
+ * (sessionStorage; nothing server-side for the user). Replies are not
+ * streamed — the engine checks every number before the text is shown — so a
+ * reply arrives whole, with a verified/unverified badge, the tools (and
+ * clients) it read, and how long it took. Markdown is rendered as React nodes;
  * no HTML is ever injected.
  */
 
 const MAX_CHARS = 4000;
+const STORAGE_KEY = 'tempo-chat:general';
 const STARTERS = [
-  'Bagaimana kondisi klien ini minggu ini? Apa yang paling perlu diperhatikan?',
-  'Kampanye mana yang paling efisien, dan mana yang membuang belanja dalam 14 hari terakhir?',
-  'Bagaimana posisi kami dibanding kategori di TikTok Market Scope?',
-  'Apa tiga hal yang sebaiknya kami lakukan minggu depan?',
-  'Data apa saja yang tersedia untuk klien ini?',
+  'Klien mana yang belanja iklannya paling besar minggu ini, dan bagaimana ROAS-nya?',
+  'Bagaimana total kinerja iklan semua klien 7 hari terakhir dibanding minggu sebelumnya?',
+  'Klien shop mana dengan ROAS tertinggi dalam 14 hari terakhir?',
+  'Bagaimana kondisi Cimory minggu ini? Apa yang paling perlu diperhatikan?',
+  'Kampanye mana di Cimory yang paling boros dalam 14 hari terakhir?',
 ];
 
 interface AssistantMeta {
@@ -33,26 +35,27 @@ type Turn =
   | { role: 'user'; content: string }
   | ({ role: 'assistant'; content: string } & AssistantMeta);
 
-function storageKey(slug: string): string {
-  return `tempo-chat:${slug}`;
-}
-
 function toolChip(tc: ChatToolCall): string {
   const w = tc.args?.window_days;
   const win = typeof w === 'number' ? ` · ${w} hari` : '';
+  const who = typeof tc.args?.client === 'string' && tc.args.client ? `${tc.args.client} · ` : '';
   switch (tc.name) {
+    case 'portfolio_overview':
+      return `Semua klien${win}`;
+    case 'find_clients':
+      return typeof tc.args?.query === 'string' && tc.args.query ? `Cari klien · ${tc.args.query}` : 'Daftar klien';
     case 'ads_performance':
-      return `Kinerja iklan${win}`;
+      return `${who}Kinerja iklan${win}`;
     case 'campaign_breakdown':
-      return `Kampanye${win}`;
+      return `${who}Kampanye${win}`;
     case 'market_scope_insights': {
       const topics = Array.isArray(tc.args?.topics) ? (tc.args.topics as string[]).join(', ') : 'ringkasan';
-      return `Market Scope · ${topics}`;
+      return `${who}Market Scope · ${topics}`;
     }
     case 'client_overview':
-      return 'Ikhtisar klien';
+      return `${who}Ikhtisar klien`;
     case 'strategy_action_log':
-      return 'Log tindakan';
+      return `${who}Log tindakan`;
     default:
       return tc.name;
   }
@@ -132,7 +135,7 @@ function renderMarkdown(text: string): ReactNode[] {
   return out;
 }
 
-export function ChatPanel({ slug, clientName }: { slug: string; clientName: string }) {
+export function ChatPanel() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [input, setInput] = useState('');
@@ -141,10 +144,10 @@ export function ChatPanel({ slug, clientName }: { slug: string; clientName: stri
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Restore the conversation for this client (browser session only).
+  // Restore the conversation (browser session only).
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem(storageKey(slug));
+      const raw = sessionStorage.getItem(STORAGE_KEY);
       if (raw) {
         const saved = JSON.parse(raw) as { turns: Turn[]; conversationId: string | null };
         setTurns(saved.turns ?? []);
@@ -153,15 +156,15 @@ export function ChatPanel({ slug, clientName }: { slug: string; clientName: stri
     } catch {
       /* private window / blocked storage — start empty */
     }
-  }, [slug]);
+  }, []);
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(storageKey(slug), JSON.stringify({ turns, conversationId }));
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ turns, conversationId }));
     } catch {
       /* ignore */
     }
-  }, [slug, turns, conversationId]);
+  }, [turns, conversationId]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -184,7 +187,7 @@ export function ChatPanel({ slug, clientName }: { slug: string; clientName: stri
     setTurns(history);
     setLoading(true);
     try {
-      const res = await fetch(`/api/chat/${encodeURIComponent(slug)}`, {
+      const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -223,7 +226,7 @@ export function ChatPanel({ slug, clientName }: { slug: string; clientName: stri
     setError(null);
     setInput('');
     try {
-      sessionStorage.removeItem(storageKey(slug));
+      sessionStorage.removeItem(STORAGE_KEY);
     } catch {
       /* ignore */
     }
@@ -270,7 +273,7 @@ export function ChatPanel({ slug, clientName }: { slug: string; clientName: stri
         {loading ? (
           <div className="flex items-center gap-2 text-[13px] text-muted">
             <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-border border-t-accent" />
-            Tempo sedang membaca data {clientName}… {elapsed} dtk
+            Tempo sedang membaca data iklan… {elapsed} dtk
           </div>
         ) : null}
       </div>
@@ -291,7 +294,7 @@ export function ChatPanel({ slug, clientName }: { slug: string; clientName: stri
           }}
           rows={2}
           disabled={loading}
-          placeholder={`Tanya tentang ${clientName}… (Enter kirim, Shift+Enter baris baru)`}
+          placeholder="Tanya tentang klien mana pun atau seluruh portofolio… (Enter kirim, Shift+Enter baris baru)"
           className="w-full resize-none rounded-lg border border-border bg-surface px-3 py-2 text-[13px] text-primary outline-none placeholder:text-muted focus:border-accent disabled:opacity-60"
         />
         <div className="mt-2 flex items-center justify-between">

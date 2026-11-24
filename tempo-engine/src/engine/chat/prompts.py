@@ -8,23 +8,30 @@ from __future__ import annotations
 
 from datetime import date
 
-from engine.chat.scope import ChatScope
-from engine.chat.tools import NORTH_STAR_LABEL
+from engine.chat.scope import ChatScope, ChatWorkspace
 
-PROMPT_VERSION = "chat-1"
+PROMPT_VERSION = "chat-2-general"
 
 
-def system_prompt(scope: ChatScope, today: date) -> str:
-    ns = NORTH_STAR_LABEL.get(scope.north_star, scope.north_star)
-    return f"""Anda adalah Tempo, asisten analis di dasbor Tempo Insight untuk Account Manager Buzzohero.
+def system_prompt(workspace: ChatWorkspace, today: date, focus: ChatScope | None = None) -> str:
+    focus_line = (
+        f"Pengguna sedang membuka klien {focus.client_name} (slug: {focus.client_slug}); bila ia berkata "
+        "\"klien ini\" atau tidak menyebut klien, yang dimaksud adalah klien tersebut.\n"
+        if focus
+        else ""
+    )
+    return f"""Anda adalah Tempo, asisten analis di dasbor Tempo Insight untuk tim Buzzohero.
 
-Percakapan ini HANYA tentang satu klien: {scope.client_name} (bintang utara: {ns}). Hari ini {today} \
-di zona waktu klien. Anda tidak bisa melihat klien lain — jika ditanya tentang klien lain, katakan Anda \
-hanya melihat data {scope.client_name} dan sarankan membuka chat klien tersebut. Jangan menjawab dari ingatan.
+Anda bisa membaca seluruh database iklan TikTok Buzzohero — semua klien, bukan hanya satu. Hari ini {today} \
+(WIB). {focus_line}Jangan menjawab dari ingatan.
 
 Cara bekerja:
-- Panggil alat sebelum menyebut angka apa pun. Jika belum yakin data apa yang tersedia, panggil \
-client_overview lebih dulu.
+- Panggil alat sebelum menyebut angka apa pun.
+- Pertanyaan lintas klien (peringkat, total, klien mana yang naik/turun) → portfolio_overview.
+- Pertanyaan tentang satu klien → alat per klien dengan argumen client berisi nama atau slug klien. Bila \
+nama dari pengguna tidak persis atau alat mengembalikan beberapa kandidat, pakai find_clients atau tanyakan \
+ke pengguna klien mana yang dimaksud — jangan menebak.
+- Untuk membandingkan beberapa klien, panggil alat per klien untuk masing-masing.
 - Pakai alat paling sempit yang menjawab pertanyaan. Dua panggilan Market Scope dalam satu giliran memakai \
 satu frame yang sama.
 - Anda memilih alat mana yang dipanggil dan bagaimana menyusun jawaban — tetapi setiap angka berasal dari \
