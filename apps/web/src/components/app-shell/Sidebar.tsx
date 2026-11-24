@@ -57,10 +57,11 @@ export function Sidebar() {
       icon: Compass,
       href: `/clients/${slug}/strategy-report`,
     },
+    // One general chat over every client, so it does not carry the slug.
     {
       label: 'Tanya Tempo',
       icon: MessageSquare,
-      href: `/clients/${slug}/chat`,
+      href: '/chat',
     },
     {
       label: 'Paid Campaigns',

@@ -56,7 +56,9 @@ from engine.api.dispatcher import (
 from engine.chat.agent import run_chat
 from engine.chat.data import PgChatData, resolve_scope
 from engine.chat.log import ensure_chat_schema, record_turn
-from engine.chat.scope import Principal, allowed_tools
+from engine.chat.scope import Principal, allowed_tools, workspace_for
+from engine.chat.reports import EngineReportRunner
+from engine.chat.source import ChatDataSource
 from engine.chat.tools import ToolContext
 from engine.contracts.content import Tier
 from engine.graphs.brief import build_brief_graph
@@ -90,9 +92,11 @@ async def lifespan(app: FastAPI):
         await ensure_edits_schema(app.state.read_conn)
         await ensure_chat_schema(app.state.read_conn)
         app.state.chat_config = LmStudioConfig.for_chat()
+        app.state.chat_source = ChatDataSource(app.state.read_conn, os.environ.get("TEMPO_DATA_DATABASE_URL"))
         try:
             yield
         finally:
+            await app.state.chat_source.close()
             await app.state.read_conn.close()
 
 
@@ -155,7 +159,9 @@ class ChatMessage(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    client_slug: str
+    #: Optional: the client the user is looking at — a hint for "this client",
+    #: never a restriction. Tanya Tempo itself spans every client.
+    client_slug: str | None = Field(default=None, max_length=200)
     messages: list[ChatMessage] = Field(min_length=1, max_length=60)
     conversation_id: str | None = Field(default=None, max_length=64)
     principal: dict | None = None
@@ -169,25 +175,35 @@ class ChatRequest(BaseModel):
 
 @app.post("/v1/chat")
 async def chat_endpoint(req: ChatRequest, request: Request) -> dict:
-    """Tempo Chat (C1). Resolves the client server-side from `client_slug` (the
-    model never sees a client choice, PRD §6.2 R3), runs the tool loop, logs the
-    turn with its principal, and returns the checked reply."""
+    """Tanya Tempo — the general chat over the ads database. The workspace
+    (`TEMPO_SCOPE`, C1: `super_admin` = every client) bounds which clients the
+    tools can resolve; the model names a client per tool call. Runs the tool
+    loop, logs the turn with its principal, and returns the checked reply."""
     read_conn = request.app.state.read_conn
-    scope = await resolve_scope(read_conn, req.client_slug)
-    if scope is None:
-        raise HTTPException(status_code=404, detail=f"no client with slug {req.client_slug!r}")
-
     config: LmStudioConfig = request.app.state.chat_config
     if not config.model:
         raise HTTPException(status_code=503, detail="Chat is not configured: set LM_STUDIO_CHAT_MODEL.")
 
     principal = Principal.from_payload(req.principal)
-    allowed = allowed_tools(principal, scope)
-    ctx = ToolContext(scope=scope, data=PgChatData(read_conn))
+    try:
+        workspace = workspace_for(principal, os.environ.get("TEMPO_SCOPE"), focus_slug=req.client_slug)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    data_pool = await request.app.state.chat_source.pool()
+    focus = await resolve_scope(data_pool, req.client_slug) if req.client_slug else None
+    allowed = allowed_tools(principal, workspace)
+    ctx = ToolContext(
+        workspace=workspace,
+        data=PgChatData(data_pool, engine_db=read_conn),
+        # Reports are generated against the engine DB, where they are stored.
+        runner=EngineReportRunner(request.app.state.graph, read_conn),
+    )
     history = [m.model_dump() for m in req.messages]
 
     try:
-        result = await run_chat(client=LmStudioClient(config), ctx=ctx, allowed=allowed, history=history)
+        result = await run_chat(
+            client=LmStudioClient(config), ctx=ctx, allowed=allowed, history=history, focus=focus
+        )
     except LmStudioUnreachable as exc:
         raise HTTPException(status_code=503, detail=f"Chat model unreachable: {exc}") from exc
     except LmStudioError as exc:
@@ -198,7 +214,7 @@ async def chat_endpoint(req: ChatRequest, request: Request) -> dict:
     await record_turn(
         read_conn,
         conversation_id=conversation_id,
-        scope=scope,
+        workspace=workspace,
         principal=principal,
         question=question,
         result=result,
@@ -206,7 +222,11 @@ async def chat_endpoint(req: ChatRequest, request: Request) -> dict:
 
     return {
         "conversation_id": conversation_id,
-        "client": {"slug": scope.client_slug, "name": scope.client_name, "north_star": scope.north_star},
+        "scope": workspace.scope,
+        "clients": [
+            {"slug": c.client_slug, "name": c.client_name, "north_star": c.north_star} for c in result.clients
+        ],
+        "reports": result.reports,
         "reply": result.reply,
         "verified": result.verified,
         "unverified_numerals": result.unverified_numerals,
@@ -245,7 +265,12 @@ async def healthz(request: Request) -> dict:
         "db": db_ok,
         "brief_types": ["gmv", "awareness", "install", "strategy"],
         "llm": {"base_url": llm.base_url, "model": llm.model, "max_tokens": llm.max_tokens, "concurrency": llm.concurrency},
-        "chat": {"base_url": chat.base_url, "model": chat.model or None},
+        "chat": {
+            "base_url": chat.base_url,
+            "model": chat.model or None,
+            "scope": os.environ.get("TEMPO_SCOPE", "super_admin"),
+            "data": source.status() if (source := getattr(request.app.state, "chat_source", None)) else None,
+        },
         "last_strategy_run": strategy[0] if strategy else None,
         "strategy_runs": strategy,
         **stats,

@@ -28,6 +28,9 @@ export interface StrategyEngineResult {
   runId: string;
   status: string;
   content: unknown;
+  /** Set by `fetchStrategyRun` (the stored row): which client and report type it is. */
+  tenantId?: string;
+  briefType?: string;
 }
 
 export class StrategyEngineError extends Error {
@@ -137,8 +140,20 @@ export async function fetchStrategyRun(engineRunId: string): Promise<StrategyEng
   try {
     const res = await fetch(`${TEMPO_ENGINE_URL}/v1/briefs/${encodeURIComponent(engineRunId)}`, { cache: 'no-store' });
     if (!res.ok) return null;
-    const body = (await res.json()) as { run_id: string; status: string; content: unknown };
-    return { runId: body.run_id, status: body.status, content: body.content };
+    const body = (await res.json()) as {
+      run_id: string;
+      status: string;
+      content: unknown;
+      tenant_id?: string;
+      brief_type?: string;
+    };
+    return {
+      runId: body.run_id,
+      status: body.status,
+      content: body.content,
+      tenantId: body.tenant_id,
+      briefType: body.brief_type,
+    };
   } catch (err) {
     console.error('[strategy-report] polling the full run failed:', err);
     return null;

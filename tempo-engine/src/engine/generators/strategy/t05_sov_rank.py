@@ -45,6 +45,10 @@ class T05SovRank(StrategyGenerator):
         for m in METRICS:
             if m.upper() in frame.unavailable_metrics:
                 continue
+            if m == "product_card_clicks" and frame.classification.report_class == "brand":
+                # Shop-only metric: a brand-class report (no TikTok Shop) never
+                # reports or targets product-card share.
+                continue
             cur = in_range(frame.insight(m), frame.current_start, frame.as_of)
             pri = in_range(frame.insight(m), frame.prior_start, frame.prior_end)
             s_now, s_pri = vertical_share(cur), vertical_share(pri)

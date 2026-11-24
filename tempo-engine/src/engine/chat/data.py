@@ -5,9 +5,11 @@ through the engine's read-only role (PRD §6.2 R4) — reusing `tempo_read` and
 `strategy_read` so chat reads obey the exact same grain/additivity/window rules
 the reports do. `FakeChatData` serves the tests with in-memory fixtures.
 
-Every method takes the server-resolved `ChatScope`; none takes a client,
-tenant or agency from the model (PRD R3). The DTOs are plain frozen records of
-already-shaped facts, never raw rows for the model to aggregate (R5).
+Per-client methods take a `ChatScope` the server resolved from the model's
+`client` argument *within the `ChatWorkspace`* (`resolve_client`); workspace
+methods (`find_clients`, `portfolio`) take the workspace itself, so a client
+outside it can never be named into a query. The DTOs are plain frozen records
+of already-shaped facts, never raw rows for the model to aggregate (R5).
 """
 
 from __future__ import annotations
@@ -20,12 +22,16 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import asyncpg
 
-from engine.chat.scope import ChatScope
+from engine.chat.scope import ChatScope, ChatWorkspace
+from engine.contracts import MetricFrame
 from engine.contracts.strategy import StrategyFrame
 from engine.ports.strategy_read import build_strategy_frame
 from engine.ports.tempo_read import (
     AwarenessRollupRow,
     RollupRow,
+    build_awareness_metric_frame,
+    build_gmv_metric_frame,
+    build_install_metric_frame,
     fetch_available_dates,
     fetch_paid_awareness_rollup,
     fetch_paid_rollup,
@@ -83,7 +89,64 @@ class ActionLogRow:
     measured_value: float | None
 
 
+@dataclass(frozen=True)
+class ClientMatch:
+    """A client as `find_clients` lists it: identity plus data coverage."""
+
+    slug: str
+    name: str
+    north_star: str
+    tier: str | None
+    currency: str
+    last_date: date | None
+    ttms_linked: bool
+
+
+@dataclass(frozen=True)
+class PortfolioRow:
+    """One client's campaign-level sums over a window (adgroup rows excluded)."""
+
+    slug: str
+    name: str
+    north_star: str
+    currency: str
+    spend: float
+    impressions: int
+    clicks: int
+    conversions: int
+    conversion_value: float
+    reach: int
+    video_watched_6s: int
+    engaged_view_15s: int
+
+
+@dataclass(frozen=True)
+class SavedReport:
+    """One approved engine report from `insight.brief`, content as stored
+    (reviewer edits already applied on approve)."""
+
+    brief_type: str
+    run_id: str
+    tier: str | None
+    updated_at: datetime | None
+    content: dict
+
+
+ResolveResult = ChatScope | list[ClientMatch]
+
+_FRAME_BUILDERS = {
+    "gmv": build_gmv_metric_frame,
+    "awareness": build_awareness_metric_frame,
+    "install": build_install_metric_frame,
+}
+
+
 class ChatData(Protocol):
+    async def resolve_client(self, ws: ChatWorkspace, ref: str) -> ResolveResult: ...
+    async def find_clients(self, ws: ChatWorkspace, query: str, limit: int) -> list[ClientMatch]: ...
+    async def client_count(self, ws: ChatWorkspace) -> int: ...
+    async def portfolio_last_date(self, ws: ChatWorkspace) -> date | None: ...
+    async def portfolio(self, ws: ChatWorkspace, start: date, end: date) -> list[PortfolioRow]: ...
     async def overview(self, scope: ChatScope) -> ClientOverview: ...
     async def available_dates(self, scope: ChatScope) -> list[date]: ...
     async def paid_rollup(self, scope: ChatScope, start: date, end: date) -> list[RollupRow]: ...
@@ -95,6 +158,10 @@ class ChatData(Protocol):
     ) -> StrategyFrame | None: ...
     async def action_log(self, scope: ChatScope, limit: int) -> list[ActionLogRow]: ...
     async def campaign_meta(self, scope: ChatScope) -> dict[str, tuple[str, str]]: ...
+    async def saved_reports(self, scope: ChatScope, brief_type: str | None, limit: int) -> list[SavedReport]: ...
+    async def metric_frame(
+        self, scope: ChatScope, brief_type: str, *, window_days: int, end_date: date | None
+    ) -> MetricFrame | None: ...
 
 
 def client_today(timezone: str) -> date:
@@ -119,8 +186,14 @@ async def resolve_scope(db: asyncpg.Pool, slug: str) -> ChatScope | None:
         """,
         slug,
     )
-    if row is None:
-        return None
+    return _scope_of(row) if row is not None else None
+
+
+def _norm(text: str) -> str:
+    return "".join(ch for ch in text.lower() if ch.isalnum())
+
+
+def _scope_of(row: asyncpg.Record) -> ChatScope:
     return ChatScope(
         client_slug=row["slug"],
         tenant_id=row["id"],
@@ -132,12 +205,165 @@ async def resolve_scope(db: asyncpg.Pool, slug: str) -> ChatScope | None:
     )
 
 
-class PgChatData:
-    """Reads Tempo's Postgres under the engine's read-only role. Takes a pool
-    (or connection) — both answer `fetch`/`fetchrow`/`fetchval`."""
+def _agencies(ws: ChatWorkspace) -> list[str] | None:
+    return list(ws.agency_ids) if ws.agency_ids is not None else None
 
-    def __init__(self, db: asyncpg.Pool) -> None:
+
+_IN_WORKSPACE = "($1::uuid[] IS NULL OR c.agency_id = ANY($1::uuid[]))"
+
+
+async def _optional(coro, default):
+    """Run a query against a table the data database may not have
+    (`market_scope_*`, `insight.brief`, `strategy_actions`): missing → default."""
+    try:
+        return await coro
+    except (asyncpg.UndefinedTableError, asyncpg.InvalidSchemaNameError):
+        return default
+MAX_CANDIDATES = 8
+
+
+def _pick(rows: list, ref: str, slug, name) -> list:
+    """Exact slug, then exact name (case-insensitive), then exact alphanumeric
+    form, then substring. Returns the hits of the first rule that hits."""
+    want = ref.strip()
+    key = _norm(want)
+    rules = (
+        lambda r: slug(r) == want,
+        lambda r: name(r).lower() == want.lower(),
+        lambda r: bool(key) and (_norm(name(r)) == key or _norm(slug(r)) == key),
+        lambda r: bool(key) and (key in _norm(name(r)) or key in _norm(slug(r))),
+    )
+    for rule in rules:
+        hits = [r for r in rows if rule(r)]
+        if hits:
+            return hits
+    return []
+
+
+class PgChatData:
+    """Reads Tempo's Postgres under a read-only role. Takes a pool (or
+    connection) — both answer `fetch`/`fetchrow`/`fetchval`."""
+
+    def __init__(self, db: asyncpg.Pool, engine_db: asyncpg.Pool | None = None) -> None:
         self._db = db
+        #: The engine's own database: `insight.brief` lives there, whichever
+        #: database the ads data is read from.
+        self._engine = engine_db or db
+
+    # ─── Workspace-level ────────────────────────────────────────────────────
+
+    async def _clients(self, ws: ChatWorkspace) -> list[asyncpg.Record]:
+        return await self._db.fetch(
+            f"""
+            SELECT c.id::text, c.agency_id::text, c.name, c.slug, c.currency, c.timezone,
+                   c.north_star, c.tier, c.created_at
+            FROM clients c WHERE {_IN_WORKSPACE} ORDER BY c.created_at
+            """,
+            _agencies(ws),
+        )
+
+    async def resolve_client(self, ws: ChatWorkspace, ref: str) -> ResolveResult:
+        """One hit → its scope; several or none → up to 8 candidates for the
+        model to choose from or ask the user about."""
+        hits = _pick(await self._clients(ws), ref, lambda r: r["slug"], lambda r: r["name"])
+        if len(hits) == 1:
+            return _scope_of(hits[0])
+        return await self._matches(hits[:MAX_CANDIDATES])
+
+    async def find_clients(self, ws: ChatWorkspace, query: str, limit: int) -> list[ClientMatch]:
+        rows = list(await self._clients(ws))
+        key = _norm(query)
+        if key:
+            rows = [r for r in rows if key in _norm(r["name"]) or key in _norm(r["slug"])]
+            rows.sort(key=lambda r: (not _norm(r["name"]).startswith(key), r["name"].lower()))
+        else:
+            rows.sort(key=lambda r: r["name"].lower())
+        return await self._matches(rows[:limit])
+
+    async def _matches(self, rows: list[asyncpg.Record]) -> list[ClientMatch]:
+        if not rows:
+            return []
+        ids = [r["id"] for r in rows]
+        last = await self._db.fetch(
+            """
+            SELECT a.client_id::text AS id, max(ph.date) AS last_date
+            FROM paid_hourly_metrics ph
+            JOIN campaigns c ON c.id = ph.campaign_id
+            JOIN tiktok_accounts a ON a.id = c.account_id
+            WHERE a.client_id = ANY($1::uuid[])
+            GROUP BY a.client_id
+            """,
+            ids,
+        )
+        linked = await _optional(
+            self._db.fetch(
+                "SELECT DISTINCT client_id::text AS id FROM market_scope_links WHERE client_id = ANY($1::uuid[])",
+                ids,
+            ),
+            [],
+        )
+        last_by = {r["id"]: r["last_date"] for r in last}
+        linked_ids = {r["id"] for r in linked}
+        return [
+            ClientMatch(
+                slug=r["slug"], name=r["name"], north_star=r["north_star"], tier=r["tier"],
+                currency=r["currency"] or "IDR", last_date=last_by.get(r["id"]),
+                ttms_linked=r["id"] in linked_ids,
+            )
+            for r in rows
+        ]
+
+    async def client_count(self, ws: ChatWorkspace) -> int:
+        n = await self._db.fetchval(f"SELECT count(*) FROM clients c WHERE {_IN_WORKSPACE}", _agencies(ws))
+        return int(n or 0)
+
+    async def portfolio_last_date(self, ws: ChatWorkspace) -> date | None:
+        return await self._db.fetchval(
+            f"""
+            SELECT max(ph.date) FROM paid_hourly_metrics ph
+            JOIN campaigns cp ON cp.id = ph.campaign_id
+            JOIN tiktok_accounts a ON a.id = cp.account_id
+            JOIN clients c ON c.id = a.client_id
+            WHERE {_IN_WORKSPACE}
+            """,
+            _agencies(ws),
+        )
+
+    async def portfolio(self, ws: ChatWorkspace, start: date, end: date) -> list[PortfolioRow]:
+        """Campaign-level rows only (`adgroup_id IS NULL`): adgroup rows are a
+        parallel decomposition, never additive with them (tempo_read §3.1)."""
+        rows = await self._db.fetch(
+            f"""
+            SELECT c.slug, c.name, c.north_star, c.currency,
+                   SUM(ph.spend) AS spend, SUM(ph.impressions) AS impressions,
+                   SUM(ph.clicks) AS clicks, SUM(ph.conversions) AS conversions,
+                   SUM(ph.conversion_value) AS conversion_value, SUM(ph.reach) AS reach,
+                   SUM(ph.video_watched_6s) AS video_watched_6s,
+                   SUM(ph.engaged_view_15s) AS engaged_view_15s
+            FROM paid_hourly_metrics ph
+            JOIN campaigns cp ON cp.id = ph.campaign_id
+            JOIN tiktok_accounts a ON a.id = cp.account_id
+            JOIN clients c ON c.id = a.client_id
+            WHERE {_IN_WORKSPACE} AND ph.adgroup_id IS NULL AND ph.date BETWEEN $2 AND $3
+            GROUP BY c.id, c.slug, c.name, c.north_star, c.currency
+            """,
+            _agencies(ws),
+            start,
+            end,
+        )
+        return [
+            PortfolioRow(
+                slug=r["slug"], name=r["name"], north_star=r["north_star"], currency=r["currency"] or "IDR",
+                spend=float(r["spend"] or 0), impressions=int(r["impressions"] or 0),
+                clicks=int(r["clicks"] or 0), conversions=int(r["conversions"] or 0),
+                conversion_value=float(r["conversion_value"] or 0), reach=int(r["reach"] or 0),
+                video_watched_6s=int(r["video_watched_6s"] or 0),
+                engaged_view_15s=int(r["engaged_view_15s"] or 0),
+            )
+            for r in rows
+        ]
+
+    # ─── Per-client ─────────────────────────────────────────────────────────
 
     async def overview(self, scope: ChatScope) -> ClientOverview:
         db = self._db
@@ -153,7 +379,7 @@ class PgChatData:
             days_with_data=len(dates),
         )
 
-        acc = await db.fetchrow(
+        acc = await _optional(db.fetchrow(
             """
             SELECT a.ttms_account_id, a.brand_name, a.vertical, a.plan, a.is_lite,
                    a.unavailable_metrics, a.last_data_date
@@ -164,7 +390,7 @@ class PgChatData:
             LIMIT 1
             """,
             scope.tenant_id,
-        )
+        ), None)
         if acc is None:
             ttms = TtmsLink(linked=False)
         else:
@@ -183,20 +409,20 @@ class PgChatData:
                 unavailable_metrics=tuple(acc["unavailable_metrics"] or ()),
             )
 
-        report_rows = await db.fetch(
+        report_rows = await _optional(db.fetch(
             "SELECT brief_type, status, updated_at FROM insight.brief "
             "WHERE tenant_id = $1 ORDER BY updated_at DESC LIMIT 3",
             scope.tenant_id,
-        )
+        ), [])
         last_reports = tuple(
             ReportRun(brief_type=r["brief_type"], status=r["status"], updated_at=r["updated_at"])
             for r in report_rows
         )
 
-        count_rows = await db.fetch(
+        count_rows = await _optional(db.fetch(
             "SELECT status, count(*) AS n FROM strategy_actions WHERE client_id = $1::uuid GROUP BY status",
             scope.tenant_id,
-        )
+        ), [])
         action_counts = {r["status"]: int(r["n"]) for r in count_rows}
 
         return ClientOverview(
@@ -236,6 +462,42 @@ class PgChatData:
             scope.tenant_id,
         )
         return {r["id"]: (r["objective"], r["status"]) for r in rows}
+
+    async def saved_reports(self, scope: ChatScope, brief_type: str | None, limit: int) -> list[SavedReport]:
+        """Latest approved report per brief type, newest first. Matched by
+        slug against the engine DB's `clients`, since `insight.brief.tenant_id`
+        is the engine DB's client id even when ads data comes from elsewhere."""
+        rows = await _optional(
+            self._engine.fetch(
+                """
+                SELECT DISTINCT ON (b.brief_type) b.brief_type, b.run_id, b.updated_at, b.content
+                FROM insight.brief b JOIN clients c ON c.id::text = b.tenant_id
+                WHERE c.slug = $1 AND b.status = 'approved' AND ($2::text IS NULL OR b.brief_type = $2)
+                ORDER BY b.brief_type, b.updated_at DESC
+                """,
+                scope.client_slug,
+                brief_type,
+            ),
+            [],
+        )
+        out = []
+        for r in rows:
+            content = r["content"] if isinstance(r["content"], dict) else json.loads(r["content"])
+            out.append(
+                SavedReport(
+                    brief_type=r["brief_type"], run_id=r["run_id"], tier=content.get("tier"),
+                    updated_at=r["updated_at"], content=content,
+                )
+            )
+        out.sort(key=lambda x: x.updated_at or datetime.min, reverse=True)
+        return out[:limit]
+
+    async def metric_frame(
+        self, scope: ChatScope, brief_type: str, *, window_days: int, end_date: date | None
+    ) -> MetricFrame | None:
+        return await _FRAME_BUILDERS[brief_type](
+            self._db, scope.client_slug, end_date=end_date, window_days=window_days
+        )
 
     async def action_log(self, scope: ChatScope, limit: int) -> list[ActionLogRow]:
         rows = await self._db.fetch(
@@ -291,18 +553,56 @@ def _as_date(v: object) -> date | None:
 
 @dataclass
 class FakeChatData:
-    """Serves the pure tests. Returns its fixtures regardless of the arguments a
-    tool was called with, which is exactly how the scope-binding tests prove a
-    tool cannot be steered to another client: an injected `client_slug` reaches
-    this fake and changes nothing."""
+    """Serves the pure tests. Client resolution and portfolio rows respect the
+    workspace exactly as `PgChatData` does; the per-client fixtures are served
+    for whichever client resolved."""
 
     overview_facts: ClientOverview | None = None
+    #: Clients in the fake database; `resolve_client` matches against these.
+    clients: list[ChatScope] = field(default_factory=list)
+    #: `portfolio` rows per (start, end) window; `portfolio_rows` for any window.
+    portfolio_by_window: dict[tuple[date, date], list[PortfolioRow]] = field(default_factory=dict)
+    portfolio_rows: list[PortfolioRow] = field(default_factory=list)
+    last_date: date | None = None
+    reports: list[SavedReport] = field(default_factory=list)
+    metric_frames: dict[str, MetricFrame] = field(default_factory=dict)
     dates: list[date] = field(default_factory=list)
     rollup: list[RollupRow] = field(default_factory=list)
     awareness: list[AwarenessRollupRow] = field(default_factory=list)
     frame: StrategyFrame | None = None
     actions: list[ActionLogRow] = field(default_factory=list)
     campaigns: dict[str, tuple[str, str]] = field(default_factory=dict)
+
+    def _visible(self, ws: ChatWorkspace) -> list[ChatScope]:
+        return [c for c in self.clients if ws.agency_ids is None or c.agency_id in ws.agency_ids]
+
+    def _match(self, c: ChatScope) -> ClientMatch:
+        return ClientMatch(
+            slug=c.client_slug, name=c.client_name, north_star=c.north_star, tier=None,
+            currency=c.currency, last_date=self.last_date, ttms_linked=False,
+        )
+
+    async def resolve_client(self, ws: ChatWorkspace, ref: str) -> ResolveResult:
+        hits = _pick(self._visible(ws), ref, lambda c: c.client_slug, lambda c: c.client_name)
+        if len(hits) == 1:
+            return hits[0]
+        return [self._match(c) for c in hits[:MAX_CANDIDATES]]
+
+    async def find_clients(self, ws: ChatWorkspace, query: str, limit: int) -> list[ClientMatch]:
+        key = _norm(query)
+        rows = [c for c in self._visible(ws) if not key or key in _norm(c.client_name) or key in _norm(c.client_slug)]
+        return [self._match(c) for c in rows[:limit]]
+
+    async def client_count(self, ws: ChatWorkspace) -> int:
+        return len(self._visible(ws))
+
+    async def portfolio_last_date(self, ws: ChatWorkspace) -> date | None:
+        return self.last_date
+
+    async def portfolio(self, ws: ChatWorkspace, start: date, end: date) -> list[PortfolioRow]:
+        rows = self.portfolio_by_window.get((start, end)) if self.portfolio_by_window else self.portfolio_rows
+        visible = {c.client_slug for c in self._visible(ws)}
+        return [r for r in rows or [] if not self.clients or r.slug in visible]
 
     async def overview(self, scope: ChatScope) -> ClientOverview:
         if self.overview_facts is None:
@@ -330,3 +630,12 @@ class FakeChatData:
 
     async def campaign_meta(self, scope: ChatScope) -> dict[str, tuple[str, str]]:
         return dict(self.campaigns)
+
+    async def saved_reports(self, scope: ChatScope, brief_type: str | None, limit: int) -> list[SavedReport]:
+        rows = [r for r in self.reports if brief_type is None or r.brief_type == brief_type]
+        return sorted(rows, key=lambda r: r.updated_at or datetime.min, reverse=True)[:limit]
+
+    async def metric_frame(
+        self, scope: ChatScope, brief_type: str, *, window_days: int, end_date: date | None
+    ) -> MetricFrame | None:
+        return self.metric_frames.get(brief_type)

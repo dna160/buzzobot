@@ -77,6 +77,10 @@ def candidates(frame: StrategyFrame, findings: list[Finding]) -> list[tuple[Acti
 
     # stage_targeting ← STAGE_LEAK (shop: Consideration→Conversion first; brand: Awareness→Consideration first)
     leaks = by_frame.get(ClaimFrame.STAGE_LEAK.value, [])
+    if cls == "brand":
+        # Consideration → Conversion is a TikTok Shop step; a brand-class
+        # report never gets a "push Conversion / product cards" action.
+        leaks = [f for f in leaks if f.evidence.get("next_stage") != "conversion"]
     prefer = "consideration" if cls == "shop" else "awareness"
     leaks.sort(key=lambda f: (f.evidence.get("stage") != prefer, -f.magnitude_pct))
     if leaks:

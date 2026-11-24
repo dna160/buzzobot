@@ -42,6 +42,10 @@ class ChatResult:
     unverified_numerals: list[str]
     tool_calls: list[dict] = field(default_factory=list)
     tool_outputs: list[dict] = field(default_factory=list)
+    #: Clients the turn's tools resolved to, in first-touch order.
+    clients: list[ChatScope] = field(default_factory=list)
+    #: Reports `client_report` reused or generated this turn (`ReportRef.to_json()`).
+    reports: list[dict] = field(default_factory=list)
     rounds: int = 0
     gate_attempts: int = 0
     model: str = ""
@@ -114,8 +118,8 @@ async def run_chat(
     allowed: tuple[str, ...],
     history: list[dict],
     prompt_version: str = PROMPT_VERSION,
+    focus: ChatScope | None = None,
 ) -> ChatResult:
-    scope: ChatScope = ctx.scope
     if not history or history[-1].get("role") != "user":
         raise ValueError("the last message must be from the user")
 
@@ -123,7 +127,8 @@ async def run_chat(
     base_prompt_tokens = client.stats.prompt_tokens
     base_completion_tokens = client.stats.completion_tokens
 
-    messages: list[dict] = [{"role": "system", "content": system_prompt(scope, client_today(scope.timezone))}]
+    today = client_today(ctx.workspace.timezone)
+    messages: list[dict] = [{"role": "system", "content": system_prompt(ctx.workspace, today, focus)}]
     messages.extend(_trim(history))
     user_texts = [m["content"] for m in history if m.get("role") == "user"]
     prior_replies = [m["content"] for m in history if m.get("role") == "assistant"]
@@ -190,6 +195,8 @@ async def run_chat(
         unverified_numerals=orphans,
         tool_calls=tool_calls_log,
         tool_outputs=tool_outputs_log,
+        clients=list(ctx.touched.values()),
+        reports=[r.to_json() for r in ctx.reports],
         rounds=model_calls,
         gate_attempts=gate_attempts,
         model=client.config.model,
